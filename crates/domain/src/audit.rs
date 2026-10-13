@@ -42,17 +42,47 @@ pub struct AuditRecord {
 }
 
 /// SHA-256 over `prev_hash`, a newline, and the record as canonical JSON, as lowercase hex.
-///
-/// Converting to [`Value`] first sorts every object's keys (serde_json's default map is
-/// ordered), so the bytes depend only on the data, never on the database or field order.
 pub fn compute_hash(record: &AuditRecord, prev_hash: &str) -> String {
-    let canonical = serde_json::to_value(record).expect("AuditRecord always serialises");
-    let bytes = serde_json::to_vec(&canonical).expect("a Value always serialises");
+    let value = serde_json::to_value(record).expect("AuditRecord always serialises");
+    let mut bytes = Vec::new();
+    write_canonical(&value, &mut bytes);
     let mut hasher = Sha256::new();
     hasher.update(prev_hash.as_bytes());
     hasher.update(b"\n");
     hasher.update(&bytes);
     hex::encode(hasher.finalize())
+}
+
+/// Compact JSON with object keys sorted at every level, written explicitly so the bytes never
+/// depend on how serde_json's map type is configured by Cargo feature unification.
+fn write_canonical(value: &Value, out: &mut Vec<u8>) {
+    match value {
+        Value::Array(items) => {
+            out.push(b'[');
+            for (i, item) in items.iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                write_canonical(item, out);
+            }
+            out.push(b']');
+        }
+        Value::Object(map) => {
+            let mut entries: Vec<_> = map.iter().collect();
+            entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            out.push(b'{');
+            for (i, (key, item)) in entries.into_iter().enumerate() {
+                if i > 0 {
+                    out.push(b',');
+                }
+                serde_json::to_writer(&mut *out, key).expect("writing to a Vec cannot fail");
+                out.push(b':');
+                write_canonical(item, out);
+            }
+            out.push(b'}');
+        }
+        scalar => serde_json::to_writer(&mut *out, scalar).expect("writing to a Vec cannot fail"),
+    }
 }
 
 /// A record together with its place in the chain.
@@ -177,6 +207,17 @@ mod tests {
         assert_eq!(
             compute_hash(&record(1, Value::Object(za)), GENESIS_HASH),
             compute_hash(&record(1, Value::Object(az)), GENESIS_HASH)
+        );
+    }
+
+    #[test]
+    fn canonical_form_is_compact_with_keys_sorted_at_every_level() {
+        let value = json!({ "z": [1, { "b": true, "a": null }], "a": "x\"y", "m": 2.5 });
+        let mut out = Vec::new();
+        write_canonical(&value, &mut out);
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            r#"{"a":"x\"y","m":2.5,"z":[1,{"a":null,"b":true}]}"#
         );
     }
 
