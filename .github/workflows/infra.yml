@@ -117,7 +117,7 @@ jobs:
           terraform plan -lock=false -input=false -no-color > plan.txt 2>&1
           echo "exit=$?" >> "$GITHUB_OUTPUT"
           set -e
-          ../scripts/redact-plan.sh "$TF_VAR_project_id" "$GCP_PROJECT_NUMBER" < plan.txt > plan-redacted.txt
+          ../scripts/redact-plan.sh "$TF_VAR_project_id" "$GCP_PROJECT_NUMBER" "$TF_VAR_state_bucket" < plan.txt > plan-redacted.txt
           cat plan-redacted.txt
 
       - name: Comment the plan on the PR

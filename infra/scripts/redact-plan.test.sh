@@ -15,4 +15,10 @@ got=$(printf 'a.b*c\n' | "$here/redact-plan.sh" 'a.b*c')
 got=$(printf 'unchanged\n' | "$here/redact-plan.sh" "")
 [ "$got" = "unchanged" ] || fail "ignores empty values" "$got"
 
+for order in "my-proj-123 987654 my-proj-123-tfstate" "my-proj-123-tfstate 987654 my-proj-123"; do
+  # shellcheck disable=SC2086
+  got=$(printf 'Refreshing state... [id=b/my-proj-123-tfstate/x] p=my-proj-123 n=987654\n' | "$here/redact-plan.sh" $order)
+  [ "$got" = "Refreshing state... [id=b/***/x] p=*** n=***" ] || fail "redacts a bucket name containing the project ID ($order)" "$got"
+done
+
 echo "redact-plan: all tests passed"
