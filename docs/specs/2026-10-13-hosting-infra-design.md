@@ -1,7 +1,7 @@
 # Hosting Infrastructure (Terraform) — Design Spec
 
 - **Date:** 2026-10-13
-- **Status:** Draft, for review (revised after an independent review against official docs)
+- **Status:** Approved (2026-10-13, from a one-screen summary), revised after an independent review against official docs
 - **Extends:** [design spec](2026-10-13-smoke-tracker-design.md) §13.2 (hosting was deferred)
 
 ---
