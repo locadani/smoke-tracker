@@ -50,7 +50,13 @@ async fn with_an_event_open_the_form_offers_an_update_with_my_last_rooms() {
         app.room("room-kitchen").await,
     );
     let first = app
-        .log(&me, "2026-01-15T18:05:00Z", 4, &[bedroom], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            4,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let event = EventChoice::Join(first.report.event_id);
     app.log(&partner, "2026-01-15T19:55:00Z", 6, &[kitchen], event)
@@ -102,7 +108,13 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let stranger = app.add_user("stranger", Role::Guest, Locale::En).await;
     let first = app
-        .log(&me, "2026-01-15T18:05:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = first.report.event_id;
     let close = format!(r#"action="/events/{}/close""#, id.0);
@@ -158,10 +170,22 @@ async fn the_summary_counts_this_month_and_guests_count_only_their_own() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let bedroom = app.room("room-bedroom").await;
-    app.log(&me, "2025-12-31T20:00:00Z", 5, &[bedroom], EventChoice::New)
-        .await;
+    app.log(
+        &me,
+        "2025-12-31T20:00:00Z",
+        5,
+        &[bedroom],
+        EventChoice::New { replacing: None },
+    )
+    .await;
     let first = app
-        .log(&me, "2026-01-10T20:00:00Z", 5, &[bedroom], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-10T20:00:00Z",
+            5,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let join = EventChoice::Join(first.report.event_id);
     app.log(&guest, "2026-01-10T21:00:00Z", 3, &[], join).await;
@@ -170,7 +194,7 @@ async fn the_summary_counts_this_month_and_guests_count_only_their_own() {
         "2026-01-12T20:00:00Z",
         6,
         &[bedroom],
-        EventChoice::New,
+        EventChoice::New { replacing: None },
     )
     .await;
 
@@ -194,7 +218,13 @@ async fn opening_the_log_screen_runs_the_auto_close_sweep() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let logged = app
-        .log(&me, "2026-01-15T20:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T20:00:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
     app.at("2026-01-16T07:00:00Z");

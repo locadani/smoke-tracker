@@ -16,12 +16,24 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let bedroom = app.room("room-bedroom").await;
     let first = app
-        .log(&me, "2026-01-10T18:00:00Z", 3, &[bedroom], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-10T18:00:00Z",
+            3,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let join = EventChoice::Join(first.report.event_id);
     app.log(&me, "2026-01-10T19:00:00Z", 7, &[], join).await;
     let second = app
-        .log(&me, "2026-01-12T07:30:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-12T07:30:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     app.log_pm25(&me, "2026-01-11T13:00:00Z", 12.5).await;
     let cookie = app.sign_in("daniele").await;
@@ -68,10 +80,22 @@ async fn guests_list_only_events_they_own_or_reported_in() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let private = app
-        .log(&me, "2026-01-10T18:00:00Z", 8, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-10T18:00:00Z",
+            8,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let shared = app
-        .log(&me, "2026-01-11T18:00:00Z", 9, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-11T18:00:00Z",
+            9,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let join = EventChoice::Join(shared.report.event_id);
     app.log(&guest, "2026-01-11T18:30:00Z", 4, &[], join).await;
@@ -99,7 +123,13 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let bedroom = app.room("room-bedroom").await;
     let first = app
-        .log(&me, "2026-01-15T09:00:00Z", 3, &[bedroom], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T09:00:00Z",
+            3,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = first.report.event_id;
     app.log(
@@ -146,7 +176,13 @@ async fn guests_see_only_their_own_entries_and_not_other_peoples_events() {
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let kitchen = app.room("room-kitchen").await;
     let shared = app
-        .log(&me, "2026-01-15T09:00:00Z", 9, &[kitchen], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T09:00:00Z",
+            9,
+            &[kitchen],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = shared.report.event_id;
     app.log(
@@ -158,7 +194,15 @@ async fn guests_see_only_their_own_entries_and_not_other_peoples_events() {
     )
     .await;
     let private = app
-        .log(&me, "2026-01-15T19:00:00Z", 8, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            8,
+            &[],
+            EventChoice::New {
+                replacing: Some(id),
+            },
+        )
         .await;
     let cookie = app.sign_in("guest").await;
 
@@ -184,7 +228,13 @@ async fn closing_by_hand_needs_an_end_between_the_last_report_and_now() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let open = app
-        .log(&me, "2026-01-15T19:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = open.report.event_id;
     let cookie = app.sign_in("daniele").await;
@@ -245,7 +295,13 @@ async fn the_log_screen_closes_the_open_event_now() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let open = app
-        .log(&me, "2026-01-15T19:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = open.report.event_id;
     let cookie = app.sign_in("daniele").await;
@@ -275,7 +331,13 @@ async fn only_residents_and_owning_guests_can_close_or_reopen() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let open = app
-        .log(&me, "2026-01-15T19:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = open.report.event_id;
     app.log(
@@ -305,11 +367,25 @@ async fn reopening_is_offered_only_while_no_other_event_is_open() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let earlier = app
-        .log(&me, "2026-01-15T10:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T10:00:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = earlier.report.event_id;
     let current = app
-        .log(&me, "2026-01-15T20:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T20:00:00Z",
+            5,
+            &[],
+            EventChoice::New {
+                replacing: Some(id),
+            },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
     let html = text(app.send(get_with(&format!("/events/{id}"), &cookie)).await).await;
@@ -348,7 +424,13 @@ async fn closing_or_reopening_an_event_a_guest_cannot_see_answers_not_found() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     app.add_user("guest", Role::Guest, Locale::En).await;
     let open = app
-        .log(&me, "2026-01-15T19:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            5,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = open.report.event_id;
     let guest = app.sign_in("guest").await;

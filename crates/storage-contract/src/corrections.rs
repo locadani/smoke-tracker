@@ -83,9 +83,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let logged = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let logged = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     let id = logged.report.event_id;
     fx.clock.advance(TimeDelta::hours(1));
 
@@ -120,11 +125,16 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let residents = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap()
-        .report
-        .event_id;
+    let residents = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap()
+    .report
+    .event_id;
     for who in [&p.guest, &p.viewer] {
         let refused = close(fx, who, residents, start()).await;
         assert!(matches!(refused, Err(LogError::Forbidden)), "{refused:?}");
@@ -134,11 +144,16 @@ where
     assert!(matches!(refused, Err(LogError::Forbidden)), "{refused:?}");
 
     fx.clock.advance(TimeDelta::minutes(5));
-    let guests = log(fx, &p.guest, smell(fx.clock.now(), 4), EventChoice::New)
-        .await
-        .unwrap()
-        .report
-        .event_id;
+    let guests = log(
+        fx,
+        &p.guest,
+        smell(fx.clock.now(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap()
+    .report
+    .event_id;
     close(fx, &p.guest, guests, fx.clock.now()).await.unwrap();
     reopen(fx, &p.guest, guests).await.unwrap();
     assert!(event(fx, guests).await.is_open());
@@ -187,9 +202,14 @@ pub async fn correcting_after_the_end_moves_the_end_and_before_the_start_is_refu
 {
     let p = people(fx).await;
     let opened = start() - TimeDelta::hours(4);
-    let logged = log(fx, &p.resident, smell(opened, 4), EventChoice::New)
-        .await
-        .unwrap();
+    let logged = log(
+        fx,
+        &p.resident,
+        smell(opened, 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     let id = logged.report.event_id;
     close(fx, &p.resident, id, opened + TimeDelta::minutes(30))
         .await
@@ -223,9 +243,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let residents = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let residents = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     let event_id = residents.report.event_id;
     let guests = log(fx, &p.guest, smell(start(), 5), EventChoice::Join(event_id))
         .await
@@ -256,9 +281,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let first = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     let joined = log(
         fx,
         &p.guest,
@@ -310,9 +340,14 @@ where
     )
     .await;
     let later_at = opened + TimeDelta::hours(1);
-    let later = log(fx, &p.resident, smell(later_at, 4), EventChoice::New)
-        .await
-        .unwrap();
+    let later = log(
+        fx,
+        &p.resident,
+        smell(later_at, 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
 
     let moved = relocate(
         fx,
@@ -332,7 +367,9 @@ where
         fx,
         &p.resident,
         smell(opened - TimeDelta::hours(1), 4),
-        EventChoice::New,
+        EventChoice::New {
+            replacing: Some(later.report.event_id),
+        },
     )
     .await
     .unwrap();
@@ -347,4 +384,71 @@ where
         matches!(not_started, Err(LogError::OutsideEvent)),
         "{not_started:?}"
     );
+}
+
+pub async fn a_report_cannot_move_into_another_days_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let logged = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    let opened = start() - TimeDelta::days(2);
+    let other_day = add_event(
+        fx,
+        p.resident.id,
+        opened,
+        Some(Closure {
+            at: opened + TimeDelta::hours(1),
+            reason: CloseReason::Manual,
+        }),
+    )
+    .await;
+
+    let refused = relocate(
+        fx,
+        &p.resident,
+        logged.report.id,
+        MoveTarget::Event(other_day.id),
+    )
+    .await;
+    assert!(
+        matches!(refused, Err(LogError::OutsideEvent)),
+        "{refused:?}"
+    );
+}
+
+pub async fn a_deleted_report_or_a_missing_target_event_is_not_found<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let logged = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    let missing = relocate(
+        fx,
+        &p.resident,
+        logged.report.id,
+        MoveTarget::Event(EventId(999)),
+    )
+    .await;
+    assert!(matches!(missing, Err(LogError::NotFound)), "{missing:?}");
+
+    let mut tx = fx.store.begin(Some(p.resident.id)).await.unwrap();
+    tx.delete_report(logged.report.id).await.unwrap();
+    tx.commit().await.unwrap();
+    let deleted = relocate(fx, &p.resident, logged.report.id, MoveTarget::New).await;
+    assert!(matches!(deleted, Err(LogError::NotFound)), "{deleted:?}");
 }

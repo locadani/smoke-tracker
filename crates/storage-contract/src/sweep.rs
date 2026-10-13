@@ -50,7 +50,7 @@ where
         .unwrap()
 }
 
-/// An evening event (21:00–22:30 Rome) on the night before `date`, with no sweep since.
+/// An evening event (20:00–21:30 UTC) on the night before `date`, with no sweep since.
 async fn evening_event<S>(fx: &Fixture<S>, user: UserId, date: &str) -> Event
 where
     S: Transactional<Tx: EventWrites + ReportWrites + JobWrites> + JobRepo,

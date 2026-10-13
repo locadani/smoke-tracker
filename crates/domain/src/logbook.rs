@@ -17,7 +17,7 @@ use crate::records::{
 };
 use crate::repos::{EventWrites, ReadingWrites, ReportWrites, StoreError, StoreResult};
 use crate::schedule::DailySchedule;
-use crate::types::{CloseReason, EventId, Pm25, ReportId};
+use crate::types::{CloseReason, EventId, Pm25, ReportId, UserId};
 
 #[derive(Debug, Error)]
 pub enum LogError {
@@ -45,8 +45,10 @@ pub enum LogError {
 /// The answer to "Same smell still going?", "Which event was this?" or the auto-close notice.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventChoice {
-    /// Start a new event: nothing was asked, "No, it had stopped", or "New event".
-    New,
+    /// Start a new event: nothing was asked, "No, it had stopped", or "New event". `replacing`
+    /// is the event that was open when the answer was given (`None` if none was), so an event
+    /// opened meanwhile by another phone is never closed by a stale answer.
+    New { replacing: Option<EventId> },
     /// Join this event: "Yes, update", or the event picked for a past report.
     Join(EventId),
     /// "It was still going": reopen this auto-closed event and join it.
@@ -80,6 +82,31 @@ pub(crate) async fn close_at_last_report<T: EventWrites>(
     tx.close_event(event.id, Closure { at, reason }).await
 }
 
+/// Creates the event a report starts: open, or already closed at `at` when another event is
+/// open or a 04:00 boundary has passed (spec §7.5).
+async fn open_new_event<T: EventWrites>(
+    tx: &mut T,
+    owner: UserId,
+    at: DateTime<Utc>,
+    schedule: &DailySchedule,
+    now: DateTime<Utc>,
+    another_open: bool,
+) -> StoreResult<EventId> {
+    let closed = match new_event_state(at, now, schedule, another_open) {
+        NewEventState::Open => None,
+        NewEventState::ClosedBackdated => Some(Closure {
+            at,
+            reason: CloseReason::Backdated,
+        }),
+    };
+    let new = NewEvent {
+        owner_id: owner,
+        opened_at: at,
+        closed,
+    };
+    Ok(tx.create_event(new).await?.id)
+}
+
 /// Logs a smell report, and its PM2.5 reading if there is one, into the event `choice` names
 /// (spec §7.1, §7.2, §7.4, §7.5).
 pub async fn log_smell<T>(
@@ -100,7 +127,10 @@ where
     let observed = classify_observed(observed_at, now)?;
     let open = tx.open_event().await?;
     let event_id = match choice {
-        EventChoice::New => {
+        EventChoice::New { replacing } => {
+            if open.as_ref().map(|e| e.id) != replacing {
+                return Err(LogError::Stale);
+            }
             let another_open = match (observed, &open) {
                 (ObservedTime::Now, Some(open)) => {
                     close_at_last_report(tx, open, CloseReason::NewEvent).await?;
@@ -108,19 +138,7 @@ where
                 }
                 (_, open) => open.is_some(),
             };
-            let closed = match new_event_state(observed_at, now, schedule, another_open) {
-                NewEventState::Open => None,
-                NewEventState::ClosedBackdated => Some(Closure {
-                    at: observed_at,
-                    reason: CloseReason::Backdated,
-                }),
-            };
-            let new = NewEvent {
-                owner_id: actor.id,
-                opened_at: observed_at,
-                closed,
-            };
-            tx.create_event(new).await?.id
+            open_new_event(tx, actor.id, observed_at, schedule, now, another_open).await?
         }
         EventChoice::Join(id) => {
             let event = tx.event(id).await?.ok_or(LogError::Stale)?;
@@ -310,19 +328,8 @@ pub async fn move_report<T: EventWrites + ReportWrites>(
         }
         MoveTarget::New => {
             let another_open = tx.open_event().await?.is_some();
-            let closed = match new_event_state(report.observed_at, now, schedule, another_open) {
-                NewEventState::Open => None,
-                NewEventState::ClosedBackdated => Some(Closure {
-                    at: report.observed_at,
-                    reason: CloseReason::Backdated,
-                }),
-            };
-            let new = NewEvent {
-                owner_id: report.user_id,
-                opened_at: report.observed_at,
-                closed,
-            };
-            tx.create_event(new).await?.id
+            let (owner, at) = (report.user_id, report.observed_at);
+            open_new_event(tx, owner, at, schedule, now, another_open).await?
         }
     };
     Ok(tx.move_report(id, target).await?)

@@ -95,9 +95,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let logged = log(fx, &p.guest, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let logged = log(
+        fx,
+        &p.guest,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     let open = fx.store.open_event().await.unwrap().unwrap();
     assert_eq!(logged.report.event_id, open.id);
     assert_eq!((open.owner_id, open.opened_at), (p.guest.id, start()));
@@ -109,9 +114,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo + ReportRepo,
 {
     let p = people(fx).await;
-    let first = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     fx.clock.advance(TimeDelta::minutes(20));
     let event_id = first.report.event_id;
     let second = log(
@@ -132,9 +142,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let first = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     fx.clock.advance(TimeDelta::minutes(30));
     let last = log(
         fx,
@@ -145,9 +160,16 @@ where
     .await
     .unwrap();
     fx.clock.advance(TimeDelta::hours(2));
-    let next = log(fx, &p.guest, smell(fx.clock.now(), 5), EventChoice::New)
-        .await
-        .unwrap();
+    let next = log(
+        fx,
+        &p.guest,
+        smell(fx.clock.now(), 5),
+        EventChoice::New {
+            replacing: Some(first.report.event_id),
+        },
+    )
+    .await
+    .unwrap();
 
     let old = event(fx, first.report.event_id).await;
     assert_eq!(
@@ -167,14 +189,26 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo + AuditRepo,
 {
     let p = people(fx).await;
-    let first = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     fx.clock.advance(TimeDelta::minutes(5));
     // The partner's phone answered "No, it had stopped" first.
-    log(fx, &p.partner, smell(fx.clock.now(), 5), EventChoice::New)
-        .await
-        .unwrap();
+    log(
+        fx,
+        &p.partner,
+        smell(fx.clock.now(), 5),
+        EventChoice::New {
+            replacing: Some(first.report.event_id),
+        },
+    )
+    .await
+    .unwrap();
     let entries = fx.store.audit_log().await.unwrap().len();
 
     let late_yes = log(
@@ -207,6 +241,58 @@ where
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries);
 }
 
+pub async fn a_new_event_answer_about_an_event_that_is_no_longer_open_is_stale<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo + AuditRepo,
+{
+    let p = people(fx).await;
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    let first_id = first.report.event_id;
+    fx.clock.advance(TimeDelta::minutes(5));
+    let second = log(
+        fx,
+        &p.partner,
+        smell(fx.clock.now(), 5),
+        EventChoice::New {
+            replacing: Some(first_id),
+        },
+    )
+    .await
+    .unwrap();
+    let entries = fx.store.audit_log().await.unwrap().len();
+
+    let late = log(
+        fx,
+        &p.resident,
+        smell(fx.clock.now(), 6),
+        EventChoice::New {
+            replacing: Some(first_id),
+        },
+    )
+    .await;
+    assert!(matches!(late, Err(LogError::Stale)), "{late:?}");
+    let unaware = log(
+        fx,
+        &p.resident,
+        smell(fx.clock.now(), 6),
+        EventChoice::New { replacing: None },
+    )
+    .await;
+    assert!(matches!(unaware, Err(LogError::Stale)), "{unaware:?}");
+    assert_eq!(
+        fx.store.open_event().await.unwrap().map(|e| e.id),
+        Some(second.report.event_id)
+    );
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), entries);
+}
+
 pub async fn a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_passed<S>(
     fx: &Fixture<S>,
 ) where
@@ -218,16 +304,23 @@ pub async fn a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_pas
         fx,
         &p.resident,
         smell(start() - TimeDelta::hours(1), 3),
-        EventChoice::New,
+        EventChoice::New { replacing: None },
     )
     .await
     .unwrap();
     assert!(event(fx, earlier_tonight.report.event_id).await.is_open());
 
     let earlier_still = start() - TimeDelta::hours(2);
-    let while_open = log(fx, &p.resident, smell(earlier_still, 3), EventChoice::New)
-        .await
-        .unwrap();
+    let while_open = log(
+        fx,
+        &p.resident,
+        smell(earlier_still, 3),
+        EventChoice::New {
+            replacing: Some(earlier_tonight.report.event_id),
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(
         event(fx, while_open.report.event_id).await.closed,
         Some(Closure {
@@ -238,9 +331,16 @@ pub async fn a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_pas
     );
 
     let yesterday = start() - TimeDelta::days(1);
-    let past_four = log(fx, &p.resident, smell(yesterday, 3), EventChoice::New)
-        .await
-        .unwrap();
+    let past_four = log(
+        fx,
+        &p.resident,
+        smell(yesterday, 3),
+        EventChoice::New {
+            replacing: Some(earlier_tonight.report.event_id),
+        },
+    )
+    .await
+    .unwrap();
     assert_eq!(
         event(fx, past_four.report.event_id)
             .await
@@ -406,7 +506,9 @@ where
     let p = people(fx).await;
     let mut entry = smell(start(), 4);
     entry.pm25 = Some(Pm25::new(35.5).unwrap());
-    let logged = log(fx, &p.resident, entry, EventChoice::New).await.unwrap();
+    let logged = log(fx, &p.resident, entry, EventChoice::New { replacing: None })
+        .await
+        .unwrap();
     let reading = logged.reading.unwrap();
     assert_eq!(reading.event_id, Some(logged.report.event_id));
     assert_eq!(
@@ -463,9 +565,14 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo + AuditRepo,
 {
     let p = people(fx).await;
-    let first = log(fx, &p.resident, smell(start(), 4), EventChoice::New)
-        .await
-        .unwrap();
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
     let entries = fx.store.audit_log().await.unwrap().len();
     fx.clock.advance(TimeDelta::minutes(30));
 
@@ -476,7 +583,9 @@ where
         &mut tx,
         &p.guest.actor(),
         entry,
-        EventChoice::New,
+        EventChoice::New {
+            replacing: Some(first.report.event_id),
+        },
         &rome(),
         fx.clock.now(),
     )
@@ -497,13 +606,25 @@ where
     S: Transactional<Tx: WriteTx + UserWrites> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let viewer = log(fx, &p.viewer, smell(start(), 4), EventChoice::New).await;
+    let viewer = log(
+        fx,
+        &p.viewer,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await;
     assert!(matches!(viewer, Err(LogError::Forbidden)), "{viewer:?}");
 
     let mut tx = fx.store.begin(Some(p.resident.id)).await.unwrap();
     let expired = tx.expire_user(p.guest.id).await.unwrap();
     tx.commit().await.unwrap();
-    let guest = log(fx, &expired, smell(start(), 4), EventChoice::New).await;
+    let guest = log(
+        fx,
+        &expired,
+        smell(start(), 4),
+        EventChoice::New { replacing: None },
+    )
+    .await;
     assert!(matches!(guest, Err(LogError::Forbidden)), "{guest:?}");
 
     let mut tx = fx.store.begin(Some(p.viewer.id)).await.unwrap();
@@ -529,7 +650,7 @@ where
         fx,
         &p.resident,
         smell(start() + TimeDelta::minutes(5), 4),
-        EventChoice::New,
+        EventChoice::New { replacing: None },
     )
     .await;
     assert!(

@@ -45,7 +45,13 @@ async fn with_an_event_open_the_same_smell_question_comes_first() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let first = app
-        .log(&me, "2026-01-15T18:05:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
 
@@ -76,7 +82,13 @@ async fn answering_no_closes_the_open_event_at_its_last_report() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let first = app
-        .log(&me, "2026-01-15T18:05:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
     let body = format!(
@@ -109,10 +121,24 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
     app.add_user("guest", Role::Guest, Locale::En).await;
     let kitchen = app.room("room-kitchen").await;
     let first = app
-        .log(&me, "2026-01-15T18:05:00Z", 9, &[kitchen], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            9,
+            &[kitchen],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let closed_earlier = app
-        .log(&me, "2026-01-15T10:00:00Z", 8, &[kitchen], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T10:00:00Z",
+            8,
+            &[kitchen],
+            EventChoice::New {
+                replacing: Some(first.report.event_id),
+            },
+        )
         .await;
     let cookie = app.sign_in("guest").await;
 
@@ -162,7 +188,13 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let partner = app.add_user("partner", Role::Resident, Locale::En).await;
     let first = app
-        .log(&me, "2026-01-15T18:05:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
     let question = text(
@@ -172,7 +204,15 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
     .await;
     // Meanwhile the partner's phone answers "No, it had stopped".
     let second = app
-        .log(&partner, "2026-01-15T19:58:00Z", 5, &[], EventChoice::New)
+        .log(
+            &partner,
+            "2026-01-15T19:58:00Z",
+            5,
+            &[],
+            EventChoice::New {
+                replacing: Some(first.report.event_id),
+            },
+        )
         .await;
 
     let body = format!(
@@ -205,11 +245,25 @@ async fn a_past_report_after_the_end_of_the_chosen_event_moves_its_end() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let past = app
-        .log(&me, "2026-01-15T10:00:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T10:00:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = past.report.event_id;
-    app.log(&me, "2026-01-15T20:00:00Z", 4, &[], EventChoice::New)
-        .await;
+    app.log(
+        &me,
+        "2026-01-15T20:00:00Z",
+        4,
+        &[],
+        EventChoice::New {
+            replacing: Some(id),
+        },
+    )
+    .await;
     let cookie = app.sign_in("daniele").await;
     let html = text(
         app.send(post_form(
@@ -243,7 +297,13 @@ async fn after_an_auto_close_the_next_log_offers_a_continuation() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let evening = app
-        .log(&me, "2026-01-15T20:00:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T20:00:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = evening.report.event_id;
     let cookie = app.sign_in("daniele").await;
@@ -274,12 +334,24 @@ async fn while_another_event_is_open_the_notice_is_a_dismissable_banner() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let partner = app.add_user("partner", Role::Resident, Locale::En).await;
-    app.log(&me, "2026-01-15T20:00:00Z", 4, &[], EventChoice::New)
-        .await;
+    app.log(
+        &me,
+        "2026-01-15T20:00:00Z",
+        4,
+        &[],
+        EventChoice::New { replacing: None },
+    )
+    .await;
     app.at("2026-01-16T06:00:00Z");
     app.sweep().await;
-    app.log(&partner, "2026-01-16T06:00:00Z", 4, &[], EventChoice::New)
-        .await;
+    app.log(
+        &partner,
+        "2026-01-16T06:00:00Z",
+        4,
+        &[],
+        EventChoice::New { replacing: None },
+    )
+    .await;
     let cookie = app.sign_in("daniele").await;
 
     let html = text(app.send(get_with("/", &cookie)).await).await;
@@ -307,7 +379,13 @@ async fn pm25_alone_needs_no_intensity_and_joins_the_open_event() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let open = app
-        .log(&me, "2026-01-15T19:00:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
     let response = app

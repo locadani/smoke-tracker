@@ -140,7 +140,7 @@ fn read(
 fn parse_choice(value: &str) -> Option<EventChoice> {
     let id = |rest: &str| rest.parse().ok().map(EventId);
     if value == "new" {
-        Some(EventChoice::New)
+        Some(EventChoice::New { replacing: None })
     } else if let Some(rest) = value.strip_prefix("join-") {
         id(rest).map(EventChoice::Join)
     } else {
@@ -161,13 +161,14 @@ fn question_key(prompt: &LogPrompt) -> Option<String> {
     }
 }
 
-/// The question that applies now, and the auto-close notices pending for the user.
+/// The question that applies now, the auto-close notices pending for the user, and the event
+/// that is open (a "new event" answer closes exactly that one).
 async fn current_prompt<S: Store>(
     state: &AppState<S>,
     user: &User,
     observed_at: DateTime<Utc>,
     now: DateTime<Utc>,
-) -> Result<(LogPrompt, Vec<Event>), AppError> {
+) -> Result<(LogPrompt, Vec<Event>, Option<EventId>), AppError> {
     let observed = classify_observed(observed_at, now).map_err(AppError::internal)?;
     let open = state.store.open_event().await?;
     let notices = notices::pending(state, user, now).await?;
@@ -176,7 +177,7 @@ async fn current_prompt<S: Store>(
         open.as_ref().map(Event::summary),
         notices.last().map(Event::summary),
     );
-    Ok((prompt, notices))
+    Ok((prompt, notices, open.map(|e| e.id)))
 }
 
 pub(crate) async fn submit<S: Store + Clone + 'static>(
@@ -211,12 +212,15 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         Entry::Smell(entry) => entry,
     };
 
-    let (prompt, notices) = current_prompt(&state, &user, entry.observed_at, now).await?;
+    let (prompt, notices, open) = current_prompt(&state, &user, entry.observed_at, now).await?;
     let asked = question_key(&prompt);
     let answer = form.get("choice").and_then(parse_choice);
     let choice = match (&asked, form.get("asked"), answer) {
-        (None, _, _) => EventChoice::New,
-        (Some(asked), Some(answered), Some(choice)) if asked == answered => choice,
+        (None, _, _) => EventChoice::New { replacing: open },
+        (Some(asked), Some(answered), Some(choice)) if asked == answered => match choice {
+            EventChoice::New { .. } => EventChoice::New { replacing: open },
+            other => other,
+        },
         (Some(_), _, _) => {
             return ask(&state, &user, tr, now, &form, prompt, entry.observed_at).await;
         }
@@ -227,7 +231,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         Ok(_) => {}
         Err(LogError::Stale) => {
             drop(tx);
-            let (fresh, _) = current_prompt(&state, &user, observed_at, now).await?;
+            let (fresh, ..) = current_prompt(&state, &user, observed_at, now).await?;
             if fresh == LogPrompt::Direct {
                 return back_to_form(&state, &user, tr, now, &form, "refused-stale").await;
             }
@@ -449,7 +453,10 @@ mod tests {
 
     #[test]
     fn answers_name_the_choice_and_the_event() {
-        assert_eq!(parse_choice("new"), Some(EventChoice::New));
+        assert_eq!(
+            parse_choice("new"),
+            Some(EventChoice::New { replacing: None })
+        );
         assert_eq!(
             parse_choice("join-12"),
             Some(EventChoice::Join(EventId(12)))

@@ -16,7 +16,13 @@ async fn a_report_shows_both_times_its_values_and_its_history() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let bedroom = app.room("room-bedroom").await;
     let logged = app
-        .log(&me, "2026-01-15T18:05:00Z", 6, &[bedroom], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            6,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("daniele").await;
 
@@ -54,7 +60,13 @@ async fn correcting_a_mistake_is_recorded_and_badged() {
         app.room("room-kitchen").await,
     );
     let logged = app
-        .log(&me, "2026-01-15T18:05:00Z", 6, &[bedroom], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            6,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = logged.report.id;
     let cookie = app.sign_in("daniele").await;
@@ -107,7 +119,13 @@ async fn a_correction_must_stay_inside_the_event() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let logged = app
-        .log(&me, "2026-01-15T18:05:00Z", 6, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            6,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let id = logged.report.id;
     let cookie = app.sign_in("daniele").await;
@@ -131,10 +149,24 @@ async fn moving_offers_that_days_events_and_a_new_one() {
     app.at("2026-01-15T20:00:00Z");
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let morning = app
-        .log(&me, "2026-01-15T10:00:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T10:00:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let evening = app
-        .log(&me, "2026-01-15T20:00:00Z", 5, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T20:00:00Z",
+            5,
+            &[],
+            EventChoice::New {
+                replacing: Some(morning.report.event_id),
+            },
+        )
         .await;
     let joined = app
         .log(
@@ -204,7 +236,13 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let mine = app
-        .log(&me, "2026-01-15T19:00:00Z", 8, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            8,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let theirs = app
         .log(
@@ -265,7 +303,13 @@ async fn viewers_see_reports_but_cannot_change_them() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     app.add_user("lawyer", Role::Viewer, Locale::En).await;
     let logged = app
-        .log(&me, "2026-01-15T19:00:00Z", 8, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            8,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let cookie = app.sign_in("lawyer").await;
     let id = logged.report.id;
@@ -288,10 +332,24 @@ async fn guests_see_other_events_in_the_move_options_without_their_end() {
     let me = app.add_user("daniele", Role::Resident, Locale::En).await;
     let guest = app.add_user("guest", Role::Guest, Locale::En).await;
     let morning = app
-        .log(&me, "2026-01-15T10:00:00Z", 4, &[], EventChoice::New)
+        .log(
+            &me,
+            "2026-01-15T10:00:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
         .await;
     let theirs = app
-        .log(&guest, "2026-01-15T19:30:00Z", 3, &[], EventChoice::New)
+        .log(
+            &guest,
+            "2026-01-15T19:30:00Z",
+            3,
+            &[],
+            EventChoice::New {
+                replacing: Some(morning.report.event_id),
+            },
+        )
         .await;
     app.at("2026-01-16T03:30:00Z");
     app.sweep().await;
