@@ -2,3 +2,8 @@
 //!
 //! This crate performs no I/O. Time is passed in explicitly or through
 //! [`clock::Clock`], so every rule is deterministic and fast to test.
+
+pub mod error;
+pub mod types;
+
+pub use error::DomainError;
