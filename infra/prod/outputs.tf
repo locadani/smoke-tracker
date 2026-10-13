@@ -32,3 +32,8 @@ output "database_url_secret" {
   description = "Add the Neon connection string as this secret's first version."
   value       = module.app.database_url_secret_id
 }
+
+output "backups_bucket" {
+  description = "Bucket that holds the nightly database dumps."
+  value       = module.app.backups_bucket
+}

@@ -20,6 +20,15 @@ override_resource {
   }
 }
 
+override_resource {
+  target = google_service_account.backup
+  values = {
+    name   = "projects/test-project/serviceAccounts/smoke-tracker-backup@test-project.iam.gserviceaccount.com"
+    email  = "smoke-tracker-backup@test-project.iam.gserviceaccount.com"
+    member = "serviceAccount:smoke-tracker-backup@test-project.iam.gserviceaccount.com"
+  }
+}
+
 variables {
   project_id           = "test-project"
   region               = "europe-west3"
@@ -259,5 +268,56 @@ run "settings_and_database_url_together" {
   assert {
     condition     = length(google_cloud_run_v2_service.app.template[0].containers[0].env) == 2
     error_message = "One plain setting plus DATABASE_URL."
+  }
+}
+
+run "backup_bucket_is_private_and_expires_old_dumps" {
+  command = plan
+  assert {
+    condition     = google_storage_bucket.backups.name == "test-project-smoke-tracker-backups" && google_storage_bucket.backups.public_access_prevention == "enforced"
+    error_message = "Private backups bucket named after project and app."
+  }
+  assert {
+    condition     = anytrue([for r in google_storage_bucket.backups.lifecycle_rule : tolist(r.action)[0].type == "Delete" && tolist(r.condition)[0].age == 30])
+    error_message = "Dumps older than 30 days are deleted."
+  }
+}
+
+run "no_backup_job_before_the_secret_has_a_value" {
+  command = plan
+  assert {
+    condition     = length(google_cloud_run_v2_job.backup) == 0 && length(google_cloud_scheduler_job.backup) == 0
+    error_message = "The job needs DATABASE_URL, which exists only once attach_database_url is true."
+  }
+}
+
+run "nightly_backup_when_attached" {
+  command = plan
+  variables {
+    attach_database_url = true
+  }
+  assert {
+    condition     = google_cloud_scheduler_job.backup[0].schedule == "0 3 * * *" && google_cloud_scheduler_job.backup[0].time_zone == "Europe/Berlin"
+    error_message = "Runs daily at 03:00 Berlin time."
+  }
+  assert {
+    condition     = google_cloud_run_v2_job.backup[0].template[0].template[0].service_account == google_service_account.backup.email
+    error_message = "The job runs as the backup account."
+  }
+  assert {
+    condition     = google_cloud_run_v2_job.backup[0].template[0].template[0].containers[0].args[0] == "pg_dump \"$DATABASE_URL\" --format=custom --no-owner --file=/backups/smoke-tracker-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    error_message = "The shell expansions must reach the container untouched."
+  }
+  assert {
+    condition     = tolist(google_cloud_scheduler_job.backup[0].http_target)[0].uri == "https://run.googleapis.com/v2/projects/test-project/locations/europe-west3/jobs/smoke-tracker-backup:run"
+    error_message = "The scheduler calls the job's :run endpoint."
+  }
+}
+
+run "backup_account_grants_are_narrow" {
+  command = plan
+  assert {
+    condition     = google_secret_manager_secret_iam_member.backup_reads_database_url.secret_id == google_secret_manager_secret.database_url.secret_id && google_storage_bucket_iam_member.backup_writes_dumps.bucket == google_storage_bucket.backups.name
+    error_message = "The backup account reads one secret and writes one bucket."
   }
 }

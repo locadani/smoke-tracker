@@ -63,3 +63,27 @@ variable "env" {
   type        = map(string)
   default     = {}
 }
+
+variable "backup_retention_days" {
+  description = "Days a database dump is kept before the bucket deletes it."
+  type        = number
+  default     = 30
+}
+
+variable "backup_image" {
+  description = "Image that runs pg_dump. Its pg_dump must be at least the server's major version; newer works."
+  type        = string
+  default     = "postgres:18-alpine"
+}
+
+variable "backup_schedule" {
+  description = "Cron schedule of the nightly backup."
+  type        = string
+  default     = "0 3 * * *"
+}
+
+variable "backup_time_zone" {
+  description = "Time zone the backup schedule is read in."
+  type        = string
+  default     = "Europe/Berlin"
+}
