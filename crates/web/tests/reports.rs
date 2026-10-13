@@ -280,3 +280,44 @@ async fn viewers_see_reports_but_cannot_change_them() {
         .await;
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+#[tokio::test]
+async fn guests_see_other_events_in_the_move_options_without_their_end() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let guest = app.add_user("guest", Role::Guest, Locale::En).await;
+    let morning = app
+        .log(&me, "2026-01-15T10:00:00Z", 4, &[], EventChoice::New)
+        .await;
+    let theirs = app
+        .log(&guest, "2026-01-15T19:30:00Z", 3, &[], EventChoice::New)
+        .await;
+    app.at("2026-01-16T03:30:00Z");
+    app.sweep().await;
+    let morning_event = app
+        .store
+        .event(morning.report.event_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(morning_event.closed.is_some(), "the morning event is over");
+    let cookie = app.sign_in("guest").await;
+
+    let html = text(
+        app.send(get_with(&format!("/reports/{}", theirs.report.id), &cookie))
+            .await,
+    )
+    .await;
+    assert!(
+        html.contains(&format!(
+            r#"<option value="event-{}">Started 11:00</option>"#,
+            morning.report.event_id
+        )),
+        "{html}"
+    );
+    assert!(
+        !html.to_lowercase().contains("ended"),
+        "a guest never learns when another event ended: {html}"
+    );
+}
