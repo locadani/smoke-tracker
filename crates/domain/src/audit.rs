@@ -24,6 +24,27 @@ str_enum!(
     }
 );
 
+str_enum!(
+    /// The kind of record an audit entry describes, named after its table.
+    AuditEntity {
+        User => "user",
+        Invite => "invite",
+        Room => "room",
+        Symptom => "symptom",
+        Event => "event",
+        SmellReport => "smell_report",
+        Pm25Reading => "pm25_reading",
+    }
+);
+
+impl AuditEntity {
+    /// Whether `verify-audit` compares current records against their audited snapshots.
+    /// Invites are short-lived, are deleted by the daily cleanup and are not evidence.
+    pub fn has_snapshot(self) -> bool {
+        self != AuditEntity::Invite
+    }
+}
+
 /// The `prev_hash` of the first entry.
 pub const GENESIS_HASH: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
@@ -34,7 +55,7 @@ pub struct AuditRecord {
     /// Microseconds since the Unix epoch: the finest precision both SQLite and Postgres keep.
     pub at_micros: i64,
     pub actor_id: Option<UserId>,
-    pub entity: String,
+    pub entity: AuditEntity,
     pub entity_id: i64,
     pub action: AuditAction,
     pub before: Option<Value>,
@@ -143,7 +164,7 @@ mod tests {
             id,
             at_micros: 1_768_500_000_000_000 + id,
             actor_id: Some(UserId(1)),
-            entity: "smell_report".into(),
+            entity: AuditEntity::SmellReport,
             entity_id: 12,
             action: AuditAction::Create,
             before: None,
@@ -271,6 +292,30 @@ mod tests {
     fn audit_actions_use_snake_case_text() {
         assert_eq!(AuditAction::PasswordChange.as_str(), "password_change");
         assert_eq!("reopen".parse::<AuditAction>(), Ok(AuditAction::Reopen));
+    }
+
+    #[test]
+    fn audit_entities_use_table_names() {
+        assert_eq!(AuditEntity::SmellReport.as_str(), "smell_report");
+        assert_eq!(AuditEntity::Pm25Reading.as_str(), "pm25_reading");
+        assert_eq!("event".parse::<AuditEntity>(), Ok(AuditEntity::Event));
+        assert!("events".parse::<AuditEntity>().is_err());
+    }
+
+    #[test]
+    fn invites_are_the_only_entity_without_a_snapshot() {
+        let without: Vec<_> = AuditEntity::ALL
+            .iter()
+            .filter(|e| !e.has_snapshot())
+            .collect();
+        assert_eq!(without, [&AuditEntity::Invite]);
+    }
+
+    /// The entity is hashed as its table name, exactly as the free-text field was.
+    #[test]
+    fn the_entity_serialises_as_its_table_name() {
+        let value = serde_json::to_value(record(1, json!({}))).unwrap();
+        assert_eq!(value["entity"], "smell_report");
     }
 
     proptest! {

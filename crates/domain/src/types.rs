@@ -210,7 +210,6 @@ impl From<Pm25> for f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::DomainError;
 
     #[test]
     fn intensity_accepts_the_full_range() {
