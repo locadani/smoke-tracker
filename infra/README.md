@@ -17,7 +17,7 @@ Smoke Tracker's Google Cloud setup, as Terraform. Design:
 
 ## Layout
 
-- `bootstrap/` — the state bucket. Run once; its own state then lives in the bucket it created.
+- `bootstrap/` — the state bucket and the €1 budget alert. Run once; its own state then lives in the bucket it created.
 - `modules/cloud-run-app/` — one app on Cloud Run; reusable. Tests: `terraform test` (mocked provider).
 - `prod/` — Smoke Tracker's production: APIs, the module, the read-only `terraform-plan` account.
 - `scripts/redact-plan.sh` — replaces the project ID, project number and state bucket name before a plan is posted on a PR.
@@ -84,7 +84,8 @@ Done once, in the Google Cloud console and Cloud Shell.
    record of the bucket, so do (ii) and (iii) in one sitting.
 
    (i) Copy the two example files and **edit them** (project ID, billing account ID from Billing → Account
-   management, and a bucket name such as `<project-id>-tfstate`; the bucket name is the same in both), then stop and check them:
+   management, and a bucket name such as `<project-id>-tfstate`; the bucket name is the same in both), then stop and check them. The billing account's currency must be EUR (otherwise change the currency in
+   `budget.tf`), and you need Billing Account Administrator (or Costs Manager) on it; the account owner has it:
 
    ```bash
    cd ~/smoke-tracker/infra/bootstrap
@@ -92,25 +93,33 @@ Done once, in the Google Cloud console and Cloud Shell.
    cp backend.hcl.example backend.hcl
    ```
 
-   (ii) Create the bucket with a local state, then move the state into it:
+   (ii) Create the bucket with a local state (type `yes` at the apply prompt):
 
    ```bash
    printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
    terraform init
    terraform apply
+   ```
+
+   Then move the state into the bucket (type `yes` when asked):
+
+   ```bash
    rm backend_override.tf
-   terraform init -migrate-state -backend-config=backend.hcl   # answer "yes"
+   terraform init -migrate-state -backend-config=backend.hcl
    ```
 
    (iii) Check: `terraform plan` says "No changes", and
    `gcloud storage ls gs://YOUR_BUCKET/smoke-tracker/bootstrap/` lists `default.tfstate`.
 
-   (iv) Only then, as a separate command: `rm terraform.tfstate terraform.tfstate.backup`.
+   (iv) Only then, as a separate command: `rm -f terraform.tfstate terraform.tfstate.backup`.
 
    The bootstrap also creates the €1 budget alert. If you created a budget by hand earlier, delete it
    (Billing → Budgets & alerts) so alerts don't arrive twice.
 
-   If the local state is lost before (iii), run `terraform import google_storage_bucket.state YOUR_BUCKET`.
+   If the local state is lost before (iii), import both, otherwise the next apply creates a second budget:
+   `terraform import google_storage_bucket.state YOUR_BUCKET` and
+   `terraform import google_billing_budget.monthly billingAccounts/YOUR_BILLING_ACCOUNT_ID/budgets/BUDGET_ID`
+   (the budget ID is in the budget's URL in Billing → Budgets & alerts).
 
 5. **Configure and apply production:**
 
