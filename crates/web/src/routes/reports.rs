@@ -6,22 +6,21 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::events::can_join_backdated;
 use smoke_domain::history::{Change, report_history, was_corrected};
 use smoke_domain::logbook::{MoveTarget, correct_report, move_report};
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::{Room, SmellReport, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{EventId, ReportId, Role, RoomId, SymptomId, UserId};
+use smoke_domain::types::{EventId, ReportId, RoomId, SymptomId, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
-use crate::routes::entries::{read_time, read_values};
+use crate::routes::entries::{joinable_events, read_time, read_values};
 use crate::routes::guide::{Level, levels};
-use crate::routes::log::{Draft, Fields, fields};
+use crate::routes::log::{Draft, Fields, fields, offered};
 use crate::routes::refusal;
 use crate::state::AppState;
 use crate::{labels, time};
@@ -220,27 +219,12 @@ async fn report_page<S: Store>(
         );
     let mut move_options = Vec::new();
     if editable {
-        let (day_start, day_end) = schedule.day_span(schedule.local_date(report.observed_at));
-        for target in state.store.events_between(day_start, day_end).await? {
-            if target.id != report.event_id
-                && can_join_backdated(&target, report.observed_at, schedule)
-            {
-                let mut label = tr.t1(
-                    "prompt-started-at",
-                    "time",
-                    &time::clock(target.opened_at, tz),
-                );
-                if user.role != Role::Guest
-                    && let Some(closed) = target.closed
-                {
-                    label.push_str(", ");
-                    label.push_str(&tr.t1("prompt-ended-at", "time", &time::clock(closed.at, tz)));
-                }
-                move_options.push(MoveOption {
-                    value: format!("event-{}", target.id),
-                    label,
-                });
-            }
+        let joinable = joinable_events(state, user, tr, report.observed_at, Some(report.event_id));
+        for (id, label) in joinable.await? {
+            move_options.push(MoveOption {
+                value: format!("event-{id}"),
+                label,
+            });
         }
         move_options.push(MoveOption {
             value: "new".to_owned(),
@@ -380,16 +364,8 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     let report = editable_report(&state, &user, ReportId(id)).await?;
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
-    let offered_rooms: Vec<RoomId> = rooms
-        .iter()
-        .filter(|r| r.hidden_at.is_none() || report.values.rooms().contains(&r.id))
-        .map(|r| r.id)
-        .collect();
-    let offered_symptoms: Vec<SymptomId> = symptoms
-        .iter()
-        .filter(|s| s.hidden_at.is_none() || report.values.symptoms().contains(&s.id))
-        .map(|s| s.id)
-        .collect();
+    let keep = (report.values.rooms(), report.values.symptoms());
+    let (offered_rooms, offered_symptoms) = offered(&rooms, &symptoms, keep);
     let parsed = read_time(&form, "observed_at", schedule.tz()).and_then(|at| {
         let values = read_values(&form, &offered_rooms, &offered_symptoms)?;
         Ok((at.unwrap_or(report.observed_at), values))

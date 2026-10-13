@@ -80,6 +80,11 @@ pub fn was_corrected(history: &[HistoryEntry]) -> bool {
     history.iter().any(|e| e.action == AuditAction::Update)
 }
 
+/// What `new` has that `old` lacks.
+fn added<T: PartialEq + Copy>(old: &[T], new: &[T]) -> Vec<T> {
+    new.iter().filter(|id| !old.contains(id)).copied().collect()
+}
+
 fn changes(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
     let mut changes = Vec::new();
     if before.event_id != after.event_id {
@@ -100,9 +105,6 @@ fn changes(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
             to: after.intensity,
         });
     }
-    let added = |old: &[RoomId], new: &[RoomId]| -> Vec<RoomId> {
-        new.iter().filter(|id| !old.contains(id)).copied().collect()
-    };
     changes.extend(
         added(&before.rooms, &after.rooms)
             .into_iter()
@@ -113,9 +115,6 @@ fn changes(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
             .into_iter()
             .map(Change::RoomRemoved),
     );
-    let added = |old: &[SymptomId], new: &[SymptomId]| -> Vec<SymptomId> {
-        new.iter().filter(|id| !old.contains(id)).copied().collect()
-    };
     changes.extend(
         added(&before.symptoms, &after.symptoms)
             .into_iter()

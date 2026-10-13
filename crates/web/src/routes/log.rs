@@ -127,6 +127,26 @@ pub(crate) enum Status {
     Hidden,
 }
 
+/// The ids a submitted form may name: every visible room and symptom, plus those in `keep` (a
+/// correction keeps what its report already names).
+pub(crate) fn offered(
+    rooms: &[Room],
+    symptoms: &[Symptom],
+    keep: (&[RoomId], &[SymptomId]),
+) -> (Vec<RoomId>, Vec<SymptomId>) {
+    let rooms = rooms
+        .iter()
+        .filter(|r| r.hidden_at.is_none() || keep.0.contains(&r.id))
+        .map(|r| r.id)
+        .collect();
+    let symptoms = symptoms
+        .iter()
+        .filter(|s| s.hidden_at.is_none() || keep.1.contains(&s.id))
+        .map(|s| s.id)
+        .collect();
+    (rooms, symptoms)
+}
+
 pub(crate) struct FormView {
     fields: Fields,
     pm25: String,

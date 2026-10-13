@@ -21,7 +21,7 @@ use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
-use crate::routes::log::{Draft, log_page};
+use crate::routes::log::{Draft, log_page, offered};
 use crate::routes::{notices, refusal};
 use crate::state::AppState;
 use crate::time::{self, TimeInputError};
@@ -118,16 +118,7 @@ fn read(
         let value = pm25.ok_or("log-error-pm25-missing")?;
         return Ok(Entry::Pm25Only { observed_at, value });
     }
-    let offered_rooms: Vec<RoomId> = rooms
-        .iter()
-        .filter(|r| r.hidden_at.is_none())
-        .map(|r| r.id)
-        .collect();
-    let offered_symptoms: Vec<SymptomId> = symptoms
-        .iter()
-        .filter(|s| s.hidden_at.is_none())
-        .map(|s| s.id)
-        .collect();
+    let (offered_rooms, offered_symptoms) = offered(rooms, symptoms, (&[], &[]));
     let values = read_values(form, &offered_rooms, &offered_symptoms)?;
     Ok(Entry::Smell(SmellEntry {
         observed_at,
@@ -282,6 +273,42 @@ struct PromptPage {
     answers: Vec<Answer>,
 }
 
+/// The events a report observed at `observed_at` may join, as `(id, label)` pairs, skipping
+/// `except`. The label gives when the event started and, unless the user is a guest, when it
+/// ended: guests learn only the start of other people's events (spec §7.2, §7.5).
+pub(crate) async fn joinable_events<S: Store>(
+    state: &AppState<S>,
+    user: &User,
+    tr: Tr,
+    observed_at: DateTime<Utc>,
+    except: Option<EventId>,
+) -> Result<Vec<(EventId, String)>, AppError> {
+    let schedule = &state.config.schedule;
+    let tz = schedule.tz();
+    let (day_start, day_end) = schedule.day_span(schedule.local_date(observed_at));
+    let events = state.store.events_between(day_start, day_end).await?;
+    Ok(events
+        .into_iter()
+        .filter(|event| {
+            Some(event.id) != except && can_join_backdated(event, observed_at, schedule)
+        })
+        .map(|event| {
+            let mut label = tr.t1(
+                "prompt-started-at",
+                "time",
+                &time::clock(event.opened_at, tz),
+            );
+            if user.role != Role::Guest
+                && let Some(closed) = event.closed
+            {
+                label.push_str(", ");
+                label.push_str(&tr.t1("prompt-ended-at", "time", &time::clock(closed.at, tz)));
+            }
+            (event.id, label)
+        })
+        .collect())
+}
+
 /// Asks the event question. Guests see only start times of events (spec §7.2, §7.5).
 async fn ask<S: Store>(
     state: &AppState<S>,
@@ -315,34 +342,13 @@ async fn ask<S: Store>(
             ],
         ),
         LogPrompt::WhichEvent => {
-            let (day_start, day_end) = schedule.day_span(schedule.local_date(observed_at));
-            let mut answers: Vec<Answer> = state
-                .store
-                .events_between(day_start, day_end)
+            let mut answers: Vec<Answer> = joinable_events(state, user, tr, observed_at, None)
                 .await?
                 .into_iter()
-                .filter(|event| can_join_backdated(event, observed_at, schedule))
-                .map(|event| {
-                    let mut label = tr.t1(
-                        "prompt-started-at",
-                        "time",
-                        &time::clock(event.opened_at, tz),
-                    );
-                    if user.role != Role::Guest
-                        && let Some(closed) = event.closed
-                    {
-                        label.push_str(", ");
-                        label.push_str(&tr.t1(
-                            "prompt-ended-at",
-                            "time",
-                            &time::clock(closed.at, tz),
-                        ));
-                    }
-                    Answer {
-                        choice: format!("join-{}", event.id),
-                        label,
-                        primary: false,
-                    }
+                .map(|(id, label)| Answer {
+                    choice: format!("join-{id}"),
+                    label,
+                    primary: false,
                 })
                 .collect();
             answers.push(new_event("prompt-new-event"));
