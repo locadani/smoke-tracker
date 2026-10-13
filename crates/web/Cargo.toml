@@ -1,0 +1,39 @@
+[package]
+name = "smoke-web"
+version = "0.1.0"
+description = "Axum routes, templates, translations and static assets of Smoke Tracker"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+argon2.workspace = true
+askama.workspace = true
+async-trait.workspace = true
+axum.workspace = true
+chrono.workspace = true
+fluent-templates.workspace = true
+getrandom.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+smoke-domain.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net"] }
+tower-http.workspace = true
+tower-sessions.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+fluent-syntax.workspace = true
+http-body-util.workspace = true
+smoke-storage-sqlite.workspace = true
+sqlx = { workspace = true, features = ["sqlite-bundled"] }
+tempfile.workspace = true
+tower.workspace = true
+
+[lints]
+workspace = true
