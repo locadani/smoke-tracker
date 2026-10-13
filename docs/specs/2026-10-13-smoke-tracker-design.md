@@ -386,6 +386,7 @@ smoke-tracker/
 │  │   repos.rs        repository traits (the storage boundary)
 │  ├─ storage-sqlite/    SqliteStore, migrations/, .sqlx/ (decision #45)
 │  ├─ storage-postgres/  PostgresStore, migrations/, .sqlx/, schema-parity test
+│  │   migrate.rs        SQLite → Postgres data migration (milestone 7)
 │  ├─ storage-contract/  one test suite run against both backends
 │  ├─ web/        Axum routes (one module per feature), Askama templates, htmx partials,
 │  │              i18n (.ftl), static assets (htmx, Chart.js, manifest, SW, icons)
