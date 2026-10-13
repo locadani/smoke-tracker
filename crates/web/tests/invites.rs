@@ -57,8 +57,10 @@ async fn an_invited_guest_scans_sets_a_password_and_is_signed_in() {
     let response = app
         .send(post_form(&link, &choose(CHOSEN, CHOSEN, "it"), None))
         .await;
-    assert_eq!(location(&response), Some("/"));
+    assert_eq!(location(&response), Some("/install?welcome"));
     let cookie = session_cookie(&response).expect("signed in");
+    let welcome = text(app.send(get_with("/install?welcome", &cookie)).await).await;
+    assert!(welcome.contains("Il tuo account è pronto."), "{welcome}");
     let home = text(app.send(get_with("/", &cookie)).await).await;
     assert!(home.contains("Accesso effettuato come friend."), "{home}");
 

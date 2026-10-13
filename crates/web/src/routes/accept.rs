@@ -152,7 +152,10 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         "/login"
     } else {
         auth::start_session(&session, &person, now).await?;
-        "/"
+        match invite.purpose {
+            InvitePurpose::Setup => "/install?welcome",
+            InvitePurpose::PasswordReset => "/",
+        }
     };
     let mut response = Redirect::to(target).into_response();
     response.headers_mut().append(

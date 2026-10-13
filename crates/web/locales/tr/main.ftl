@@ -241,6 +241,21 @@ expiry-2-weeks = 2 hafta sonra
 expiry-date = bu günün sonunda:
 expiry-never = hiçbir zaman
 
+install-app = Uygulamayı yükle
+install-title = Smoke Tracker'ı ana ekranınıza ekleyin
+install-welcome = Hesabınız hazır.
+install-intro = Böylece doğrudan Kaydet ekranında bir uygulama gibi açılır ve kayıt birkaç saniye sürer.
+install-button = Yükle
+install-ios-title = iPhone ve iPad (Safari)
+install-ios-share = Paylaş düğmesine dokunun
+install-ios-add = "Ana Ekrana Ekle"yi seçin
+install-ios-confirm = "Ekle"ye dokunun.
+install-other = Android'de veya bilgisayarda Yükle düğmesi görünmezse tarayıcı menüsünü açıp "Uygulamayı yükle" veya "Ana ekrana ekle"yi seçin.
+install-continue = Uygulamaya devam et
+offline-title = Bağlantı yok
+offline-text = Smoke Tracker'ın kaydettiklerinizi saklamak için internete ihtiyacı var. Yeniden çevrimiçi olduğunuzda tekrar deneyin.
+offline-retry = Tekrar dene
+
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.
 error-forbidden-title = İstek engellendi

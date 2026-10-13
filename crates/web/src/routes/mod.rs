@@ -4,6 +4,7 @@ pub(crate) mod accept;
 pub(crate) mod entries;
 pub(crate) mod events;
 pub(crate) mod guide;
+pub(crate) mod install;
 pub(crate) mod lang;
 pub(crate) mod lists;
 pub(crate) mod log;

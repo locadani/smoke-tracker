@@ -97,6 +97,8 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::accept::form::<S>).post(routes::accept::submit::<S>),
         )
         .route("/lang", post(routes::lang::choose::<S>))
+        .route("/install", get(routes::install::show::<S>))
+        .route("/offline", get(routes::install::offline))
         .fallback(routes::not_found)
         .layer(CatchPanicLayer::custom(error::panic_response))
         .layer(middleware::from_fn_with_state(
@@ -117,6 +119,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
 
     Router::new()
         .route("/static/{*path}", get(assets::serve))
+        .route("/sw.js", get(assets::service_worker))
         .route("/healthz", get(assets::healthz))
         .merge(pages)
         .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))

@@ -241,6 +241,21 @@ expiry-2-weeks = tra 2 settimane
 expiry-date = alla fine di questo giorno:
 expiry-never = mai
 
+install-app = Installa l'app
+install-title = Aggiungi Smoke Tracker alla schermata Home
+install-welcome = Il tuo account è pronto.
+install-intro = Si aprirà come un'app, direttamente sulla schermata Registra: registrare richiede pochi secondi.
+install-button = Installa
+install-ios-title = iPhone e iPad (Safari)
+install-ios-share = Tocca il pulsante Condividi
+install-ios-add = Scegli "Aggiungi alla schermata Home"
+install-ios-confirm = Tocca "Aggiungi".
+install-other = Su Android o sul computer, se non compare il pulsante Installa, apri il menu del browser e scegli "Installa app" o "Aggiungi a schermata Home".
+install-continue = Vai all'app
+offline-title = Nessuna connessione
+offline-text = Smoke Tracker ha bisogno di internet per salvare ciò che registri. Riprova quando sei di nuovo online.
+offline-retry = Riprova
+
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.
 error-forbidden-title = Richiesta bloccata

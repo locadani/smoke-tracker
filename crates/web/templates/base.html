@@ -5,7 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
   <title>{% block title %}{% endblock %} · {{ tr.t("app-name") }}</title>
+  <meta name="theme-color" content="#b4532a">
   <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon-180.png">
+  <link rel="manifest" href="/static/manifest.webmanifest">
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx-2.0.11.min.js" defer></script>
   <script src="/static/app.js" defer></script>
@@ -13,6 +16,7 @@
 <body>
   <header class="bar">
     <span class="brand">{{ tr.t("app-name") }}</span>
+    <a href="/install" class="install" data-install>{{ tr.t("install-app") }}</a>
     {% if let Some(me) = signed_in %}
     <nav class="menu">
       <a href="/">{{ tr.t("nav-log") }}</a>

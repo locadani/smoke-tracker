@@ -39,7 +39,14 @@ async fn every_response_carries_the_security_headers() {
 #[tokio::test]
 async fn anonymous_requests_set_no_cookies() {
     let app = TestApp::new().await;
-    for path in ["/missing", "/static/app.css", "/healthz"] {
+    for path in [
+        "/missing",
+        "/static/app.css",
+        "/healthz",
+        "/sw.js",
+        "/install",
+        "/offline",
+    ] {
         let response = app.send(get(path)).await;
         assert!(set_cookies(&response).is_empty(), "{path}");
     }
@@ -225,6 +232,8 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
                 .await,
         )
         .await,
+        text(app.send(get_with("/install?welcome", &cookie)).await).await,
+        text(app.send(get("/offline")).await).await,
         text(app.send(get("/missing")).await).await,
         text(app.attempt("daniele", "not the password").await).await,
     ];

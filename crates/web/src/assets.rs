@@ -30,6 +30,12 @@ const ASSETS: &[Asset] = &[
     asset!("app.js", "text/javascript; charset=utf-8"),
     asset!("favicon.svg", "image/svg+xml"),
     asset!("htmx-2.0.11.min.js", "text/javascript; charset=utf-8"),
+    asset!("icon-180.png", "image/png"),
+    asset!("icon-192.png", "image/png"),
+    asset!("icon-512.png", "image/png"),
+    asset!("icon.svg", "image/svg+xml"),
+    asset!("manifest.webmanifest", "application/manifest+json"),
+    asset!("sw.js", "text/javascript; charset=utf-8"),
 ];
 
 /// A strong validator per asset: the first 16 hex characters of its SHA-256.
@@ -42,6 +48,15 @@ static ETAGS: LazyLock<Vec<String>> = LazyLock::new(|| {
 
 /// `Cache-Control: no-cache` makes browsers revalidate, which costs a `304` and no body.
 pub(crate) async fn serve(Path(path): Path<String>, headers: HeaderMap) -> Response {
+    respond(&path, &headers)
+}
+
+/// The service worker at the root, so that its scope is the whole app rather than `/static/`.
+pub(crate) async fn service_worker(headers: HeaderMap) -> Response {
+    respond("sw.js", &headers)
+}
+
+fn respond(path: &str, headers: &HeaderMap) -> Response {
     let Some(index) = ASSETS.iter().position(|asset| asset.path == path) else {
         return StatusCode::NOT_FOUND.into_response();
     };
@@ -79,6 +94,50 @@ mod tests {
             .collect();
         let listed: BTreeSet<String> = ASSETS.iter().map(|a| a.path.to_owned()).collect();
         assert_eq!(on_disk, listed);
+    }
+
+    fn asset(path: &str) -> &'static Asset {
+        ASSETS.iter().find(|a| a.path == path).unwrap()
+    }
+
+    /// Width and height from a PNG's header chunk.
+    fn png_size(bytes: &[u8]) -> (u32, u32) {
+        assert_eq!(&bytes[..8], b"\x89PNG\r\n\x1a\n");
+        let number = |at: usize| u32::from_be_bytes(bytes[at..at + 4].try_into().unwrap());
+        (number(16), number(20))
+    }
+
+    #[test]
+    fn the_manifest_has_what_installing_needs() {
+        let manifest: serde_json::Value =
+            serde_json::from_slice(asset("manifest.webmanifest").body).unwrap();
+        assert_eq!(manifest["display"], "standalone");
+        assert_eq!(manifest["start_url"], "/");
+        assert_eq!(manifest["scope"], "/");
+        assert_eq!(manifest["shortcuts"][0]["name"], "New smell report");
+        assert_eq!(manifest["shortcuts"][0]["url"], "/");
+        let icons = manifest["icons"].as_array().unwrap();
+        for icon in icons {
+            let src = icon["src"].as_str().unwrap();
+            let file = asset(src.strip_prefix("/static/").unwrap());
+            if let Some(size) = icon["sizes"].as_str().unwrap().split_once('x') {
+                let (width, height) = png_size(file.body);
+                assert_eq!(
+                    (width.to_string(), height.to_string()),
+                    (size.0.to_owned(), size.1.to_owned()),
+                    "{src}"
+                );
+            }
+        }
+        for size in ["192x192", "512x512"] {
+            assert!(icons.iter().any(|i| i["sizes"] == size), "{size}");
+        }
+        assert!(icons.iter().any(|i| i["purpose"] == "maskable"));
+    }
+
+    #[test]
+    fn the_apple_touch_icon_is_180_pixels() {
+        assert_eq!(png_size(asset("icon-180.png").body), (180, 180));
     }
 
     #[test]

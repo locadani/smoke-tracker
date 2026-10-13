@@ -241,6 +241,21 @@ expiry-2-weeks = in 2 weeks
 expiry-date = at the end of this day:
 expiry-never = never
 
+install-app = Install app
+install-title = Add Smoke Tracker to your home screen
+install-welcome = Your account is ready.
+install-intro = It then opens like an app, straight on the Log screen, so logging takes a few seconds.
+install-button = Install
+install-ios-title = iPhone and iPad (Safari)
+install-ios-share = Tap the Share button
+install-ios-add = Choose "Add to Home Screen"
+install-ios-confirm = Tap "Add".
+install-other = On Android or a computer, if no Install button appears, open the browser menu and choose "Install app" or "Add to Home screen".
+install-continue = Continue to the app
+offline-title = No connection
+offline-text = Smoke Tracker needs the internet to save what you log. Try again when you are back online.
+offline-retry = Try again
+
 error-not-found-title = Page not found
 error-not-found = This page does not exist.
 error-forbidden-title = Request blocked
