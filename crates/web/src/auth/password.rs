@@ -1,7 +1,7 @@
 //! Argon2id password hashing (spec §8.1), with the library's default cost: 19 MiB of memory,
 //! two passes, one lane.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use argon2::Argon2;
 use argon2::password_hash::phc::PasswordHash as Phc;
@@ -9,6 +9,8 @@ use argon2::password_hash::{PasswordHasher, PasswordVerifier};
 use smoke_domain::records::PasswordHash;
 use smoke_domain::types::NewPassword;
 use thiserror::Error;
+use tokio::sync::Semaphore;
+use tokio::task::JoinError;
 
 #[derive(Debug, Error)]
 #[error("could not hash the password: {0}")]
@@ -31,6 +33,28 @@ static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
         .to_string()
 });
 
+/// How many Argon2 runs may happen at once. Each one allocates about 19 MiB, and the server
+/// runs on a 512 MiB Cloud Run instance: a burst of parallel sign-ins (or a guessing script)
+/// must queue rather than run out of memory. Two keep a real user's wait short.
+pub(crate) const CONCURRENT_HASHES: usize = 2;
+
+/// Runs CPU-heavy password work on a blocking thread once one of `permits` is free. The permit
+/// moves into the thread, so it is held until the work ends even if the request is dropped.
+pub(crate) async fn run_limited<T: Send + 'static>(
+    permits: Arc<Semaphore>,
+    work: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, JoinError> {
+    let permit = permits
+        .acquire_owned()
+        .await
+        .expect("the password semaphore is never closed");
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work()
+    })
+    .await
+}
+
 /// Whether `attempt` matches `stored`. Always runs one Argon2 verification, also when there is
 /// no stored hash. CPU-heavy: call it from a blocking thread in async code.
 pub fn verify(stored: Option<&PasswordHash>, attempt: &str) -> bool {
@@ -48,6 +72,10 @@ pub fn verify(stored: Option<&PasswordHash>, attempt: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Barrier;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
     use super::*;
 
     const PREFIX: &str = "$argon2id$v=19$m=19456,t=2,p=1$";
@@ -82,5 +110,38 @@ mod tests {
         assert!(!verify(None, "no account has this password"));
         let broken = PasswordHash::new("not-a-phc-string".to_owned());
         assert!(!verify(Some(&broken), "anything"));
+    }
+
+    /// Work that meets a partner at a barrier: with two permits every task finds one, and a
+    /// third task running at the same time would push the peak above two.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn at_most_two_hashes_run_at_once() {
+        let permits = Arc::new(Semaphore::new(CONCURRENT_HASHES));
+        let running = Arc::new(AtomicUsize::new(0));
+        let peak = Arc::new(AtomicUsize::new(0));
+        let pair = Arc::new(Barrier::new(CONCURRENT_HASHES));
+        let tasks: Vec<_> = (0..8)
+            .map(|_| {
+                let (permits, running, peak, pair) =
+                    (permits.clone(), running.clone(), peak.clone(), pair.clone());
+                tokio::spawn(run_limited(permits, move || {
+                    let now = running.fetch_add(1, Ordering::SeqCst) + 1;
+                    peak.fetch_max(now, Ordering::SeqCst);
+                    pair.wait();
+                    std::thread::sleep(Duration::from_millis(5));
+                    running.fetch_sub(1, Ordering::SeqCst);
+                }))
+            })
+            .collect();
+        let all = async {
+            for task in tasks {
+                task.await.unwrap().unwrap();
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(10), all)
+            .await
+            .expect("two hashes must be able to run together");
+        assert_eq!(peak.load(Ordering::SeqCst), CONCURRENT_HASHES);
+        assert_eq!(permits.available_permits(), CONCURRENT_HASHES);
     }
 }

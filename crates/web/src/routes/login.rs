@@ -84,7 +84,8 @@ pub(crate) struct LoginForm {
 }
 
 /// Unknown usernames and wrong passwords get the same answer after the same work (one Argon2
-/// verification), so neither the message nor the timing tells which accounts exist.
+/// verification, under the same permit), so neither the message nor the timing tells which
+/// accounts exist. The limiter runs first: a refused attempt never waits for a permit.
 pub(crate) async fn submit<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     session: Session,
@@ -109,8 +110,10 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     };
     let stored = user.as_ref().and_then(|u| u.password_hash.clone());
     let attempt = form.password;
-    let valid =
-        tokio::task::spawn_blocking(move || password::verify(stored.as_ref(), &attempt)).await?;
+    let valid = password::run_limited(state.hash_permits.clone(), move || {
+        password::verify(stored.as_ref(), &attempt)
+    })
+    .await?;
     let Some(user) = user.filter(|_| valid) else {
         return login_page(
             StatusCode::UNAUTHORIZED,
