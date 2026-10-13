@@ -1,7 +1,8 @@
 //! Names shown for stored values: starter rooms and symptoms through their translation key,
-//! custom ones as typed.
+//! custom ones as typed, and the translation keys of enum values.
 
 use smoke_domain::records::{Room, Symptom};
+use smoke_domain::types::CloseReason;
 
 use crate::i18n::Tr;
 
@@ -17,6 +18,21 @@ pub(crate) fn symptom(tr: Tr, symptom: &Symptom) -> String {
         Some(key) => tr.t(key),
         None => symptom.name.to_string(),
     }
+}
+
+pub(crate) fn close_reason(reason: CloseReason) -> &'static str {
+    match reason {
+        CloseReason::Manual => "close-reason-manual",
+        CloseReason::NewEvent => "close-reason-new-event",
+        CloseReason::Auto0400 => "close-reason-auto",
+        CloseReason::Backdated => "close-reason-backdated",
+    }
+}
+
+/// Every key this module returns, for the translation tests.
+#[cfg(test)]
+pub(crate) fn keys() -> Vec<&'static str> {
+    CloseReason::ALL.iter().copied().map(close_reason).collect()
 }
 
 #[cfg(test)]

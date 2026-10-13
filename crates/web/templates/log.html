@@ -11,9 +11,15 @@
   <button type="submit" class="link">{{ tr.t("notice-dismiss") }}</button>
 </form>
 {% endif %}
-<p class="status">
-  {% if let Some(since) = open_since %}{{ tr.t1("event-open-since", "time", since) }}{% else %}{{ tr.t("event-none") }}{% endif %}
-</p>
+<div class="status">
+  <p>{% if let Some(since) = open_since %}{{ tr.t1("event-open-since", "time", since) }}{% else %}{{ tr.t("event-none") }}{% endif %}</p>
+  {% if let Some(id) = close_event %}
+  <form method="post" action="/events/{{ id }}/close">
+    <input type="hidden" name="return_to" value="log">
+    <button type="submit" class="secondary">{{ tr.t("event-close") }}</button>
+  </form>
+  {% endif %}
+</div>
 <p class="summary">
   {{ tr.t("summary-this-month") }} {{ tr.n("summary-events", summary.events) }} · {{ tr.n("summary-reports", summary.reports) }}{% if let Some(days) = summary.bedroom_days %} · {{ tr.n("summary-bedroom-days", days) }}{% endif %}
 </p>

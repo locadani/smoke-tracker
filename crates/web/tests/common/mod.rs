@@ -13,14 +13,14 @@ use axum::http::{HeaderName, Request, Response, StatusCode};
 use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
-use smoke_domain::logbook::{EventChoice, Logged, SmellEntry, log_smell};
-use smoke_domain::records::ReportValues;
+use smoke_domain::logbook::{EventChoice, Logged, SmellEntry, log_reading, log_smell};
 use smoke_domain::records::{NewUser, User};
+use smoke_domain::records::{Pm25Reading, ReportValues};
 use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Intensity, RoomId};
+use smoke_domain::types::{Intensity, Pm25, RoomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -136,6 +136,22 @@ impl TestApp {
         .unwrap();
         tx.commit().await.unwrap();
         logged
+    }
+
+    /// Logs a PM2.5 reading on its own, as "Log PM2.5 only" would.
+    pub async fn log_pm25(&self, user: &User, at: &str, value: f64) -> Pm25Reading {
+        let mut tx = self.store.begin(Some(user.id)).await.unwrap();
+        let reading = log_reading(
+            &mut tx,
+            &user.actor(),
+            t(at),
+            Pm25::new(value).unwrap(),
+            self.clock.now(),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        reading
     }
 
     /// Runs the auto-close sweep at the fake clock's time, as the server's timer would.

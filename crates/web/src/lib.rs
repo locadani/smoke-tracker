@@ -46,6 +46,10 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
         .route("/guide/rating", get(routes::guide::rating))
         .route("/log", post(routes::entries::submit::<S>))
         .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
+        .route("/events", get(routes::events::list::<S>))
+        .route("/events/{id}", get(routes::events::show::<S>))
+        .route("/events/{id}/close", post(routes::events::close::<S>))
+        .route("/events/{id}/reopen", post(routes::events::reopen::<S>))
         .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
         .merge(signed_in)

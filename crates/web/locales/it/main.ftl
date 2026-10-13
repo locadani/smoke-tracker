@@ -102,6 +102,29 @@ intensity-9-desc = Come stare accanto a qualcuno che fuma.
 intensity-10-name = Insopportabile
 intensity-10-desc = Come una stanza piena di fumo. Devi uscire.
 
+nav-log = Registra
+nav-events = Eventi
+
+events-title = Eventi
+events-none = Nessun evento questo mese.
+events-previous = ← Precedente
+events-next = Successivo →
+events-in-progress = in corso
+events-max-intensity = max { $level }
+event-title = Evento del { $date }
+event-started-by = Iniziato da { $username }
+event-gap = Più di 3 ore dalla segnalazione precedente: è ancora lo stesso evento?
+event-intensity = intensità { $level }
+event-pm25 = PM2.5 { $value } µg/m³
+event-close = Chiudi evento
+event-close-at = Ora di fine
+event-reopen = Riapri
+
+close-reason-manual = chiuso a mano
+close-reason-new-event = chiuso all'inizio di un nuovo evento
+close-reason-auto = chiuso automaticamente durante la notte
+close-reason-backdated = registrato in seguito
+
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.
 error-forbidden-title = Richiesta bloccata

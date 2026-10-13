@@ -1,6 +1,7 @@
 //! One module per feature.
 
 pub(crate) mod entries;
+pub(crate) mod events;
 pub(crate) mod guide;
 pub(crate) mod lang;
 pub(crate) mod log;

@@ -126,9 +126,9 @@ mod tests {
     use smoke_domain::starter::{STARTER_ROOMS, STARTER_SYMPTOMS};
 
     use super::*;
-    use crate::error;
     use crate::routes::login::Notice;
     use crate::routes::{self, entries, guide};
+    use crate::{error, labels};
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -214,6 +214,7 @@ mod tests {
         used.extend(error::KEYS.map(str::to_owned));
         used.extend(Notice::ALL.map(|notice| notice.key().to_owned()));
         used.extend(guide::keys());
+        used.extend(labels::keys().into_iter().map(str::to_owned));
         used.extend(entries::FORM_ERRORS.map(str::to_owned));
         used.extend(routes::REFUSALS.map(str::to_owned));
         let english = message_ids(Locale::En);

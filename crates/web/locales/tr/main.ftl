@@ -102,6 +102,29 @@ intensity-9-desc = Sigara içen birinin yanında durmak gibi.
 intensity-10-name = Dayanılmaz
 intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
+nav-log = Kaydet
+nav-events = Olaylar
+
+events-title = Olaylar
+events-none = Bu ay olay yok.
+events-previous = ← Önceki
+events-next = Sonraki →
+events-in-progress = sürüyor
+events-max-intensity = en fazla { $level }
+event-title = { $date } tarihli olay
+event-started-by = Başlatan: { $username }
+event-gap = Önceki bildirimden bu yana 3 saatten fazla geçti: hâlâ aynı olay mı?
+event-intensity = yoğunluk { $level }
+event-pm25 = PM2.5 { $value } µg/m³
+event-close = Olayı kapat
+event-close-at = Bitiş saati
+event-reopen = Yeniden aç
+
+close-reason-manual = elle kapatıldı
+close-reason-new-event = yeni bir olay başlayınca kapatıldı
+close-reason-auto = gece otomatik olarak kapatıldı
+close-reason-backdated = sonradan kaydedildi
+
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.
 error-forbidden-title = İstek engellendi

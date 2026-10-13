@@ -46,6 +46,11 @@ pub(crate) fn since(locale: Locale, at: DateTime<Utc>, now: DateTime<Utc>, tz: T
     }
 }
 
+/// The value that pre-fills a `datetime-local` input.
+pub(crate) fn input_value(at: DateTime<Utc>, tz: Tz) -> String {
+    at.with_timezone(&tz).format(INPUT_FORMAT).to_string()
+}
+
 /// Reads a `datetime-local` value (seconds optional) as local time in `tz`. A time skipped by a
 /// DST change is refused; a repeated one means its first occurrence.
 pub(crate) fn parse_input(value: &str, tz: Tz) -> Result<DateTime<Utc>, TimeInputError> {
@@ -92,6 +97,14 @@ mod tests {
             since(Locale::En, at, t("2026-01-15T23:00:00Z"), Rome),
             "15/01/2026 19:05",
             "midnight in Rome"
+        );
+    }
+
+    #[test]
+    fn inputs_are_prefilled_with_local_time_to_the_minute() {
+        assert_eq!(
+            input_value(t("2026-01-15T18:05:59Z"), Rome),
+            "2026-01-15T19:05"
         );
     }
 

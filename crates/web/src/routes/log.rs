@@ -86,6 +86,8 @@ pub(crate) struct LogPage {
     tr: Tr,
     signed_in: Option<String>,
     open_since: Option<String>,
+    /// The open event, when the user may close it.
+    close_event: Option<i64>,
     /// "The event from … was auto-closed", shown while another event is open (spec §7.4).
     notice: Option<String>,
     /// A translation key confirming what was just saved.
@@ -219,6 +221,10 @@ pub(crate) async fn log_page<S: Store>(
     Ok(LogPage {
         tr,
         signed_in: Some(user.username.to_string()),
+        close_event: open
+            .as_ref()
+            .filter(|e| can(&actor, Action::ManageEvent { owner: e.owner_id }, now))
+            .map(|e| e.id.0),
         open_since: open.map(|e| time::since(tr.0, e.opened_at, now, schedule.tz())),
         notice,
         saved,
