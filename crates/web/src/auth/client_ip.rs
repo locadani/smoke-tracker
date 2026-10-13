@@ -1,4 +1,7 @@
 //! The client's address for the per-address sign-in limit.
+//!
+//! Behind a proxy the TCP peer is the proxy, so every visitor would share one address. On
+//! Cloud Run the deployment sets `CLIENT_IP_HEADER=X-Forwarded-For` (decision #74).
 
 use std::convert::Infallible;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};

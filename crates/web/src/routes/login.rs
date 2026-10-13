@@ -92,6 +92,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     tr: Tr,
     Form(form): Form<LoginForm>,
 ) -> Result<Response, AppError> {
+    tracing::debug!(client = %address, "sign-in attempt");
     let now = state.clock.now();
     let key = LoginLimiter::key(&form.username);
     if !state.limiter.begin(&key, address, now) {
