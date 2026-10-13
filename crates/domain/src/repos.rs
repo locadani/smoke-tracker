@@ -333,7 +333,9 @@ pub trait SessionRepo: Send + Sync {
         &self,
         session: &StoredSession,
     ) -> impl Future<Output = StoreResult<()>> + Send;
-    /// Inserts the session or replaces the stored one.
+    /// Updates a stored session. A session that no longer exists (ended by sign-out, a
+    /// password change or expiry) stays ended: a request that loaded it earlier and saves it
+    /// late never brings it back.
     fn save_session(&self, session: &StoredSession)
     -> impl Future<Output = StoreResult<()>> + Send;
     fn delete_session(&self, id_hash: &str) -> impl Future<Output = StoreResult<()>> + Send;

@@ -1,15 +1,18 @@
-//! Expired sessions are removed through tower-sessions' `ExpiredDeletion` (spec §11).
+//! Expired sessions are removed through tower-sessions' `ExpiredDeletion` (spec §11), and a
+//! session ended by a password change stays ended.
 
 mod common;
 
 use chrono::{DateTime, TimeDelta, Utc};
 use common::*;
 use smoke_domain::clock::Clock;
-use smoke_domain::records::StoredSession;
-use smoke_domain::repos::SessionRepo;
+use smoke_domain::records::{PasswordHash, StoredSession};
+use smoke_domain::repos::{Commit, SessionRepo, Transactional, UserWrites};
+use smoke_domain::types::{Locale, Role};
 use smoke_web::DbSessions;
 use sqlx::SqlitePool;
-use tower_sessions::session_store::ExpiredDeletion;
+use tower_sessions::session::Id;
+use tower_sessions::session_store::{ExpiredDeletion, SessionStore};
 
 fn session(id_hash: &str, expires_at: DateTime<Utc>) -> StoredSession {
     StoredSession {
@@ -53,4 +56,25 @@ async fn delete_expired_removes_only_expired_sessions() {
         ["fresh"],
         "running again is harmless"
     );
+}
+
+#[tokio::test]
+async fn a_late_save_cannot_revive_a_session_a_password_change_ended() {
+    let app = TestApp::new().await;
+    let user = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let id: Id = cookie.split_once('=').unwrap().1.parse().unwrap();
+    let sessions = DbSessions::new(app.store.clone(), app.clock.clone());
+    let loaded = sessions.load(&id).await.unwrap().expect("signed in");
+
+    let mut tx = app.store.begin(Some(user.id)).await.unwrap();
+    tx.set_password(user.id, PasswordHash::new("new-hash".to_owned()))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    sessions.save(&loaded).await.unwrap();
+    assert_eq!(sessions.load(&id).await.unwrap(), None);
+    let page = app.send(get_with("/", &cookie)).await;
+    assert_eq!(location(&page), Some("/login"));
 }

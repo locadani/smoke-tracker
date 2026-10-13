@@ -74,13 +74,11 @@ impl SessionRepo for PostgresStore {
 
     async fn save_session(&self, session: &StoredSession) -> StoreResult<()> {
         sqlx::query!(
-            "INSERT INTO sessions (id_hash, user_id, data, expires_at) VALUES ($1, $2, $3, $4) \
-             ON CONFLICT (id_hash) DO UPDATE SET user_id = excluded.user_id, \
-             data = excluded.data, expires_at = excluded.expires_at",
-            session.id_hash,
+            "UPDATE sessions SET user_id = $1, data = $2, expires_at = $3 WHERE id_hash = $4",
             session.user_id.map(|u| u.0),
             session.data,
             micros(session.expires_at),
+            session.id_hash,
         )
         .execute(&mut *self.write().await?)
         .await

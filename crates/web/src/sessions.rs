@@ -130,6 +130,8 @@ where
         }
     }
 
+    /// Never recreates a session ended meanwhile (decision #111): the request's response still
+    /// sets the cookie, but the next request finds no session and is signed out.
     async fn save(&self, record: &Record) -> session_store::Result<()> {
         self.store
             .save_session(&to_stored(record)?)
