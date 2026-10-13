@@ -55,11 +55,12 @@ impl DailySchedule {
         let instant = match self.tz.from_local_datetime(&local) {
             LocalResult::Single(t) => t,
             LocalResult::Ambiguous(earliest, _) => earliest,
-            LocalResult::None => self
-                .tz
-                .from_local_datetime(&(local + TimeDelta::hours(1)))
-                .earliest()
-                .expect("DST gaps last at most one hour"),
+            LocalResult::None => (1..=96)
+                .find_map(|step| {
+                    let later = local + TimeDelta::minutes(15 * step);
+                    self.tz.from_local_datetime(&later).earliest()
+                })
+                .expect("no time-zone transition skips a whole day"),
         };
         instant.with_timezone(&Utc)
     }
@@ -151,6 +152,16 @@ mod tests {
         assert_eq!(
             rome_at(2).last_boundary(t("2026-10-25T12:00:00Z")),
             t("2026-10-25T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn a_dst_gap_longer_than_an_hour_still_resolves() {
+        // Antarctica/Troll jumps from 01:00 (UTC+0) to 03:00 (UTC+2) on 2026-03-29.
+        let troll = DailySchedule::new(chrono_tz::Antarctica::Troll, 1).unwrap();
+        assert_eq!(
+            troll.last_boundary(t("2026-03-29T12:00:00Z")),
+            t("2026-03-29T01:00:00Z")
         );
     }
 
