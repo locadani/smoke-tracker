@@ -1,0 +1,96 @@
+name: Deploy
+
+# Only a push to main: the deploy account trusts deploy.yml on main, and other triggers can
+# run this file as if it came from main (infra/README.md, "Rules for the deploy workflow").
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+      - "infra/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    name: Deploy prerequisites
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+    steps:
+      - id: check
+        env:
+          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+        run: |
+          if [ -n "$GCP_PROJECT_ID" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "GCP secrets are not set; skipping the deploy."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    name: Build, scan, deploy
+    needs: gate
+    if: needs.gate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      SERVICE: smoke-tracker
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+
+      # Without DATABASE_URL the image falls back to a SQLite file on Cloud Run's temporary disk.
+      - name: Refuse to deploy before the database is connected
+        run: |
+          gcloud run services describe "$SERVICE" --region "$REGION" --format=json \
+            | jq -e '.spec.template.spec.containers[0].env[]? | select(.name == "DATABASE_URL")' > /dev/null \
+            || { echo "DATABASE_URL is not attached yet (infra/README.md, first-time setup)."; exit 1; }
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          load: true
+          tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smoke-tracker/smoke-tracker:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan the image and the crates compiled into it
+        # Pinned to a commit, not a tag: a third-party action's tags can be moved.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smoke-tracker/smoke-tracker:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Push
+        run: |
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker push "$REGION-docker.pkg.dev/$PROJECT_ID/smoke-tracker/smoke-tracker:$GITHUB_SHA"
+
+      # Only the image changes; every other setting is owned by Terraform.
+      - name: Deploy
+        run: |
+          gcloud run services update "$SERVICE" --region "$REGION" \
+            --image "$REGION-docker.pkg.dev/$PROJECT_ID/smoke-tracker/smoke-tracker:$GITHUB_SHA"

@@ -51,10 +51,13 @@ resource "google_cloud_run_v2_service" "app" {
 
   lifecycle {
     # The deploy workflow owns the running image; without this, every apply would roll it back.
+    # gcloud also stamps client labels/annotations on the revision template (nonce, user-image).
     ignore_changes = [
       template[0].containers[0].image,
       client,
       client_version,
+      template[0].labels,
+      template[0].annotations,
     ]
   }
 
