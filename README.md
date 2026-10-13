@@ -42,8 +42,9 @@ cargo run -p smoke-tracker -- verify-audit                 # exits with 1 if the
 
 ### Container
 
-Every push to `main` publishes `ghcr.io/locadani/smoke-tracker`: one static binary on a
-distroless base, with the database in the `/data` volume.
+Every push to `main` that changes the app is built, scanned and pushed to Artifact Registry by
+`deploy.yml`, then deployed. The image is one static binary on a distroless base; locally the
+database lives in the `/data` volume.
 
 ```sh
 docker build -t smoke-tracker .
@@ -62,8 +63,8 @@ logs the address it resolved, to check this on the first deploy.
 ## Hosting
 
 The app runs on Google Cloud Run, with its data in a Neon Postgres database. Both are on free
-tiers, in Frankfurt. SQLite is used for local development and tests. The deploy workflow is
-added after milestone 3.
+tiers, in Frankfurt. SQLite is used for local development and tests. Every merge to `main` that
+changes the app is deployed by `deploy.yml`, and the database is dumped to a bucket every night.
 
 ```mermaid
 flowchart LR
@@ -78,6 +79,9 @@ flowchart LR
         ar[(Artifact Registry<br/>Docker images)]
         run[Cloud Run<br/>service: smoke-tracker]
         sm[Secret Manager<br/>smoke-tracker-database-url]
+        sched[Cloud Scheduler<br/>daily 03:00]
+        job[Cloud Run job<br/>smoke-tracker-backup]
+        bk[(Backups bucket<br/>kept 30 days)]
     end
 
     subgraph neon ["Neon · Frankfurt"]
@@ -90,6 +94,10 @@ flowchart LR
     ar -- image --> run
     sm -- "read at startup" --> run
     run -- SQL over TLS --> db
+    sched -- starts --> job
+    sm -- "read at startup" --> job
+    job -- pg_dump --> db
+    job -- writes the dump --> bk
     users([Browser / installed PWA]) -- HTTPS --> run
 ```
 
@@ -100,7 +108,8 @@ flowchart LR
 | Artifact Registry | Stores the Docker images (repository `smoke-tracker`); a cleanup policy deletes old images and keeps the latest 3 | — |
 | Cloud Run | Runs the app as the `smoke-tracker-run` service account. Scales to zero when idle and allows at most one instance | — |
 | Secret Manager | Holds the database connection string; only `smoke-tracker-run` can read it. The app sees it as `DATABASE_URL` | `smoke-tracker-database-url` |
-| Neon | Postgres database. Pauses after 5 minutes idle and keeps 6 hours of restore history, so a daily backup job (planned) will cover older mistakes | The database password |
+| Cloud Scheduler, backup job, backups bucket | Every night at 03:00 (Europe/Berlin) a Cloud Run job runs `pg_dump` and writes the dump to a bucket in the same region; dumps are deleted after 30 days. See [`infra/`](infra/README.md#backups) | — |
+| Neon | Postgres database. Pauses after 5 minutes idle and keeps 6 hours of restore history; the nightly backup covers older mistakes | The database password |
 
 No secret is ever stored in this repository, in a Docker image, or in GitHub.
 

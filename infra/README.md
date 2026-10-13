@@ -14,6 +14,10 @@ Smoke Tracker's Google Cloud setup, as Terraform. Design:
 | Database connection string (the secret's value) | Manual, once | A value managed by Terraform is stored in its state in plain text |
 | GitHub secrets and variable | Manual, once | Setting them from Terraform would need a GitHub admin token |
 | Project APIs, image registry, secret (without value), service accounts and grants, GitHub login, Cloud Run service | Terraform | Reviewed in PRs, repeatable |
+| App settings (base URL, client IP header, log level) | Terraform (`prod/main.tf`) | Reviewed in PRs, repeatable |
+| Nightly backup | Terraform (module `backup.tf`) | Bucket, job, schedule and their grants are code like the rest |
+| Deploying the app | `deploy.yml` on every merge to `main` | Terraform owns the settings; the workflow only changes which image runs |
+| First resident | Manual, once, from Cloud Shell | The command asks for the password interactively |
 
 ## Layout
 
@@ -21,6 +25,10 @@ Smoke Tracker's Google Cloud setup, as Terraform. Design:
 - `modules/cloud-run-app/` — one app on Cloud Run; reusable. Tests: `terraform test` (mocked provider).
 - `prod/` — Smoke Tracker's production: APIs, the module, the read-only `terraform-plan` account.
 - `scripts/redact-plan.sh` — replaces the project ID, project number and state bucket name before a plan is posted on a PR.
+
+The `terraform.tfvars` and `backend.hcl` files are gitignored, so they live only in Cloud Shell's
+home directory, which Google deletes after about 120 days without use. Re-create them from the
+`.example` files.
 
 Good to know: deleting the GitHub login pool keeps its name reserved for 30 days, so a destroy
 followed by an apply fails until the pool is undeleted.
@@ -38,13 +46,15 @@ followed by an apply fails until the pool is undeleted.
    terraform apply prod.tfplan        # applies exactly what you reviewed
    ```
 
-## Changing the state bucket
+## Changing the bootstrap (bucket, budget)
 
-Edit `bootstrap/`, then in Cloud Shell:
+Open a PR first. CI validates and tests `bootstrap/` but posts no plan (its state is out of the
+plan account's reach). After merging, in Cloud Shell:
 
 ```bash
-cd ~/smoke-tracker && git pull && cd infra/bootstrap && terraform init -backend-config=backend.hcl && terraform plan
-terraform apply
+cd ~/smoke-tracker && git pull && cd infra/bootstrap && terraform init -backend-config=backend.hcl
+terraform plan -out=bootstrap.tfplan
+terraform apply bootstrap.tfplan
 ```
 
 The bucket can't be deleted or replaced by Terraform (`prevent_destroy`), so a change that would
@@ -136,22 +146,70 @@ Done once, in the Google Cloud console and Cloud Shell.
    account visible), run `terraform apply` again.
 
 6. **Database secret.** Secret Manager → `smoke-tracker-database-url` → New version → paste the Neon
-   *direct* connection string. Don't save it anywhere else.
+   *direct* connection string. Don't save it anywhere else. It ends in `sslmode=require`, so the
+   connection is encrypted.
 7. **GitHub** (Settings → Secrets and variables → Actions), from `terraform output` unless noted:
    - Secrets: `GCP_PROJECT_ID` (the value in `terraform.tfvars`), `GCP_PROJECT_NUMBER` (`project_number`), `GCP_WIF_PROVIDER`
      (`workload_identity_provider`), `GCP_DEPLOY_SA` (`deploy_service_account`), `GCP_PLAN_SA`
      (`plan_service_account`), `TF_STATE_BUCKET` (`terraform output state_bucket` in `bootstrap/`).
    - Variable: `GCP_REGION` = `europe-west3`.
 
+   `deploy.yml` uses `GCP_DEPLOY_SA` and `GCP_REGION` (and the project values) to log in and deploy;
+   `infra.yml` uses the plan ones.
+
    These are identifiers, not credentials; they are secrets so GitHub masks them in public logs.
 8. **Connect the secret.** A PR sets `attach_database_url = true` in `prod/main.tf`; merge, then in Cloud Shell
-   `cd ~/smoke-tracker && git pull && cd infra/prod && terraform apply`. The plan shows `DATABASE_URL`
-   being added to the service.
-9. **Check.** Open `terraform output service_url`: Google's sample page. A second
-   `terraform plan` reports no changes.
+   `cd ~/smoke-tracker && git pull && cd infra/prod`, then `terraform plan -out=attach.tfplan` and
+   `terraform apply attach.tfplan`. The plan shows `DATABASE_URL` being added to the service, and the
+   backup job and its schedule being created.
+9. **First deploy.** In GitHub, open Actions → Deploy and the most recent run (merging the PR
+   that added `deploy.yml` created one, skipped while the secrets were missing), then click
+   **Re-run all jobs**. A re-run keeps its original push trigger. Later merges deploy on their
+   own. The deploy refuses until `DATABASE_URL` is attached (step 8).
+10. **First resident.** In Cloud Shell, with the tag of the image that was just deployed (the commit
+    SHA shown in the Deploy run, or from `gcloud artifacts docker images list`):
+
+    ```bash
+    gcloud auth configure-docker europe-west3-docker.pkg.dev
+    docker run -it --rm \
+      -e DATABASE_URL="$(gcloud secrets versions access latest --secret=smoke-tracker-database-url)" \
+      europe-west3-docker.pkg.dev/YOUR_PROJECT_ID/smoke-tracker/smoke-tracker:LATEST_TAG \
+      create-resident YOUR_USERNAME
+    ```
+
+    The command asks for the password. The connection string is passed only to that one process
+    and is not saved.
+11. **Check.** Open `terraform output service_url`, sign in as the resident, and run a second
+    `terraform plan`: it reports no changes.
 
 The first plan comment on a PR may fail with "permission denied" for a few minutes after the
 first apply, while permissions spread. Re-run the job.
+
+## Backups
+
+A Cloud Run job, `smoke-tracker-backup`, runs every day at 03:00 (Europe/Berlin), started by Cloud
+Scheduler. It runs `pg_dump` against the Neon database and writes `smoke-tracker-<UTC time>.dump`
+to the bucket shown by `terraform output backups_bucket` (`<project>-smoke-tracker-backups`,
+`europe-west3`). A dump is written as `.dump.partial` and renamed when it succeeds, so a
+leftover `.partial` file is a failed run; ignore it. Dumps are deleted after 30 days. The job
+exists only once `attach_database_url` is `true`. The bucket is in the EU, so it is outside the
+free storage tier; a few dumps cost fractions of a cent.
+
+Run one now:
+
+```bash
+gcloud run jobs execute smoke-tracker-backup --region europe-west3
+```
+
+Restore, from Cloud Shell (it has the Postgres client). **This overwrites the live data.**
+
+```bash
+gcloud storage cp gs://YOUR_BACKUPS_BUCKET/FILE.dump .
+pg_restore --clean --no-owner -d "$DATABASE_URL" FILE.dump
+```
+
+Set `DATABASE_URL` first, from the secret, for this shell only. Without a local client, run the
+same `pg_restore` in `docker run` with `postgres:18-alpine`.
 
 ## Rules for the deploy workflow
 

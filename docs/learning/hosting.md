@@ -89,6 +89,22 @@ ARM (`arm64`), so moving means building for both.
 - **Chicken and egg:** the state bucket can't hold its own state before it exists. The bootstrap
   creates it with a local state, then `terraform init -migrate-state` moves that state into it.
 
+## Deploying
+
+- One build: `deploy.yml` builds the image once, scans that image, and pushes the same image. What
+  was scanned is what runs.
+- A guard refuses to deploy while `DATABASE_URL` is not attached; without it the app would start on
+  a throwaway SQLite file.
+- Terraform owns the service's settings; the workflow changes only the image.
+
+## Backups
+
+- Cloud Scheduler starts a Cloud Run job, the job runs `pg_dump` and writes into a bucket, and a
+  lifecycle rule deletes dumps after 30 days.
+- A dump is written as `.partial` and renamed when it succeeds, so a leftover `.partial` marks a
+  failed run.
+- A restore (`pg_restore --clean`) overwrites the live data. Practise it on a scratch database.
+
 ## Where to find this without help
 
 - Cloud Run quickstart: <https://cloud.google.com/run/docs/quickstarts>
