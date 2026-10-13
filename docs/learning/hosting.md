@@ -75,6 +75,20 @@ ARM (`arm64`), so moving means building for both.
 - **Least privilege.** Each grant is on one resource where possible (one secret, one registry,
   one service), not on the whole project.
 
+## Terraform state vs Azure Bicep
+
+- **Bicep looks stateless, but isn't.** Azure Resource Manager keeps the record of what exists in
+  each resource group, so a Bicep deployment compares the file with Azure's own record. By default
+  it doesn't delete resources removed from the file ("incremental" mode); deleting needs
+  "complete" mode or deployment stacks.
+- **Terraform keeps its own record (the state)** because it talks to any cloud's API directly, and
+  those APIs don't track "this belongs to your project". The state maps each block of code to a
+  real resource ID, which is what lets Terraform rename, delete and plan quickly.
+- **Google's closest equivalent to Bicep** was Deployment Manager (deprecated). Its successor,
+  Infrastructure Manager, is managed Terraform that stores the state for you.
+- **Chicken and egg:** the state bucket can't hold its own state before it exists. The bootstrap
+  creates it with a local state, then `terraform init -migrate-state` moves that state into it.
+
 ## Where to find this without help
 
 - Cloud Run quickstart: <https://cloud.google.com/run/docs/quickstarts>

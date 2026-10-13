@@ -39,7 +39,7 @@ production (all follow milestone 3, §8).
 | Piece | How | Why |
 |---|---|---|
 | Google project, billing account, €1 budget alert | Manual (done) | Terraform needs a project with billing before it can run |
-| State bucket | Manual, once | Terraform needs somewhere to keep its state before its first run |
+| State bucket | Terraform (`bootstrap/`), first run with a local state | Terraform needs somewhere to keep its state, so this small configuration creates the bucket, then moves its own state into it |
 | Neon project (Frankfurt, `aws-eu-central-1`) | Manual (done) | Neon has no official Terraform provider; the community one warns that upgrades can replace resources, which for a database means losing data |
 | `DATABASE_URL` secret **value** | Manual, once | A value managed by Terraform is stored in its state in plain text |
 | GitHub repository variables | Manual, once, copied from Terraform outputs | Setting them from Terraform would need a GitHub admin token |
@@ -59,6 +59,7 @@ production (all follow milestone 3, §8).
 ```
 infra/
 ├─ README.md               manual vs Terraform, first-time setup, routine
+├─ bootstrap/              the state bucket (local state first, then migrated into it)
 ├─ modules/
 │  └─ cloud-run-app/       one app on Cloud Run (reusable)
 │     ├─ main.tf           Artifact Registry, secret, service accounts and their grants
@@ -199,7 +200,7 @@ Trigger: pull requests and pushes to `main` that change `infra/**` or `infra.yml
 
 | Job | Steps |
 |---|---|
-| `check` | `terraform fmt -check -recursive`; `terraform init -backend=false`, `terraform validate` and `terraform test` for the module; `validate` for `prod/`; the redaction script's test; Trivy config scan of `infra/` |
+| `check` | `terraform fmt -check -recursive`; `terraform init -backend=false`, `terraform validate` and `terraform test` for the module and for `bootstrap/`; `validate` for `prod/`; the redaction script's test; Trivy config scan of `infra/` |
 | `plan` | Pull requests from this repository only (`head.repo.full_name == github.repository`). Logs in as `terraform-plan` through Workload Identity Federation; `terraform init` with the backend config from variables; `terraform plan -lock=false`; posts the plan as a PR comment, updating the previous one |
 
 - `plan` uses `-lock=false` because taking the lock writes to the bucket, and the plan account
@@ -247,20 +248,21 @@ Set by hand from the Terraform outputs.
 
 **First time**
 
-1. Create the state bucket: Cloud Storage, `europe-west3`, standard class, uniform access,
-   public access prevention on, object versioning on.
-2. In Cloud Shell:
-   1. download the pinned Terraform into `~/bin`;
-   2. check that the Service Usage and Cloud Resource Manager APIs are enabled;
-   3. clone the repository; create `terraform.tfvars` and `backend.hcl` from the examples;
-   4. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),
+1. In Cloud Shell, download the pinned Terraform into `~/bin`, check that the Service Usage,
+   Cloud Resource Manager and Cloud Storage APIs are enabled, and clone the repository.
+2. Run `infra/bootstrap` in Cloud Shell: it creates the state bucket (`europe-west3`, standard
+   class, uniform access, public access prevention, object versioning, older versions beyond 10
+   deleted) with a local state, then moves its own state into the bucket.
+3. In Cloud Shell:
+   1. create `terraform.tfvars` and `backend.hcl` in `infra/prod` from the examples;
+   2. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),
       `terraform apply`.
-3. Add the Neon connection string as the first version of the `smoke-tracker-database-url`
+4. Add the Neon connection string as the first version of the `smoke-tracker-database-url`
    secret (console).
-4. Set the GitHub secrets and variable (§6).
-5. A small PR sets `attach_database_url = true` in `prod/main.tf`; after merging,
+5. Set the GitHub secrets and variable (§6).
+6. A small PR sets `attach_database_url = true` in `prod/main.tf`; after merging,
    `terraform apply`.
-6. Open the service URL: Google's sample page appears.
+7. Open the service URL: Google's sample page appears.
 
 **Routine:** PR → read the plan comment → merge → in Cloud Shell `git pull`, `terraform plan`
 (should match the comment), `terraform apply`.
