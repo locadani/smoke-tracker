@@ -195,6 +195,35 @@ impl fmt::Display for ListName {
     }
 }
 
+/// A password someone is choosing: 10–128 characters, no composition rules (spec §8.1). Kept
+/// exactly as typed, never trimmed, and never printed.
+#[derive(Clone, PartialEq, Eq)]
+pub struct NewPassword(String);
+
+impl NewPassword {
+    pub const MIN_CHARS: usize = 10;
+    pub const MAX_CHARS: usize = 128;
+
+    pub fn new(raw: String) -> Result<Self, DomainError> {
+        let chars = raw.chars().count();
+        if (Self::MIN_CHARS..=Self::MAX_CHARS).contains(&chars) {
+            Ok(Self(raw))
+        } else {
+            Err(DomainError::InvalidPasswordLength(chars))
+        }
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for NewPassword {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("NewPassword(<redacted>)")
+    }
+}
+
 /// How strong a smell is, on the personal 1–10 scale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
@@ -402,5 +431,26 @@ mod tests {
                 Err(DomainError::InvalidListName(bad.to_owned()))
             );
         }
+    }
+
+    #[test]
+    fn passwords_need_ten_to_128_characters_counted_as_characters() {
+        assert!(NewPassword::new("x".repeat(10)).is_ok());
+        assert!(NewPassword::new("ş".repeat(128)).is_ok());
+        assert_eq!(
+            NewPassword::new("x".repeat(9)),
+            Err(DomainError::InvalidPasswordLength(9))
+        );
+        assert_eq!(
+            NewPassword::new("x".repeat(129)),
+            Err(DomainError::InvalidPasswordLength(129))
+        );
+    }
+
+    #[test]
+    fn passwords_are_kept_as_typed_and_never_printed() {
+        let password = NewPassword::new("  spaced out  ".to_owned()).unwrap();
+        assert_eq!(password.expose(), "  spaced out  ");
+        assert_eq!(format!("{password:?}"), "NewPassword(<redacted>)");
     }
 }
