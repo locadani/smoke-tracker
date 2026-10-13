@@ -94,6 +94,7 @@ macro_rules! str_enum {
         }
     };
 }
+pub(crate) use str_enum;
 
 str_enum!(
     /// What a user is allowed to do; see `permissions`.
