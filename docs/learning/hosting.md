@@ -65,7 +65,9 @@ ARM (`arm64`), so moving means building for both.
   versioned bucket. Anything Terraform manages ends up in it, which is why secret values stay
   out of Terraform.
 - **Import.** Something created by hand can be adopted with an `import` block instead of being
-  recreated. The plan says "will be imported".
+  recreated; the plan then says "will be imported". The block fails if the object doesn't exist
+  ("Cannot import non-existent remote object") — which is how we found out the registry had
+  never been created, and let Terraform create it instead.
 - **`ignore_changes`.** When something else owns an attribute (the deploy workflow owns the
   image), Terraform must ignore it, or every apply would undo the deploy.
 - **Modules.** `modules/cloud-run-app` describes one app; `prod/` uses it. A second app reuses the
