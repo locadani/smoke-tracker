@@ -8,7 +8,7 @@ behind each choice, and where to find the answers without help.
 | Option | Good | Bad |
 |---|---|---|
 | **Own VM** (Oracle Always Free) | Always on, so always instant; one provider; teaches Linux, networking, HTTPS | You patch, back up and rebuild it yourself; free VMs can be reclaimed when idle |
-| **Container platform + managed database** (Cloud Run + Neon) | Nothing to maintain; HTTPS and backups included | Two providers; the app sleeps when idle, so the first request after a pause waits a moment (a *cold start*) |
+| **Container platform + managed database** (Cloud Run + Neon) | Nothing to maintain; HTTPS included. Neon Free keeps only 6 hours of restore history, so a daily backup is still needed | Two providers; the app sleeps when idle, so the first request after a pause waits a moment (a *cold start*) |
 | Render / Koyeb free tiers | Simple | Render takes ~1 minute to wake; Koyeb allows one free app |
 
 **Cold start:** a platform that charges only for requests stops the app when nobody uses it, and
@@ -17,7 +17,8 @@ languages take several. A VM has no cold start because it never stops, which is 
 needs looking after.
 
 **Chosen:** Cloud Run + Neon, to get live quickly. If cold starts feel slow, move to the VM. The
-same Docker image runs on both.
+same Dockerfile works on both, but Cloud Run needs an `amd64` image and Oracle's free VMs are
+ARM (`arm64`), so moving means building for both.
 
 ## Secrets stay outside the app
 
@@ -48,10 +49,11 @@ same Docker image runs on both.
 - A new project has every service (API) switched off. Enable only what you use. In the API
   Library, pick the result whose name ends in **API**; the other result is the product overview.
 - Set a **budget alert** (€1) as soon as billing is linked.
-- Give the image registry a **cleanup policy** (keep the 3 most recent versions, mode "delete",
-  not "dry run"). Every deploy adds a ~20 MB image and nothing is deleted by default, so the free
-  0.5 GB fills up in a few weeks. Keeping 3 still allows a one-click rollback to an earlier
-  version. The policy runs about once a day.
+- Give the image registry a **cleanup policy**. Every deploy adds a ~20 MB image and nothing is
+  deleted by default, so the free 0.5 GB fills up in a few weeks. It takes **two rules**: a
+  *delete* rule (delete old images) and a *keep* rule (keep the 3 most recent). A keep rule on its
+  own deletes nothing; it only protects images from delete rules. Keeping 3 still allows a
+  one-click rollback. Policies run about once a day, in mode "delete", not "dry run".
 - Error messages usually say what is missing, with a link to fix it, for example
   "Cloud Run Admin API has not been used in project … enable it by visiting …".
 
@@ -67,3 +69,28 @@ same Docker image runs on both.
 - Neon plans and connecting: <https://neon.com/docs/introduction/plans>,
   <https://neon.com/docs/connect/connect-intro>
 - Cloud Run regions and pricing tiers: <https://cloud.google.com/run/docs/locations>
+
+## Cost
+
+"Free" here means **about €0.00–0.01 a month**, not a hard zero:
+
+- Cloud Run, Secret Manager (up to 6 active secret versions), Artifact Registry (0.5 GB) and Neon
+  are inside their free tiers.
+- Google's free outgoing traffic covers North America only, so pages sent from Frankfurt, and
+  queries to Neon (on AWS), cost a fraction of a cent.
+- Storage buckets outside the US are not in the free tier; a few KB costs nothing in practice.
+- A **budget alert only warns**, it never stops spending. At most one running instance caps the
+  compute; traffic is not capped.
+- When the database password changes, destroy the old secret version: disabled versions still
+  count towards the 6 free ones.
+
+## Corrected during setup
+
+A review against the official docs caught these; worth remembering when following old tutorials:
+
+- Terraform is **not** preinstalled in Cloud Shell any more (since June 2026). Check release
+  notes rather than old tutorials.
+- A *keep 3* cleanup rule alone deletes nothing (see above).
+- Neon's pooled connection does handle prepared statements (PgBouncer 1.22+). The direct
+  connection is still used, because the app has its own pool and migrations need a direct
+  connection.

@@ -63,9 +63,9 @@ flowchart LR
 
 | Piece | What it does | Where secrets live |
 |---|---|---|
-| GitHub Actions | Builds the Docker image and deploys it on every merge to `main` | None. Only non-secret IDs, as repository variables: `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA` |
-| Workload Identity Federation | Lets this repository's workflows act as the `github-deploy` service account, with short-lived tokens instead of a stored key | — |
-| Artifact Registry | Stores the Docker images (repository `smoke-tracker`, keeps the latest 3) | — |
+| GitHub Actions | Builds the Docker image and deploys it on every merge to `main` | None. Only non-secret IDs (project, region, login provider, account names), as repository variables |
+| Workload Identity Federation | Lets this repository's workflows act as narrowly-scoped service accounts (for example `github-deploy`), with short-lived tokens instead of a stored key | — |
+| Artifact Registry | Stores the Docker images (repository `smoke-tracker`); a cleanup policy deletes old images and keeps the latest 3 | — |
 | Cloud Run | Runs the app as the `smoke-run` service account. Scales to zero when idle and allows at most one instance | — |
 | Secret Manager | Holds the database connection string; only `smoke-run` can read it | `DATABASE_URL` |
 | Neon | Postgres database. Pauses after 5 minutes idle and keeps 6 hours of restore history, so a daily backup job (planned) will cover older mistakes | The database password |
