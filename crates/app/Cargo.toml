@@ -1,0 +1,33 @@
+[package]
+name = "smoke-tracker"
+version = "0.1.0"
+description = "The Smoke Tracker binary: configuration, wiring, background tasks and the CLI"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[lib]
+name = "smoke_app"
+
+[dependencies]
+anyhow.workspace = true
+chrono-tz.workspace = true
+clap.workspace = true
+rpassword.workspace = true
+smoke-domain.workspace = true
+smoke-storage-postgres.workspace = true
+smoke-storage-sqlite.workspace = true
+smoke-web.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["net", "signal", "time"] }
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+sqlx = { workspace = true, features = ["sqlite-bundled"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true
