@@ -190,6 +190,51 @@ async fn the_invite_form_says_what_to_fix_and_keeps_what_was_typed() {
 }
 
 #[tokio::test]
+async fn a_typed_date_is_never_dropped_by_the_invite_form() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    for body in [
+        "username=friend&role=viewer&viewer_expiry=never&viewer_expiry_date=2026-02-01",
+        "username=friend&role=viewer&viewer_expiry_date=2026-02-01",
+        "username=friend&role=guest&guest_expiry=1w&guest_expiry_date=2026-02-01",
+    ] {
+        let response = app
+            .send(post_form("/people/invite", body, Some(&cookie)))
+            .await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{body}"
+        );
+        let html = text(response).await;
+        assert!(
+            html.contains("Choose “at the end of this day”"),
+            "{body}: {html}"
+        );
+        assert!(html.contains("2026-02-01"), "kept what was typed: {html}");
+    }
+    assert_eq!(app.store.users().await.unwrap().len(), 1, "nothing written");
+}
+
+#[tokio::test]
+async fn the_invite_page_sends_no_referer() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let resident = app.sign_in("daniele").await;
+    let page = invite_guest(&app, &resident, "friend").await;
+    let link = format!("/invite/{}", token(&page));
+    let response = app.send(get(&link)).await;
+    assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+    let response = app
+        .send(post_form(&link, &choose("short", "short", "en"), None))
+        .await;
+    assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+    let response = app.send(get("/login")).await;
+    assert_eq!(response.headers()["referrer-policy"], "same-origin");
+}
+
+#[tokio::test]
 async fn the_chosen_password_must_be_valid_and_repeated() {
     let app = TestApp::new().await;
     app.add_user("daniele", Role::Resident, Locale::En).await;

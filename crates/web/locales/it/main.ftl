@@ -208,6 +208,7 @@ people-saved-expired = Accesso terminato. La persona è stata disconnessa ovunqu
 people-saved-reactivated = Account riattivato. La vecchia password funziona ancora.
 people-error-expiry = Scegli quanto può restare l'ospite.
 people-error-date = Inserisci una data valida.
+people-error-date-pick = Scegli «alla fine di questo giorno» per quella data, oppure cancella la data.
 people-error-past = La scadenza deve essere nel futuro.
 people-error-not-expired = Questo account non è scaduto.
 people-error-resident = I residenti non scadono mai.

@@ -87,6 +87,8 @@ pub(crate) enum ExpiryInputError {
     Missing,
     /// "Until a day" without a valid date.
     Date,
+    /// A date was typed but another pick is chosen: it would be dropped silently.
+    DatePick,
 }
 
 impl ExpiryInputError {
@@ -94,11 +96,13 @@ impl ExpiryInputError {
         match self {
             Self::Missing => "people-error-expiry",
             Self::Date => "people-error-date",
+            Self::DatePick => "people-error-date-pick",
         }
     }
 }
 
-/// Reads the pick for `role`. Residents never expire, whatever the form says.
+/// Reads the pick for `role`. Residents never expire, whatever the form says. A typed date next to
+/// any pick but "date" is refused rather than ignored: the person meant it to count.
 pub(crate) fn read(role: Role, draft: &ExpiryDraft) -> Result<ExpiryPick, ExpiryInputError> {
     let date = || {
         NaiveDate::parse_from_str(draft.date.trim(), "%Y-%m-%d")
@@ -107,6 +111,9 @@ pub(crate) fn read(role: Role, draft: &ExpiryDraft) -> Result<ExpiryPick, Expiry
     };
     match (role, draft.pick.as_deref()) {
         (Role::Resident, _) => Ok(ExpiryPick::Never),
+        (_, pick) if pick != Some("date") && !draft.date.trim().is_empty() => {
+            Err(ExpiryInputError::DatePick)
+        }
         (Role::Guest, Some("1d")) => Ok(ExpiryPick::OneDay),
         (Role::Guest, Some("weekend")) => Ok(ExpiryPick::Weekend),
         (Role::Guest, Some("1w")) => Ok(ExpiryPick::OneWeek),
@@ -127,6 +134,7 @@ pub(crate) fn keys() -> Vec<&'static str> {
         .chain([
             ExpiryInputError::Missing.key(),
             ExpiryInputError::Date.key(),
+            ExpiryInputError::DatePick.key(),
         ])
         .collect()
 }
@@ -182,6 +190,30 @@ mod tests {
                 "{bad}"
             );
         }
+    }
+
+    #[test]
+    fn a_typed_date_without_the_date_pick_is_refused() {
+        for (role, pick) in [
+            (Role::Viewer, None),
+            (Role::Viewer, Some("never")),
+            (Role::Guest, Some("1w")),
+            (Role::Guest, None),
+        ] {
+            assert_eq!(
+                read(role, &draft(pick, "2026-02-01")),
+                Err(ExpiryInputError::DatePick),
+                "{role:?} {pick:?}"
+            );
+        }
+        assert_eq!(
+            read(Role::Viewer, &draft(Some("never"), "  ")),
+            Ok(ExpiryPick::Never)
+        );
+        assert_eq!(
+            read(Role::Resident, &draft(Some("1d"), "2026-02-01")),
+            Ok(ExpiryPick::Never)
+        );
     }
 
     #[test]

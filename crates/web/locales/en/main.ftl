@@ -208,6 +208,7 @@ people-saved-expired = Access ended. They are signed out everywhere.
 people-saved-reactivated = Account reactivated. The old password still works.
 people-error-expiry = Pick how long a guest may stay.
 people-error-date = Enter a valid date.
+people-error-date-pick = Choose “at the end of this day” for that date, or clear the date.
 people-error-past = The end must be in the future.
 people-error-not-expired = This account has not expired.
 people-error-resident = Residents never expire.

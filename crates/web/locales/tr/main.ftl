@@ -208,6 +208,7 @@ people-saved-expired = Erişim sonlandırıldı. Tüm cihazlarda oturumu kapatı
 people-saved-reactivated = Hesap yeniden etkinleştirildi. Eski şifre hâlâ geçerli.
 people-error-expiry = Misafirin ne kadar kalabileceğini seçin.
 people-error-date = Geçerli bir tarih girin.
+people-error-date-pick = Bu tarih için “bu günün sonunda” seçeneğini işaretleyin ya da tarihi silin.
 people-error-past = Bitiş gelecekte olmalı.
 people-error-not-expired = Bu hesabın süresi dolmadı.
 people-error-resident = Ev sakinlerinin süresi hiç dolmaz.

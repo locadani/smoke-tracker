@@ -172,3 +172,36 @@ async fn a_resident_cannot_be_expired() {
         .await;
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn reactivating_with_a_typed_date_but_another_pick_is_refused() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T19:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let viewer = app.add_user("lawyer", Role::Viewer, Locale::En).await;
+    let resident = app.sign_in("daniele").await;
+    app.send(post_form(
+        &format!("/people/{}/expire", viewer.id),
+        "",
+        Some(&resident),
+    ))
+    .await;
+    let expired = app.store.user(viewer.id).await.unwrap().unwrap();
+    let path = format!("/people/{}/reactivate", viewer.id);
+    for body in [
+        "expiry=never&expiry_date=2026-02-01",
+        "expiry_date=2026-02-01",
+    ] {
+        let response = app.send(post_form(&path, body, Some(&resident))).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{body}"
+        );
+        let html = text(response).await;
+        assert!(html.contains("Choose “at the end of this day”"), "{html}");
+        assert!(html.contains("2026-02-01"), "{html}");
+    }
+    let after = app.store.user(viewer.id).await.unwrap().unwrap();
+    assert_eq!(after.expires_at, expired.expires_at, "nothing written");
+}
