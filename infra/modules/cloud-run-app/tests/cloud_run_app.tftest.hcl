@@ -1,11 +1,22 @@
-mock_provider "google" {
-  # Computed attributes are random strings by default; the IAM resources validate their format.
-  mock_resource "google_service_account" {
-    defaults = {
-      name   = "projects/test-project/serviceAccounts/mock-account@test-project.iam.gserviceaccount.com"
-      email  = "mock-account@test-project.iam.gserviceaccount.com"
-      member = "serviceAccount:mock-account@test-project.iam.gserviceaccount.com"
-    }
+mock_provider "google" {}
+
+# Computed attributes are random strings by default and the IAM resources validate their format;
+# each account gets its own identity so a swapped grant cannot pass the equality assertions.
+override_resource {
+  target = google_service_account.runtime
+  values = {
+    name   = "projects/test-project/serviceAccounts/smoke-tracker-runtime@test-project.iam.gserviceaccount.com"
+    email  = "smoke-tracker-runtime@test-project.iam.gserviceaccount.com"
+    member = "serviceAccount:smoke-tracker-runtime@test-project.iam.gserviceaccount.com"
+  }
+}
+
+override_resource {
+  target = google_service_account.deploy
+  values = {
+    name   = "projects/test-project/serviceAccounts/smoke-tracker-deploy@test-project.iam.gserviceaccount.com"
+    email  = "smoke-tracker-deploy@test-project.iam.gserviceaccount.com"
+    member = "serviceAccount:smoke-tracker-deploy@test-project.iam.gserviceaccount.com"
   }
 }
 
