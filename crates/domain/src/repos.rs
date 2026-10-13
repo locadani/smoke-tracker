@@ -40,6 +40,8 @@ pub enum Conflict {
     Duplicate,
     #[error("another write extended the audit log at the same time")]
     ChainForked,
+    #[error("the change breaks a data rule")]
+    RuleViolated,
 }
 
 #[derive(Debug, Error)]

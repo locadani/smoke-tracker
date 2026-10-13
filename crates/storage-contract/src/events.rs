@@ -118,6 +118,29 @@ where
     );
 }
 
+pub async fn closing_an_event_before_it_opened_breaks_a_data_rule<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites>,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let event = add_event(fx, owner.id, start(), None).await;
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    let error = tx
+        .close_event(
+            event.id,
+            Closure {
+                at: start() - TimeDelta::hours(1),
+                reason: CloseReason::Manual,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::RuleViolated)),
+        "{error:?}"
+    );
+}
+
 pub async fn reopening_is_refused_while_another_event_is_open<S>(fx: &Fixture<S>)
 where
     S: Transactional<Tx: UserWrites + EventWrites> + EventRepo,

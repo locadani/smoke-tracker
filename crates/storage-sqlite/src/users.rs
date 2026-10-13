@@ -9,7 +9,7 @@ use smoke_domain::repos::{StoreError, StoreResult, UserRepo, UserWrites};
 use smoke_domain::types::{Locale, Role, UserId, Username};
 use sqlx::SqliteConnection;
 
-use crate::convert::{corrupt, instant, micros, opt_instant, parse};
+use crate::convert::{canonical, corrupt, instant, micros, opt_instant, parse};
 use crate::error::IntoStore;
 use crate::{SqliteStore, SqliteTx};
 
@@ -25,9 +25,11 @@ struct UserRow {
 
 impl UserRow {
     fn into_user(self) -> StoreResult<User> {
+        let username = Username::new(&self.username).map_err(corrupt)?;
+        canonical("username", &self.username, username.as_str())?;
         Ok(User {
             id: UserId(self.id),
-            username: Username::new(&self.username).map_err(corrupt)?,
+            username,
             password_hash: self.password_hash.map(PasswordHash::new),
             role: parse(&self.role)?,
             locale: parse(&self.locale)?,

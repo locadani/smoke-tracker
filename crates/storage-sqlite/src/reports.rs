@@ -47,6 +47,9 @@ async fn load(conn: &mut SqliteConnection, row: ReportRow) -> StoreResult<SmellR
         row.note.as_deref(),
     )
     .map_err(corrupt)?;
+    if row.note.as_deref() != values.note() {
+        return Err(corrupt("note is not stored in canonical form"));
+    }
     Ok(SmellReport {
         id: ReportId(row.id),
         event_id: EventId(row.event_id),

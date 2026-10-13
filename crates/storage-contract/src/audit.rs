@@ -3,7 +3,7 @@
 use chrono::TimeDelta;
 use smoke_domain::audit::{AuditAction, AuditEntity, ChainError, verify_chain};
 use smoke_domain::records::{NewReading, NewRoom, Pm25Reading, SmellReport};
-use smoke_domain::repos::{Commit, ListWrites, ReadingWrites, ReportWrites, Store};
+use smoke_domain::repos::{Commit, ListWrites, ReadingWrites, ReportWrites, Store, StoreError};
 use smoke_domain::types::{ListName, Pm25, RoomArea};
 use smoke_domain::verify::{SnapshotProblem, verify_store};
 
@@ -188,4 +188,36 @@ where
     assert_eq!(log.len(), 8);
     assert_eq!(verify_chain(&log), Ok(()));
     assert_eq!(fx.store.rooms().await.unwrap().len(), 8);
+}
+
+pub async fn a_directly_edited_username_is_corrupt_not_normalised<S: Store>(fx: &Fixture<S>) {
+    populate(fx).await;
+    fx.raw("UPDATE users SET username = 'DANIELE'")
+        .await
+        .unwrap();
+
+    let error = fx.store.users().await.unwrap_err();
+    assert!(matches!(error, StoreError::Corrupt(_)), "{error:?}");
+    let error = verify_store(&fx.store).await.unwrap_err();
+    assert!(matches!(error, StoreError::Corrupt(_)), "{error:?}");
+}
+
+pub async fn a_directly_edited_list_name_is_corrupt_not_normalised<S: Store>(fx: &Fixture<S>) {
+    populate(fx).await;
+    fx.raw("UPDATE rooms SET name = '  Kitchen '")
+        .await
+        .unwrap();
+
+    let error = fx.store.rooms().await.unwrap_err();
+    assert!(matches!(error, StoreError::Corrupt(_)), "{error:?}");
+}
+
+pub async fn a_directly_edited_note_is_corrupt_not_normalised<S: Store>(fx: &Fixture<S>) {
+    let p = populate(fx).await;
+    fx.raw("UPDATE smell_reports SET note = '  padded  '")
+        .await
+        .unwrap();
+
+    let error = fx.store.report(p.report.id).await.unwrap_err();
+    assert!(matches!(error, StoreError::Corrupt(_)), "{error:?}");
 }

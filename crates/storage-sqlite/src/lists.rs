@@ -6,7 +6,7 @@ use smoke_domain::repos::{ListRepo, ListWrites, StoreError, StoreResult};
 use smoke_domain::types::{ListName, RoomId, SymptomId};
 use sqlx::SqliteConnection;
 
-use crate::convert::{corrupt, micros, opt_instant, parse};
+use crate::convert::{canonical, corrupt, micros, opt_instant, parse};
 use crate::error::IntoStore;
 use crate::{SqliteStore, SqliteTx};
 
@@ -20,9 +20,11 @@ struct RoomRow {
 
 impl RoomRow {
     fn into_room(self) -> StoreResult<Room> {
+        let name = ListName::new(&self.name).map_err(corrupt)?;
+        canonical("room name", &self.name, name.as_str())?;
         Ok(Room {
             id: RoomId(self.id),
-            name: ListName::new(&self.name).map_err(corrupt)?,
+            name,
             i18n_key: self.i18n_key,
             area: parse(&self.area)?,
             hidden_at: opt_instant(self.hidden_at)?,
@@ -39,9 +41,11 @@ struct SymptomRow {
 
 impl SymptomRow {
     fn into_symptom(self) -> StoreResult<Symptom> {
+        let name = ListName::new(&self.name).map_err(corrupt)?;
+        canonical("symptom name", &self.name, name.as_str())?;
         Ok(Symptom {
             id: SymptomId(self.id),
-            name: ListName::new(&self.name).map_err(corrupt)?,
+            name,
             i18n_key: self.i18n_key,
             hidden_at: opt_instant(self.hidden_at)?,
         })

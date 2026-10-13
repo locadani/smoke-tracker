@@ -18,6 +18,7 @@ fn into_store_error(error: sqlx::Error) -> StoreError {
         match db.kind() {
             ErrorKind::UniqueViolation => return unique_conflict(db.message()).into(),
             ErrorKind::ForeignKeyViolation => return Conflict::UnknownReference.into(),
+            ErrorKind::CheckViolation => return Conflict::RuleViolated.into(),
             _ => {}
         }
     }

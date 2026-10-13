@@ -27,3 +27,16 @@ pub(crate) fn parse<T: FromStr<Err = DomainError>>(text: &str) -> StoreResult<T>
 pub(crate) fn corrupt(reason: impl Display) -> StoreError {
     StoreError::Corrupt(reason.to_string())
 }
+
+/// Fails when `stored` is not already in the canonical form its validated value produces, so a
+/// direct database edit (e.g. `DANIELE` for `daniele`) is reported instead of silently read back
+/// normalised.
+pub(crate) fn canonical(what: &str, stored: &str, canonical: &str) -> StoreResult<()> {
+    if stored == canonical {
+        Ok(())
+    } else {
+        Err(corrupt(format!(
+            "{what} {stored:?} is not in canonical form {canonical:?}"
+        )))
+    }
+}

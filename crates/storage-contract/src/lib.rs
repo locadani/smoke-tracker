@@ -43,6 +43,7 @@ macro_rules! contract_tests {
             events::a_new_event_can_be_the_open_event,
             events::only_one_event_can_be_open,
             events::closing_and_reopening_are_audited,
+            events::closing_an_event_before_it_opened_breaks_a_data_rule,
             events::reopening_is_refused_while_another_event_is_open,
             events::the_end_of_a_closed_event_can_move,
             events::the_auto_close_notice_is_marked_seen_once,
@@ -64,6 +65,9 @@ macro_rules! contract_tests {
             audit::a_directly_deleted_record_is_detected,
             audit::the_audit_log_refuses_updates_and_deletes,
             audit::an_edited_audit_entry_breaks_the_chain,
+            audit::a_directly_edited_username_is_corrupt_not_normalised,
+            audit::a_directly_edited_list_name_is_corrupt_not_normalised,
+            audit::a_directly_edited_note_is_corrupt_not_normalised,
             audit::concurrent_writers_never_fork_the_chain,
         );
     };
