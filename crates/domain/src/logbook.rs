@@ -9,6 +9,7 @@ use thiserror::Error;
 use crate::DomainError;
 use crate::events::{
     NewEventState, ObservedTime, can_join_backdated, classify_observed, new_event_state,
+    validate_manual_close,
 };
 use crate::permissions::{Action, Actor, can};
 use crate::records::{
@@ -16,12 +17,18 @@ use crate::records::{
 };
 use crate::repos::{EventWrites, ReadingWrites, ReportWrites, StoreError, StoreResult};
 use crate::schedule::DailySchedule;
-use crate::types::{CloseReason, EventId, Pm25};
+use crate::types::{CloseReason, EventId, Pm25, ReportId};
 
 #[derive(Debug, Error)]
 pub enum LogError {
     #[error("not allowed")]
     Forbidden,
+    /// No such event or report, or the report was deleted.
+    #[error("not found")]
+    NotFound,
+    /// Reopening while another event is open would break the one-open-event rule.
+    #[error("another event is open")]
+    AnotherEventOpen,
     /// The answer to the event question no longer fits the data (another phone closed or
     /// opened an event meanwhile): ask again rather than guess.
     #[error("the events changed since the question was asked")]
@@ -211,4 +218,158 @@ pub(crate) async fn extend_to<T: EventWrites>(
         tx.move_event_end(event.id, at).await?;
     }
     Ok(())
+}
+
+/// Where "Move to another event" puts a report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MoveTarget {
+    Event(EventId),
+    New,
+}
+
+/// Closes an open event by hand at `closed_at`, which must lie between its last report and now
+/// (spec §7.3).
+pub async fn close_event<T: EventWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: EventId,
+    closed_at: DateTime<Utc>,
+    now: DateTime<Utc>,
+) -> Result<Event, LogError> {
+    let event = manageable_event(tx, actor, id, now).await?;
+    if !event.is_open() {
+        return Err(LogError::Stale);
+    }
+    let last_report = tx.latest_report_at(id).await?.unwrap_or(event.opened_at);
+    validate_manual_close(closed_at, last_report.max(event.opened_at), now)?;
+    let closure = Closure {
+        at: closed_at,
+        reason: CloseReason::Manual,
+    };
+    Ok(tx.close_event(id, closure).await?)
+}
+
+/// Reopens a closed event, if no other event is open.
+pub async fn reopen_event<T: EventWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: EventId,
+    now: DateTime<Utc>,
+) -> Result<Event, LogError> {
+    let event = manageable_event(tx, actor, id, now).await?;
+    if event.is_open() {
+        return Err(LogError::Stale);
+    }
+    if tx.open_event().await?.is_some() {
+        return Err(LogError::AnotherEventOpen);
+    }
+    Ok(tx.reopen_event(id).await?)
+}
+
+/// "Correct a mistake" (spec §7.7): new values and observed time for a report. The time must
+/// still belong to the report's event; after a closed event's end, the end moves with it.
+pub async fn correct_report<T: EventWrites + ReportWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: ReportId,
+    observed_at: DateTime<Utc>,
+    values: ReportValues,
+    schedule: &DailySchedule,
+    now: DateTime<Utc>,
+) -> Result<SmellReport, LogError> {
+    let report = editable_report(tx, actor, id, now).await?;
+    classify_observed(observed_at, now)?;
+    let event = tx.event(report.event_id).await?.ok_or(LogError::NotFound)?;
+    if !can_join_backdated(&event, observed_at, schedule) {
+        return Err(LogError::OutsideEvent);
+    }
+    extend_to(tx, &event, observed_at).await?;
+    Ok(tx.correct_report(id, observed_at, values).await?)
+}
+
+/// "Move to another event" (spec §7.7): into an event that was running when the report was
+/// observed (its end moves if needed), or into a new event owned by the report's author.
+pub async fn move_report<T: EventWrites + ReportWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: ReportId,
+    to: MoveTarget,
+    schedule: &DailySchedule,
+    now: DateTime<Utc>,
+) -> Result<SmellReport, LogError> {
+    let report = editable_report(tx, actor, id, now).await?;
+    let target = match to {
+        MoveTarget::Event(target) if target == report.event_id => return Ok(report),
+        MoveTarget::Event(target) => {
+            let event = tx.event(target).await?.ok_or(LogError::NotFound)?;
+            if !can_join_backdated(&event, report.observed_at, schedule) {
+                return Err(LogError::OutsideEvent);
+            }
+            extend_to(tx, &event, report.observed_at).await?;
+            target
+        }
+        MoveTarget::New => {
+            let another_open = tx.open_event().await?.is_some();
+            let closed = match new_event_state(report.observed_at, now, schedule, another_open) {
+                NewEventState::Open => None,
+                NewEventState::ClosedBackdated => Some(Closure {
+                    at: report.observed_at,
+                    reason: CloseReason::Backdated,
+                }),
+            };
+            let new = NewEvent {
+                owner_id: report.user_id,
+                opened_at: report.observed_at,
+                closed,
+            };
+            tx.create_event(new).await?.id
+        }
+    };
+    Ok(tx.move_report(id, target).await?)
+}
+
+/// The event, if it exists and `actor` may close or reopen it.
+async fn manageable_event<T: EventWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: EventId,
+    now: DateTime<Utc>,
+) -> Result<Event, LogError> {
+    let event = tx.event(id).await?.ok_or(LogError::NotFound)?;
+    if can(
+        actor,
+        Action::ManageEvent {
+            owner: event.owner_id,
+        },
+        now,
+    ) {
+        Ok(event)
+    } else {
+        Err(LogError::Forbidden)
+    }
+}
+
+/// The report, if it exists, is not deleted, and `actor` may correct or move it.
+async fn editable_report<T: ReportWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: ReportId,
+    now: DateTime<Utc>,
+) -> Result<SmellReport, LogError> {
+    let report = tx
+        .report(id)
+        .await?
+        .filter(|report| !report.is_deleted())
+        .ok_or(LogError::NotFound)?;
+    if can(
+        actor,
+        Action::EditEntry {
+            owner: report.user_id,
+        },
+        now,
+    ) {
+        Ok(report)
+    } else {
+        Err(LogError::Forbidden)
+    }
 }

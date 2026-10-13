@@ -9,6 +9,7 @@
 //! migrated database, or `None` to skip.
 
 pub mod audit;
+pub mod corrections;
 pub mod events;
 pub mod fixture;
 pub mod lists;
@@ -109,6 +110,13 @@ macro_rules! contract_tests {
             logbook::a_failed_report_rolls_back_the_new_event_close,
             logbook::only_people_who_may_log_can_log,
             logbook::a_time_in_the_future_is_refused,
+            corrections::a_manual_close_needs_a_time_between_the_last_report_and_now,
+            corrections::only_residents_and_owning_guests_can_close_or_reopen,
+            corrections::reopening_waits_until_no_other_event_is_open,
+            corrections::correcting_after_the_end_moves_the_end_and_before_the_start_is_refused,
+            corrections::guests_can_correct_and_move_only_their_own_reports,
+            corrections::moving_to_a_new_event_creates_it_for_the_reports_author,
+            corrections::moving_after_the_end_of_the_target_moves_its_end,
             sweep::the_first_sweep_runs_and_is_remembered,
             sweep::a_sweep_at_four_closes_the_event_at_its_last_report,
             sweep::a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four,
