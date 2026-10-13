@@ -1,6 +1,6 @@
 //! A time of day that recurs in a local time zone, such as the 04:00 auto-close.
 
-use chrono::{DateTime, LocalResult, NaiveDate, TimeDelta, TimeZone, Utc};
+use chrono::{DateTime, Datelike, LocalResult, Months, NaiveDate, TimeDelta, TimeZone, Utc};
 use chrono_tz::Tz;
 
 use crate::DomainError;
@@ -46,12 +46,35 @@ impl DailySchedule {
         self.last_boundary(now) > since
     }
 
-    /// The boundary instant on a local calendar date. A local time skipped by DST resolves to
-    /// the end of the gap; a repeated one resolves to its first occurrence.
+    /// The local calendar date of an instant.
+    pub fn local_date(&self, at: DateTime<Utc>) -> NaiveDate {
+        at.with_timezone(&self.tz).date_naive()
+    }
+
+    /// `[start, end)` of a local calendar day: 23 or 25 hours long on DST days.
+    pub fn day_span(&self, date: NaiveDate) -> (DateTime<Utc>, DateTime<Utc>) {
+        let next = date.succ_opt().expect("date within chrono's range");
+        (self.at_local(date, 0), self.at_local(next, 0))
+    }
+
+    /// `[start, end)` of the local calendar month that contains `date`.
+    pub fn month_span(&self, date: NaiveDate) -> (DateTime<Utc>, DateTime<Utc>) {
+        let first = date.with_day(1).expect("every month has a first day");
+        let next = first
+            .checked_add_months(Months::new(1))
+            .expect("date within chrono's range");
+        (self.at_local(first, 0), self.at_local(next, 0))
+    }
+
+    /// The boundary instant on a local calendar date.
     fn boundary_on(&self, date: NaiveDate) -> DateTime<Utc> {
-        let local = date
-            .and_hms_opt(self.hour, 0, 0)
-            .expect("hour validated in new()");
+        self.at_local(date, self.hour)
+    }
+
+    /// `hour`:00 local time on `date`. A local time skipped by DST resolves to the end of the
+    /// gap; a repeated one resolves to its first occurrence.
+    fn at_local(&self, date: NaiveDate, hour: u32) -> DateTime<Utc> {
+        let local = date.and_hms_opt(hour, 0, 0).expect("hour below 24");
         let instant = match self.tz.from_local_datetime(&local) {
             LocalResult::Single(t) => t,
             LocalResult::Ambiguous(earliest, _) => earliest,
@@ -178,6 +201,52 @@ mod tests {
         // The sweep ran exactly at the boundary: not due again until tomorrow.
         assert!(!s.boundary_passed_since(t("2026-01-15T03:00:00Z"), t("2026-01-15T20:00:00Z")));
         assert!(!s.boundary_passed_since(t("2026-01-15T04:00:00Z"), t("2026-01-15T05:00:00Z")));
+    }
+
+    fn date(s: &str) -> NaiveDate {
+        s.parse().unwrap()
+    }
+
+    #[test]
+    fn instants_fall_on_their_local_date() {
+        let s = rome_at(4);
+        assert_eq!(s.local_date(t("2026-01-15T22:59:59Z")), date("2026-01-15"));
+        assert_eq!(s.local_date(t("2026-01-15T23:00:00Z")), date("2026-01-16"));
+    }
+
+    #[test]
+    fn a_local_day_runs_from_midnight_to_midnight() {
+        let s = rome_at(4);
+        assert_eq!(
+            s.day_span(date("2026-01-15")),
+            (t("2026-01-14T23:00:00Z"), t("2026-01-15T23:00:00Z"))
+        );
+        // Spring forward: 23 hours. Fall back: 25 hours.
+        assert_eq!(
+            s.day_span(date("2026-03-29")),
+            (t("2026-03-28T23:00:00Z"), t("2026-03-29T22:00:00Z"))
+        );
+        assert_eq!(
+            s.day_span(date("2026-10-25")),
+            (t("2026-10-24T22:00:00Z"), t("2026-10-25T23:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn a_local_month_runs_from_its_first_midnight_to_the_next_months() {
+        let s = rome_at(4);
+        assert_eq!(
+            s.month_span(date("2026-01-15")),
+            (t("2025-12-31T23:00:00Z"), t("2026-01-31T23:00:00Z"))
+        );
+        assert_eq!(
+            s.month_span(date("2026-12-31")),
+            (t("2026-11-30T23:00:00Z"), t("2026-12-31T23:00:00Z"))
+        );
+        assert_eq!(
+            s.month_span(date("2026-03-01")),
+            (t("2026-02-28T23:00:00Z"), t("2026-03-31T22:00:00Z"))
+        );
     }
 
     #[test]

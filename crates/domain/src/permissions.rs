@@ -74,6 +74,12 @@ pub fn can(actor: &Actor, action: Action, now: DateTime<Utc>) -> bool {
     }
 }
 
+/// Whether `actor` may see an entry logged by (or an event owned by) `owner`: everyone's with
+/// [`Action::ViewAll`], otherwise only their own.
+pub fn can_see(actor: &Actor, owner: UserId, now: DateTime<Utc>) -> bool {
+    can(actor, Action::ViewAll, now) || (owner == actor.id && can(actor, Action::ViewOwn, now))
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::TimeDelta;
@@ -158,6 +164,22 @@ mod tests {
             for (action, want) in ACTIONS.iter().zip(expected) {
                 assert_eq!(can(&actor, *action, now()), want, "{label} / {action:?}");
             }
+        }
+    }
+
+    #[test]
+    fn guests_see_their_own_entries_and_everyone_else_sees_all() {
+        let cases = [
+            (actor(Role::Resident, None), true),
+            (actor(Role::Viewer, None), true),
+            (actor(Role::Guest, active()), false),
+            (actor(Role::Guest, expired()), false),
+            (actor(Role::Viewer, expired()), false),
+        ];
+        for (who, sees_others) in cases {
+            assert_eq!(can_see(&who, OTHER, now()), sees_others, "{who:?}");
+            let sees_own = !(who.role == Role::Viewer && who.is_expired(now()));
+            assert_eq!(can_see(&who, ME, now()), sees_own, "{who:?}");
         }
     }
 
