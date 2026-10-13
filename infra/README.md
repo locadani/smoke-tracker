@@ -32,8 +32,8 @@ followed by an apply fails until the pool is undeleted.
    ```bash
    cd ~/smoke-tracker && git pull
    cd infra/prod
-   terraform plan    # should match the PR comment
-   terraform apply
+   terraform plan -out=prod.tfplan    # should match the PR comment
+   terraform apply prod.tfplan        # applies exactly what you reviewed
    ```
 
 ## First-time setup
@@ -42,18 +42,20 @@ Done once, in the Google Cloud console and Cloud Shell.
 
 1. **State bucket.** Cloud Storage → Create: region `europe-west3`, Standard class, uniform access,
    public access prevention on, object versioning on.
-2. **Terraform in Cloud Shell** (not preinstalled; `~/bin` survives between sessions):
+2. **Terraform in Cloud Shell** (it may be missing or an older version; the pinned one goes in `~/bin`, which survives between sessions):
 
    ```bash
    mkdir -p ~/bin && cd /tmp
    curl -fsSLO https://releases.hashicorp.com/terraform/1.16.5/terraform_1.16.5_linux_amd64.zip
    unzip -o terraform_1.16.5_linux_amd64.zip terraform -d ~/bin
+   echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc && export PATH="$HOME/bin:$PATH"
    terraform version
    ```
 
 3. **APIs Terraform needs to start:**
 
    ```bash
+   gcloud config set project YOUR_PROJECT_ID
    gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com
    ```
 
@@ -74,15 +76,16 @@ Done once, in the Google Cloud console and Cloud Shell.
 
 5. **Database secret.** Secret Manager → `smoke-tracker-database-url` → New version → paste the Neon
    *direct* connection string. Don't save it anywhere else.
-6. **GitHub** (Settings → Secrets and variables → Actions), from `terraform output`:
-   - Secrets: `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER` (`project_number`), `GCP_WIF_PROVIDER`
+6. **GitHub** (Settings → Secrets and variables → Actions), from `terraform output` unless noted:
+   - Secrets: `GCP_PROJECT_ID` (the value in `terraform.tfvars`), `GCP_PROJECT_NUMBER` (`project_number`), `GCP_WIF_PROVIDER`
      (`workload_identity_provider`), `GCP_DEPLOY_SA` (`deploy_service_account`), `GCP_PLAN_SA`
-     (`plan_service_account`), `TF_STATE_BUCKET`.
+     (`plan_service_account`), `TF_STATE_BUCKET` (the value in `terraform.tfvars`).
    - Variable: `GCP_REGION` = `europe-west3`.
 
    These are identifiers, not credentials; they are secrets so GitHub masks them in public logs.
-7. **Connect the secret.** A PR sets `attach_database_url = true` in `prod/main.tf`; merge, then
-   `terraform apply`.
+7. **Connect the secret.** A PR sets `attach_database_url = true` in `prod/main.tf`; merge, then in Cloud Shell
+   `cd ~/smoke-tracker && git pull && cd infra/prod && terraform apply`. The plan shows `DATABASE_URL`
+   being added to the service.
 8. **Check.** Open `terraform output service_url`: Google's sample page. A second
    `terraform plan` reports no changes.
 
