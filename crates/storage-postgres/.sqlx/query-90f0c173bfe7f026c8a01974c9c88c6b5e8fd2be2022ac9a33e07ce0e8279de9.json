@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT room_id, level FROM smell_report_rooms WHERE smell_report_id = $1 ORDER BY room_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "room_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "room_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "level",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "level"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "90f0c173bfe7f026c8a01974c9c88c6b5e8fd2be2022ac9a33e07ce0e8279de9"
+}

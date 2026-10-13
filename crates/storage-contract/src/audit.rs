@@ -15,7 +15,7 @@ struct Populated {
     reading: Pm25Reading,
 }
 
-/// Seeding, a user, an event, a report (intensity 6), a reading and a correction.
+/// Seeding, a user, an event, a report (one room at level 6), a reading and a correction.
 async fn populate<S: Store>(fx: &Fixture<S>) -> Populated {
     let scene = scene(fx).await;
     let rooms = [scene.rooms[0].id, scene.rooms[1].id];
@@ -78,7 +78,7 @@ pub async fn a_direct_record_edit_is_detected<S: Store>(fx: &Fixture<S>) {
         .unwrap()
         .pop()
         .unwrap();
-    fx.raw("UPDATE smell_reports SET intensity = 9")
+    fx.raw("UPDATE smell_report_rooms SET level = 9")
         .await
         .unwrap();
 
@@ -152,16 +152,20 @@ pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
         .pop()
         .unwrap();
     let stored = fx.store.report(p.report.id).await.unwrap().unwrap();
-    let in_event = fx.store.reports_for_event(stored.event_id).await.unwrap();
+    let in_event = fx
+        .store
+        .reports_for_event(stored.event_id.unwrap())
+        .await
+        .unwrap();
     assert_eq!(in_event.len(), 1);
     let rooms = fx.store.rooms().await.unwrap();
     let target = rooms.last().unwrap();
     assert_eq!(target.i18n_key.as_deref(), Some("room-stairwell"));
-    assert!(!stored.values.rooms().contains(&target.id));
+    assert!(!stored.values.room_ids().contains(&target.id));
     // `populate` makes the only report, and the stairwell (the last room) is not linked to it.
     fx.raw(
-        "INSERT INTO smell_report_rooms (smell_report_id, room_id) \
-         SELECT (SELECT MIN(id) FROM smell_reports), (SELECT MAX(id) FROM rooms)",
+        "INSERT INTO smell_report_rooms (smell_report_id, room_id, level) \
+         SELECT (SELECT MIN(id) FROM smell_reports), (SELECT MAX(id) FROM rooms), 3",
     )
     .await
     .unwrap();
@@ -203,7 +207,7 @@ pub async fn an_edited_audit_entry_breaks_the_chain<S: Store>(fx: &Fixture<S>) {
         .remove(0);
     fx.drop_audit_guard().await;
     fx.raw(
-        r#"UPDATE audit_log SET after_json = replace(after_json, '"intensity":6', '"intensity":9') WHERE entity = 'smell_report'"#,
+        r#"UPDATE audit_log SET after_json = replace(after_json, '"level":6', '"level":9') WHERE entity = 'smell_report'"#,
     )
     .await
     .unwrap();

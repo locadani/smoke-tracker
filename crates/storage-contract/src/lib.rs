@@ -9,12 +9,16 @@
 //! migrated database, or `None` to skip.
 
 pub mod audit;
+pub mod corrections;
 pub mod events;
 pub mod fixture;
 pub mod lists;
+pub mod logbook;
+pub mod migrations;
 pub mod readings;
 pub mod reports;
 pub mod sessions;
+pub mod sweep;
 pub mod transactions;
 pub mod users;
 
@@ -51,6 +55,8 @@ macro_rules! contract_tests {
             events::moving_an_event_end_is_audited_and_checked,
             events::the_auto_close_notice_is_marked_seen_once,
             events::events_between_returns_overlapping_events,
+            events::unseen_auto_closed_events_are_listed_until_seen,
+            events::event_at_finds_the_event_whose_span_contains_the_time,
             reports::a_report_keeps_its_rooms_and_symptoms,
             reports::correcting_a_report_records_before_and_after,
             reports::moving_a_report_is_audited,
@@ -61,11 +67,13 @@ macro_rules! contract_tests {
             reports::an_unknown_room_on_correction_keeps_the_original_links,
             reports::moving_a_report_to_an_unknown_event_is_rejected,
             reports::an_unknown_symptom_rolls_back_the_report,
+            reports::reports_between_returns_live_reports_with_their_links,
             readings::a_reading_can_stand_alone_or_join_an_event,
             readings::correcting_and_deleting_a_reading_are_audited,
             readings::a_reading_for_an_unknown_event_is_rejected,
             readings::pm25_values_round_trip_exactly,
             readings::job_runs_are_remembered_but_not_audited,
+            readings::readings_between_returns_live_readings_in_the_window,
             audit::every_write_extends_one_unbroken_chain,
             audit::the_history_of_a_record_lists_its_entries,
             audit::a_direct_record_edit_is_detected,
@@ -89,6 +97,44 @@ macro_rules! contract_tests {
             sessions::expiring_a_user_ends_their_sessions,
             sessions::a_rolled_back_password_change_keeps_the_sessions,
             sessions::sessions_are_not_audited,
+            logbook::logging_now_with_nothing_open_starts_an_open_event,
+            logbook::same_smell_joins_the_open_event,
+            logbook::a_new_event_closes_the_open_one_at_its_last_report,
+            logbook::a_stale_answer_is_refused_and_changes_nothing,
+            logbook::a_new_event_answer_about_an_event_that_is_no_longer_open_is_stale,
+            logbook::a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_passed,
+            logbook::a_backdated_report_after_the_end_moves_the_end,
+            logbook::a_backdated_report_cannot_join_an_event_that_had_not_started,
+            logbook::continuing_an_auto_closed_event_reopens_it,
+            logbook::a_guest_cannot_continue_someone_elses_event,
+            logbook::a_reading_with_a_report_joins_the_reports_event,
+            logbook::a_reading_alone_joins_the_event_containing_its_time,
+            logbook::a_failed_report_rolls_back_the_new_event_close,
+            logbook::only_people_who_may_log_can_log,
+            logbook::a_time_in_the_future_is_refused,
+            logbook::a_no_smell_report_with_nothing_open_is_a_check_outside_any_event,
+            logbook::a_no_smell_report_joins_the_open_event_without_closing_it,
+            logbook::a_backdated_no_smell_report_joins_the_event_picked_or_none,
+            logbook::a_no_smell_report_answered_continue_now_is_a_check_and_reopens_nothing,
+            logbook::a_backdated_no_smell_report_cannot_continue_an_event,
+            logbook::a_backdated_no_smell_report_after_the_end_moves_the_end,
+            corrections::a_manual_close_needs_a_time_between_the_last_report_and_now,
+            corrections::only_residents_and_owning_guests_can_close_or_reopen,
+            corrections::reopening_waits_until_no_other_event_is_open,
+            corrections::correcting_after_the_end_moves_the_end_and_before_the_start_is_refused,
+            corrections::guests_can_correct_and_move_only_their_own_reports,
+            corrections::moving_to_a_new_event_creates_it_for_the_reports_author,
+            corrections::moving_after_the_end_of_the_target_moves_its_end,
+            corrections::a_report_cannot_move_into_another_days_event,
+            corrections::a_deleted_report_or_a_missing_target_event_is_not_found,
+            corrections::a_check_can_be_corrected_but_never_to_a_smell,
+            corrections::a_check_can_move_into_an_event_but_never_opens_one,
+            sweep::the_first_sweep_runs_and_is_remembered,
+            sweep::a_sweep_at_four_closes_the_event_at_its_last_report,
+            sweep::a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four,
+            sweep::an_event_opened_after_the_boundary_stays_open,
+            sweep::an_event_without_reports_closes_where_it_opened,
+            sweep::on_dst_days_the_sweep_still_runs_at_four_local,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use smoke_domain::clock::{FakeClock, SystemClock};
 use smoke_storage_contract::fixture::{Fixture, raw_runner, start};
+use smoke_storage_contract::migrations;
 use smoke_storage_sqlite::SqliteStore;
 use sqlx::SqlitePool;
 use tempfile::TempDir;
@@ -137,4 +138,75 @@ async fn a_second_writer_waits_at_begin_instead_of_failing_at_commit() {
         .begin(None)
         .await
         .expect("the lock is free again once the first transaction ends");
+}
+
+/// A database migrated up to `version`, with `rows` written by hand.
+async fn database_at(version: i64, rows: &'static str) -> (TempDir, String) {
+    let (dir, url) = database();
+    let pool = SqlitePool::connect(&format!("{url}?mode=rwc"))
+        .await
+        .unwrap();
+    sqlx::migrate!("./migrations")
+        .run_to(version, &pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(rows).execute(&pool).await.unwrap();
+    pool.close().await;
+    (dir, url)
+}
+
+#[tokio::test]
+async fn migration_0003_gives_each_room_its_reports_intensity() {
+    let (_dir, url) = database_at(2, migrations::ROWS_BEFORE_0003).await;
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    migrations::each_room_took_its_reports_intensity(&store).await;
+}
+
+#[tokio::test]
+async fn migration_0003_refuses_a_report_without_rooms_and_changes_nothing() {
+    let (_dir, url) = database_at(2, migrations::ROWS_BEFORE_0003).await;
+    let pool = SqlitePool::connect(&url).await.unwrap();
+    sqlx::raw_sql(migrations::REPORT_WITHOUT_ROOMS)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    let error = store.migrate().await.unwrap_err();
+    assert!(
+        format!("{error:?}").contains(migrations::NEEDS_A_ROOM),
+        "{error:?}"
+    );
+    let intensities: Vec<i64> =
+        sqlx::query_scalar("SELECT intensity FROM smell_reports ORDER BY id")
+            .fetch_all(&pool)
+            .await
+            .unwrap();
+    assert_eq!(intensities, [6, 4, 5]);
+}
+
+#[tokio::test]
+async fn after_the_rebuild_the_link_tables_still_refer_to_the_reports() {
+    let (_dir, url) = database();
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    let pool = SqlitePool::connect(&url).await.unwrap();
+    for table in ["smell_report_rooms", "smell_report_symptoms"] {
+        let targets: Vec<String> =
+            sqlx::query_scalar("SELECT \"table\" FROM pragma_foreign_key_list($1)")
+                .bind(table)
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(
+            targets.contains(&"smell_reports".to_owned()),
+            "{table}: {targets:?}"
+        );
+    }
 }

@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT l.smell_report_id, l.room_id, l.level FROM smell_report_rooms l JOIN smell_reports r ON r.id = l.smell_report_id WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 ORDER BY l.smell_report_id, l.room_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "smell_report_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "smell_report_id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "room_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "room_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "level",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "level"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "68f91c0a040b639e2243861debcbe5daa8561d30ea073f7fdfef68fee5699b7e"
+}

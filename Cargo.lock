@@ -1865,6 +1865,7 @@ name = "smoke-storage-contract"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "chrono-tz",
  "serde_json",
  "smoke-domain",
  "tokio",
@@ -1902,6 +1903,7 @@ name = "smoke-tracker"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "chrono-tz",
  "clap",
  "rpassword",
@@ -1927,6 +1929,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "chrono-tz",
  "fluent-syntax",
  "fluent-templates",
  "getrandom 0.4.3",

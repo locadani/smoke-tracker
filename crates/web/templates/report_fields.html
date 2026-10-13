@@ -1,0 +1,22 @@
+{# The room, level and symptom fields of the Log and correction forms. #}
+<fieldset class="rooms">
+  <legend>{{ tr.t("log-rooms") }}
+    <a href="/guide/rating" data-dialog="rating-guide" class="info">ⓘ {{ tr.t("log-how-to-rate") }}</a>
+  </legend>
+  <p class="group">{{ tr.t("log-inside") }}</p>
+  {% for choice in form.fields.inside %}
+  {% include "room_level.html" %}
+  {% endfor %}
+  {% if !form.fields.common.is_empty() %}
+  <p class="group">{{ tr.t("log-common") }}</p>
+  {% for choice in form.fields.common %}
+  {% include "room_level.html" %}
+  {% endfor %}
+  {% endif %}
+</fieldset>
+<fieldset class="checks">
+  <legend>{{ tr.t("log-symptoms") }}</legend>
+  {% for symptom in form.fields.symptoms %}
+  <label><input type="checkbox" name="symptom" value="{{ symptom.value }}"{% if symptom.checked %} checked{% endif %}> {{ symptom.label }}</label>
+  {% endfor %}
+</fieldset>

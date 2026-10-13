@@ -116,6 +116,21 @@ impl EventRepo for SqliteStore {
         .map(EventRow::into_event)
         .collect()
     }
+
+    async fn unseen_auto_closed(&self) -> StoreResult<Vec<Event>> {
+        sqlx::query_as!(
+            EventRow,
+            "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
+             FROM events WHERE close_reason = 'auto_0400' AND auto_close_notice_seen_at IS NULL \
+             ORDER BY opened_at, id"
+        )
+        .fetch_all(&mut *self.read().await?)
+        .await
+        .db()?
+        .into_iter()
+        .map(EventRow::into_event)
+        .collect()
+    }
 }
 
 impl EventWrites for SqliteTx {
@@ -125,6 +140,21 @@ impl EventWrites for SqliteTx {
 
     async fn event(&mut self, id: EventId) -> StoreResult<Option<Event>> {
         fetch(self.conn(), id).await
+    }
+
+    async fn event_at(&mut self, at: DateTime<Utc>) -> StoreResult<Option<Event>> {
+        sqlx::query_as!(
+            EventRow,
+            "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
+             FROM events WHERE opened_at <= $1 AND (closed_at IS NULL OR closed_at >= $1) \
+             ORDER BY opened_at DESC, id DESC LIMIT 1",
+            micros(at),
+        )
+        .fetch_optional(self.conn())
+        .await
+        .db()?
+        .map(EventRow::into_event)
+        .transpose()
     }
 
     async fn latest_report_at(&mut self, event: EventId) -> StoreResult<Option<DateTime<Utc>>> {

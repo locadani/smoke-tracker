@@ -1,0 +1,100 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at FROM smell_reports WHERE event_id = $1 AND deleted_at IS NULL ORDER BY observed_at, id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "event_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "event_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "observed_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "observed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "recorded_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "recorded_at"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "note",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "deleted_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "4f2da1ae659a7478db9a3ba8d2364690dbf1203bec05a7c93f0feb1e4562dba3"
+}

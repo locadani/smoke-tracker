@@ -45,7 +45,10 @@ async fn once_signed_in_the_account_language_wins_over_the_cookie() {
     );
     let session = session_cookie(&response).unwrap();
     let cookies = format!("{session}; lang=tr");
-    assert_eq!(heading(&app, get_with("/", &cookies)).await, "Home");
+    assert_eq!(
+        heading(&app, get_with("/", &cookies)).await,
+        "Registra un odore"
+    );
     let html = text(app.send(get_with("/", &cookies)).await).await;
     assert!(html.contains(r#"<html lang="it">"#), "{html}");
     assert!(html.contains("Accesso effettuato come partner."), "{html}");
@@ -83,5 +86,5 @@ async fn choosing_a_language_while_signed_in_saves_it_to_the_account() {
     assert_eq!(location(&response), Some("/"));
     let saved = app.store.user(user.id).await.unwrap().unwrap();
     assert_eq!(saved.locale, Locale::Tr);
-    assert_eq!(heading(&app, get_with("/", &session)).await, "Ana sayfa");
+    assert_eq!(heading(&app, get_with("/", &session)).await, "Koku kaydet");
 }

@@ -27,6 +27,7 @@ macro_rules! asset {
 
 const ASSETS: &[Asset] = &[
     asset!("app.css", "text/css; charset=utf-8"),
+    asset!("app.js", "text/javascript; charset=utf-8"),
     asset!("favicon.svg", "image/svg+xml"),
     asset!("htmx-2.0.11.min.js", "text/javascript; charset=utf-8"),
 ];

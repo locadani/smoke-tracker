@@ -3,8 +3,11 @@ use thiserror::Error;
 /// Every way a domain rule can reject input.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum DomainError {
-    #[error("intensity must be between 1 and 10, got {0}")]
-    InvalidIntensity(u8),
+    #[error("a level must be between 0 and 10, got {0}")]
+    InvalidLevel(u8),
+
+    #[error("a room can be listed only once in a report, got room {0} twice")]
+    RoomListedTwice(i64),
 
     #[error("PM2.5 must be a number between 0 and 1000 µg/m³, got {0}")]
     InvalidPm25(f64),

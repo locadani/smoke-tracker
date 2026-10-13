@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("events-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("events-title") }}</h1>
+<nav class="months">
+  <a href="/events?month={{ previous }}">{{ tr.t("events-previous") }}</a>
+  <strong>{{ month }}</strong>
+  <a href="/events?month={{ next }}">{{ tr.t("events-next") }}</a>
+</nav>
+{% for day in days %}
+<section>
+  <h2>{{ day.date }}</h2>
+  <ul class="rows">
+    {% for event in day.events %}
+    <li><a href="/events/{{ event.id }}">{{ event.span }}</a> · {{ tr.n("summary-reports", event.reports) }}{% if let Some(max) = event.max_intensity %} · {{ tr.t1("events-max-intensity", "level", max) }}{% endif %}</li>
+    {% endfor %}
+    {% for check in day.checks %}
+    <li><a href="/reports/{{ check.id }}">{{ check.at }} · {{ tr.t("events-check") }}</a></li>
+    {% endfor %}
+    {% for reading in day.readings %}
+    <li>{{ reading.at }} · {{ tr.t1("event-pm25", "value", reading.value) }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% else %}
+<p>{{ tr.t("events-none") }}</p>
+{% endfor %}
+{% endblock %}

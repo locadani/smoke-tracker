@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at FROM smell_reports WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "event_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "event_id"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "observed_at",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "observed_at"
+          }
+        }
+      },
+      {
+        "name": "recorded_at",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "recorded_at"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "name": "deleted_at",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "4d164cd174258ed127f7ec72bbd1a05771c197dc0316111cff18afb51dbaf282"
+}

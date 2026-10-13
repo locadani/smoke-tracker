@@ -14,6 +14,7 @@ askama.workspace = true
 async-trait.workspace = true
 axum.workspace = true
 chrono.workspace = true
+chrono-tz.workspace = true
 fluent-templates.workspace = true
 getrandom.workspace = true
 hex.workspace = true

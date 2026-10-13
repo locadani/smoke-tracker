@@ -3,8 +3,10 @@
 use chrono::{DateTime, TimeDelta, Utc};
 
 use crate::DomainError;
+use crate::permissions::{Action, Actor, can};
+use crate::records::Event;
 use crate::schedule::DailySchedule;
-use crate::types::EventId;
+use crate::types::{EventId, Role};
 
 /// Reports observed longer ago than this count as backdated.
 pub const BACKDATE_THRESHOLD: TimeDelta = TimeDelta::minutes(10);
@@ -45,7 +47,8 @@ pub struct EventSummary {
 /// The question to ask before saving a report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogPrompt {
-    /// Nothing to ask: the report starts a new event.
+    /// Nothing to ask: the report starts a new event or, if it is a no-smell report, joins the
+    /// open event or stands alone as a check.
     Direct,
     /// "Same smell still going?" about the open event.
     SameSmell(EventSummary),
@@ -67,6 +70,16 @@ pub fn log_prompt(
         (ObservedTime::Now, Some(open), _) => LogPrompt::SameSmell(open),
         (ObservedTime::Now, None, Some(closed)) => LogPrompt::AutoClosed(closed),
         (ObservedTime::Now, None, None) => LogPrompt::Direct,
+    }
+}
+
+/// The prompt for a no-smell report (spec §7.1, §7.2): none when logged now, since it joins the
+/// open event or stands alone; "Which event was this?" when backdated, with "no event" in place
+/// of a new one.
+pub fn no_smell_prompt(observed: ObservedTime) -> LogPrompt {
+    match observed {
+        ObservedTime::Now => LogPrompt::Direct,
+        ObservedTime::Backdated => LogPrompt::WhichEvent,
     }
 }
 
@@ -109,6 +122,25 @@ pub fn validate_manual_close(
     }
 }
 
+/// Whether a report observed at `observed_at` (in the past) can belong to `event`: the event had
+/// started by then and was still running on that local day. "Which event was this?" offers
+/// exactly these events, and joining or moving into any other is refused.
+pub fn can_join_backdated(
+    event: &Event,
+    observed_at: DateTime<Utc>,
+    schedule: &DailySchedule,
+) -> bool {
+    let (day_start, _) = schedule.day_span(schedule.local_date(observed_at));
+    event.opened_at <= observed_at && event.closed.is_none_or(|closed| closed.at >= day_start)
+}
+
+/// Who is told that `owner`'s event was auto-closed (spec §7.4): the owner, and residents when
+/// the owner is a guest; only while they can log, since the notice is part of logging.
+pub fn auto_close_notice_is_for(viewer: &Actor, owner: &Actor, now: DateTime<Utc>) -> bool {
+    can(viewer, Action::LogEntry, now)
+        && (viewer.id == owner.id || (viewer.role == Role::Resident && owner.role == Role::Guest))
+}
+
 /// Indices of reports that follow a gap longer than [`LARGE_GAP`]. `observed_times` must be
 /// sorted ascending.
 pub fn large_gap_indices(observed_times: &[DateTime<Utc>]) -> Vec<usize> {
@@ -125,6 +157,8 @@ mod tests {
     use chrono_tz::Europe::Rome;
 
     use super::*;
+    use crate::records::Closure;
+    use crate::types::{CloseReason, UserId};
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
@@ -239,6 +273,15 @@ mod tests {
         assert_eq!(log_prompt(ObservedTime::Now, None, None), LogPrompt::Direct);
     }
 
+    #[test]
+    fn a_no_smell_report_is_asked_only_which_event_when_backdated() {
+        assert_eq!(no_smell_prompt(ObservedTime::Now), LogPrompt::Direct);
+        assert_eq!(
+            no_smell_prompt(ObservedTime::Backdated),
+            LogPrompt::WhichEvent
+        );
+    }
+
     // --- new_event_state ---
 
     #[test]
@@ -326,6 +369,74 @@ mod tests {
             ),
             Err(DomainError::CloseInFuture)
         );
+    }
+
+    // --- can_join_backdated ---
+
+    fn event(opened: &str, closed: Option<&str>) -> Event {
+        Event {
+            id: EventId(1),
+            owner_id: UserId(1),
+            opened_at: t(opened),
+            closed: closed.map(|at| Closure {
+                at: t(at),
+                reason: CloseReason::Manual,
+            }),
+            auto_close_notice_seen_at: None,
+            recorded_at: t(opened),
+        }
+    }
+
+    #[test]
+    fn a_backdated_report_joins_events_that_had_started_and_ran_that_day() {
+        let s = schedule();
+        let evening = event("2026-01-14T18:00:00Z", Some("2026-01-14T19:00:00Z"));
+        assert!(can_join_backdated(&evening, t("2026-01-14T18:30:00Z"), &s));
+        assert!(
+            can_join_backdated(&evening, t("2026-01-14T22:00:00Z"), &s),
+            "later that day: the end will move"
+        );
+        assert!(!can_join_backdated(&evening, t("2026-01-14T17:59:00Z"), &s));
+        assert!(
+            !can_join_backdated(&evening, t("2026-01-15T10:00:00Z"), &s),
+            "the next day"
+        );
+        let open = event("2026-01-14T18:00:00Z", None);
+        assert!(can_join_backdated(&open, t("2026-01-15T10:00:00Z"), &s));
+    }
+
+    #[test]
+    fn an_event_running_past_midnight_belongs_to_both_days() {
+        let s = schedule();
+        let late = event("2026-01-14T22:30:00Z", Some("2026-01-15T00:30:00Z"));
+        assert!(can_join_backdated(&late, t("2026-01-15T00:10:00Z"), &s));
+        assert!(can_join_backdated(&late, t("2026-01-15T09:00:00Z"), &s));
+    }
+
+    // --- auto_close_notice_is_for ---
+
+    fn person(id: i64, role: Role, expires_at: Option<&str>) -> Actor {
+        Actor {
+            id: UserId(id),
+            role,
+            expires_at: expires_at.map(t),
+        }
+    }
+
+    #[test]
+    fn the_notice_goes_to_the_owner_and_to_residents_for_guests() {
+        let resident = person(1, Role::Resident, None);
+        let partner = person(2, Role::Resident, None);
+        let guest = person(3, Role::Guest, Some("2026-02-01T00:00:00Z"));
+        let viewer = person(4, Role::Viewer, None);
+        assert!(auto_close_notice_is_for(&resident, &resident, now()));
+        assert!(!auto_close_notice_is_for(&partner, &resident, now()));
+        assert!(!auto_close_notice_is_for(&guest, &resident, now()));
+        assert!(auto_close_notice_is_for(&guest, &guest, now()));
+        assert!(auto_close_notice_is_for(&partner, &guest, now()));
+        assert!(!auto_close_notice_is_for(&viewer, &guest, now()));
+        let expired = person(3, Role::Guest, Some("2026-01-01T00:00:00Z"));
+        assert!(!auto_close_notice_is_for(&expired, &expired, now()));
     }
 
     // --- large_gap_indices ---

@@ -7,12 +7,15 @@ mod auth;
 pub mod config;
 mod cookies;
 mod error;
+mod forms;
 mod i18n;
+mod labels;
 mod request_id;
 mod routes;
 mod security;
 mod sessions;
 mod state;
+mod time;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -39,7 +42,20 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
 pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     auth::password::prepare_dummy_hash();
     let signed_in = Router::new()
-        .route("/", get(routes::home::show))
+        .route("/", get(routes::log::show::<S>))
+        .route("/guide/rating", get(routes::guide::rating))
+        .route("/log", post(routes::entries::submit::<S>))
+        .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
+        .route("/events", get(routes::events::list::<S>))
+        .route("/events/{id}", get(routes::events::show::<S>))
+        .route("/events/{id}/close", post(routes::events::close::<S>))
+        .route("/events/{id}/reopen", post(routes::events::reopen::<S>))
+        .route("/reports/{id}", get(routes::reports::show::<S>))
+        .route(
+            "/reports/{id}/correct",
+            get(routes::reports::correct_form::<S>).post(routes::reports::correct::<S>),
+        )
+        .route("/reports/{id}/move", post(routes::reports::relocate::<S>))
         .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
         .merge(signed_in)

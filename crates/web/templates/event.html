@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t1("event-title", "date", date) }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t1("event-title", "date", date) }}</h1>
+<p>{{ span }}{% if let Some(reason) = reason %} · {{ tr.t(reason) }}{% endif %}</p>
+{% if let Some(owner) = owner %}
+<p>{{ tr.t1("event-started-by", "username", owner) }}</p>
+{% endif %}
+{% if let Some(error) = error %}
+<p class="notice" role="alert">{{ tr.t(error) }}</p>
+{% endif %}
+<ol class="timeline">
+  {% for entry in entries %}
+  {% if entry.gap_before %}
+  <li class="gap" role="note">{{ tr.t("event-gap") }}</li>
+  {% endif %}
+  <li>
+    <span class="at">{{ entry.at }}</span>
+    {% if let Some(report) = entry.report %}<a href="/reports/{{ report }}">{{ entry.text }}</a>{% else %}{{ entry.text }}{% endif %}
+    {% if let Some(by) = entry.by %}<span class="by">({{ by }})</span>{% endif %}
+  </li>
+  {% endfor %}
+</ol>
+{% if let Some(close_at) = close_at %}
+<form method="post" action="/events/{{ id }}/close" class="stack">
+  <label>{{ tr.t("event-close-at") }}
+    <input type="datetime-local" name="closed_at" value="{{ close_at }}" required>
+  </label>
+  <button type="submit">{{ tr.t("event-close") }}</button>
+</form>
+{% endif %}
+{% if can_reopen %}
+<form method="post" action="/events/{{ id }}/reopen">
+  <button type="submit" class="secondary">{{ tr.t("event-reopen") }}</button>
+</form>
+{% endif %}
+<p><a href="/events">{{ tr.t("events-title") }}</a></p>
+{% endblock %}

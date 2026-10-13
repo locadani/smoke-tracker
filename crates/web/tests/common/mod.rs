@@ -10,11 +10,17 @@ use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::header::{CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderName, Request, Response, StatusCode};
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
-use smoke_domain::records::{NewUser, User};
-use smoke_domain::repos::{Commit, Transactional, UserWrites};
+use smoke_domain::logbook::{EventChoice, Logged, SmellEntry, log_reading, log_smell};
+use smoke_domain::records::{NewUser, RoomLevel, User};
+use smoke_domain::records::{Pm25Reading, ReportValues};
+use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
+use smoke_domain::schedule::DailySchedule;
+use smoke_domain::starter::seed_starter_lists;
+use smoke_domain::sweep::auto_close;
+use smoke_domain::types::{Level, Pm25, RoomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -47,9 +53,11 @@ impl TestApp {
         let clock = Arc::new(FakeClock::new(SystemClock.now()));
         let store = SqliteStore::connect(&db_url, clock.clone()).await.unwrap();
         store.migrate().await.unwrap();
+        seed_starter_lists(&store).await.unwrap();
         let config = WebConfig {
             base_url: BaseUrl::parse(base_url).unwrap(),
             client_ip_header: client_ip_header.map(HeaderName::from_static),
+            schedule: schedule(),
         };
         let router = smoke_web::router(AppState::new(store.clone(), clock.clone(), config));
         Self {
@@ -79,6 +87,100 @@ impl TestApp {
         user
     }
 
+    /// Sets the fake clock. Sessions still work: `tower-sessions` stamps their expiry with the
+    /// real time, which is later than any instant the tests use.
+    pub fn at(&self, instant: &str) {
+        self.clock.set(t(instant));
+    }
+
+    /// The id of a starter room, e.g. `room("room-bedroom")`.
+    pub async fn room(&self, key: &str) -> RoomId {
+        let rooms = self.store.rooms().await.unwrap();
+        rooms
+            .iter()
+            .find(|r| r.i18n_key.as_deref() == Some(key))
+            .unwrap()
+            .id
+    }
+
+    /// Logs a report through the domain, as the Log form would, at `at` (RFC 3339): every room
+    /// in `rooms` at `level`, or the living room alone when `rooms` is empty.
+    pub async fn log(
+        &self,
+        user: &User,
+        at: &str,
+        level: u8,
+        rooms: &[RoomId],
+        choice: EventChoice,
+    ) -> Logged {
+        let level = Level::new(level).unwrap();
+        let rooms = match rooms {
+            [] => vec![self.room("room-living-room").await],
+            rooms => rooms.to_vec(),
+        };
+        let rooms = rooms
+            .into_iter()
+            .map(|room| RoomLevel { room, level })
+            .collect();
+        self.log_values(user, at, rooms, choice).await
+    }
+
+    /// Logs "No smell" for the whole home through the domain, at `at` (RFC 3339).
+    pub async fn no_smell(&self, user: &User, at: &str) -> Logged {
+        let choice = EventChoice::New { replacing: None };
+        self.log_values(user, at, vec![], choice).await
+    }
+
+    async fn log_values(
+        &self,
+        user: &User,
+        at: &str,
+        rooms: Vec<RoomLevel>,
+        choice: EventChoice,
+    ) -> Logged {
+        let entry = SmellEntry {
+            observed_at: t(at),
+            values: ReportValues::new(rooms, vec![], None).unwrap(),
+            pm25: None,
+        };
+        let mut tx = self.store.begin(Some(user.id)).await.unwrap();
+        let logged = log_smell(
+            &mut tx,
+            &user.actor(),
+            entry,
+            choice,
+            &schedule(),
+            self.clock.now(),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        logged
+    }
+
+    /// Logs a PM2.5 reading on its own, as "Log PM2.5 only" would.
+    pub async fn log_pm25(&self, user: &User, at: &str, value: f64) -> Pm25Reading {
+        let mut tx = self.store.begin(Some(user.id)).await.unwrap();
+        let reading = log_reading(
+            &mut tx,
+            &user.actor(),
+            t(at),
+            Pm25::new(value).unwrap(),
+            self.clock.now(),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        reading
+    }
+
+    /// Runs the auto-close sweep at the fake clock's time, as the server's timer would.
+    pub async fn sweep(&self) {
+        auto_close(&self.store, &schedule(), self.clock.now())
+            .await
+            .unwrap();
+    }
+
     pub async fn send(&self, request: Request<Body>) -> Response<Body> {
         self.router.clone().oneshot(request).await.unwrap()
     }
@@ -93,6 +195,15 @@ impl TestApp {
         assert_eq!(response.status(), StatusCode::SEE_OTHER, "sign-in failed");
         session_cookie(&response).expect("a session cookie")
     }
+}
+
+pub fn t(instant: &str) -> DateTime<Utc> {
+    instant.parse().unwrap()
+}
+
+/// Rome, auto-close at 04:00: what the test app is configured with.
+pub fn schedule() -> DailySchedule {
+    DailySchedule::new(chrono_tz::Europe::Rome, 4).unwrap()
 }
 
 pub fn get(path: &str) -> Request<Body> {

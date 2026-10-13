@@ -12,7 +12,7 @@ use smoke_domain::repos::{
 use smoke_domain::types::{CloseReason, EventId, RoomId, SymptomId};
 
 use crate::Fixture;
-use crate::fixture::{add_event, add_report, last_entry, report_values, scene, start};
+use crate::fixture::{FIRST_ROOM, add_event, add_report, last_entry, report_values, scene, start};
 
 pub async fn a_report_keeps_its_rooms_and_symptoms<S>(fx: &Fixture<S>)
 where
@@ -27,11 +27,11 @@ where
         fx,
         &scene,
         observed_at,
-        report_values(6, &[r2, r0, r2], &[scene.symptoms[0].id]),
+        report_values(6, &[r2, r0], &[scene.symptoms[0].id]),
     )
     .await;
 
-    assert_eq!(report.values.rooms(), [r0, r2]);
+    assert_eq!(report.values.room_ids(), [r0, r2]);
     assert_eq!(report.values.symptoms(), [scene.symptoms[0].id]);
     assert_eq!(
         (
@@ -40,7 +40,7 @@ where
             report.event_id,
             report.user_id
         ),
-        (observed_at, start(), scene.event.id, scene.user.id)
+        (observed_at, start(), Some(scene.event.id), scene.user.id)
     );
     assert_eq!(
         fx.store.report(report.id).await.unwrap(),
@@ -81,9 +81,11 @@ where
     assert_eq!(entry.at_micros, fx.clock.now().timestamp_micros());
     let before = entry.before.unwrap();
     let after = entry.after.unwrap();
-    assert_eq!(before["intensity"], 6);
-    assert_eq!(after["intensity"], 7);
-    assert_eq!(after["rooms"], json!([r0.0, r2.0]));
+    assert_eq!(before["rooms"], json!([{ "room": r0.0, "level": 6 }]));
+    assert_eq!(
+        after["rooms"],
+        json!([{ "room": r0.0, "level": 7 }, { "room": r2.0, "level": 7 }])
+    );
 }
 
 pub async fn moving_a_report_is_audited<S>(fx: &Fixture<S>)
@@ -105,11 +107,11 @@ where
         }),
     )
     .await;
-    let report = add_report(fx, &scene, start(), report_values(4, &[], &[])).await;
+    let report = add_report(fx, &scene, start(), report_values(4, &[FIRST_ROOM], &[])).await;
 
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
     let moved = tx.move_report(report.id, other.id).await.unwrap();
-    assert_eq!(moved.event_id, other.id);
+    assert_eq!(moved.event_id, Some(other.id));
     tx.move_report(report.id, other.id).await.unwrap();
     tx.commit().await.unwrap();
 
@@ -140,7 +142,7 @@ where
         + AuditRepo,
 {
     let scene = scene(fx).await;
-    let report = add_report(fx, &scene, start(), report_values(5, &[], &[])).await;
+    let report = add_report(fx, &scene, start(), report_values(5, &[FIRST_ROOM], &[])).await;
     fx.clock.advance(TimeDelta::minutes(1));
 
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
@@ -148,7 +150,7 @@ where
     assert_eq!(deleted.deleted_at, Some(fx.clock.now()));
     for error in [
         tx.delete_report(report.id).await.unwrap_err(),
-        tx.correct_report(report.id, start(), report_values(6, &[], &[]))
+        tx.correct_report(report.id, start(), report_values(6, &[FIRST_ROOM], &[]))
             .await
             .unwrap_err(),
         tx.move_report(report.id, scene.event.id).await.unwrap_err(),
@@ -178,8 +180,8 @@ where
     let scene = scene(fx).await;
     let earlier = start() - TimeDelta::minutes(30);
     let later = start() - TimeDelta::minutes(10);
-    add_report(fx, &scene, earlier, report_values(3, &[], &[])).await;
-    let last = add_report(fx, &scene, later, report_values(5, &[], &[])).await;
+    add_report(fx, &scene, earlier, report_values(3, &[FIRST_ROOM], &[])).await;
+    let last = add_report(fx, &scene, later, report_values(5, &[FIRST_ROOM], &[])).await;
 
     let mut tx = fx.store.begin(None).await.unwrap();
     assert_eq!(
@@ -218,7 +220,7 @@ where
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
     let error = tx
         .create_report(NewReport {
-            event_id: scene.event.id,
+            event_id: Some(scene.event.id),
             user_id: scene.user.id,
             observed_at: start(),
             values: report_values(5, &[RoomId(999)], &[]),
@@ -265,10 +267,10 @@ where
     tx.commit().await.unwrap();
 
     let stored = fx.store.report(report.id).await.unwrap().unwrap();
-    assert_eq!(stored.values.rooms(), [r2]);
+    assert_eq!(stored.values.room_ids(), [r2]);
     assert!(stored.values.symptoms().is_empty());
     let after = last_entry(fx).await.record.after.unwrap();
-    assert_eq!(after["rooms"], json!([r2.0]));
+    assert_eq!(after["rooms"], json!([{ "room": r2.0, "level": 6 }]));
     assert_eq!(after["symptoms"], json!([]));
 }
 
@@ -311,7 +313,7 @@ where
         + AuditRepo,
 {
     let scene = scene(fx).await;
-    let report = add_report(fx, &scene, start(), report_values(4, &[], &[])).await;
+    let report = add_report(fx, &scene, start(), report_values(4, &[FIRST_ROOM], &[])).await;
     let entries_before = fx.store.audit_log().await.unwrap().len();
 
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
@@ -339,10 +341,10 @@ where
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
     let error = tx
         .create_report(NewReport {
-            event_id: scene.event.id,
+            event_id: Some(scene.event.id),
             user_id: scene.user.id,
             observed_at: start(),
-            values: report_values(5, &[], &[SymptomId(999)]),
+            values: report_values(5, &[FIRST_ROOM], &[SymptomId(999)]),
         })
         .await
         .unwrap_err();
@@ -360,4 +362,36 @@ where
             .is_empty()
     );
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
+}
+
+pub async fn reports_between_returns_live_reports_with_their_links<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReportWrites>
+        + ListRepo
+        + ReportRepo,
+{
+    let scene = scene(fx).await;
+    let (r0, r1, s0) = (scene.rooms[0].id, scene.rooms[1].id, scene.symptoms[0].id);
+    let at = |minutes: i64| start() - TimeDelta::minutes(minutes);
+    let before = add_report(fx, &scene, at(50), report_values(2, &[r0], &[])).await;
+    let first = add_report(fx, &scene, at(40), report_values(5, &[r1, r0], &[s0])).await;
+    let second = add_report(fx, &scene, at(30), report_values(6, &[FIRST_ROOM], &[])).await;
+    let deleted = add_report(fx, &scene, at(20), report_values(7, &[r0], &[s0])).await;
+    let at_end = add_report(fx, &scene, at(10), report_values(8, &[r1], &[])).await;
+    let mut tx = fx.store.begin(None).await.unwrap();
+    tx.delete_report(deleted.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let found = fx.store.reports_between(at(40), at(10)).await.unwrap();
+    assert_eq!(found, [first.clone(), second]);
+    assert_eq!(found[0].values.room_ids(), [r0, r1]);
+    assert_eq!(found[0].values.symptoms(), [s0]);
+    assert!(!found.contains(&before) && !found.contains(&at_end));
+    assert!(
+        fx.store
+            .reports_between(at(5), start())
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }

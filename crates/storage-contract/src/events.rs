@@ -329,3 +329,58 @@ where
     assert!(between(at(4), at(5)).await.is_empty());
     assert_eq!(between(at(10), at(11)).await, [open.id]);
 }
+
+pub async fn unseen_auto_closed_events_are_listed_until_seen<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let at = |hours: i64| start() - TimeDelta::hours(48) + TimeDelta::hours(hours);
+    let auto = |hours: i64| closure(at(hours), CloseReason::Auto0400);
+    let later = add_event(fx, owner.id, at(24), auto(25)).await;
+    let earlier = add_event(fx, owner.id, at(0), auto(1)).await;
+    add_event(fx, owner.id, at(4), closure(at(5), CloseReason::Manual)).await;
+    add_event(fx, owner.id, at(30), None).await;
+
+    let unseen = |events: Vec<Event>| events.into_iter().map(|e| e.id).collect::<Vec<_>>();
+    assert_eq!(
+        unseen(fx.store.unseen_auto_closed().await.unwrap()),
+        [earlier.id, later.id]
+    );
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.mark_auto_close_notice_seen(earlier.id).await.unwrap();
+    tx.commit().await.unwrap();
+    assert_eq!(
+        unseen(fx.store.unseen_auto_closed().await.unwrap()),
+        [later.id]
+    );
+}
+
+pub async fn event_at_finds_the_event_whose_span_contains_the_time<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites>,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let at = |hours: i64| start() - TimeDelta::hours(12) + TimeDelta::hours(hours);
+    let first = add_event(fx, owner.id, at(0), closure(at(2), CloseReason::Manual)).await;
+    let overlapping = add_event(fx, owner.id, at(1), closure(at(3), CloseReason::Manual)).await;
+    let open = add_event(fx, owner.id, at(6), None).await;
+
+    let mut tx = fx.store.begin(None).await.unwrap();
+    let mut found = async |t| tx.event_at(t).await.unwrap().map(|e| e.id);
+    assert_eq!(found(at(0)).await, Some(first.id));
+    assert_eq!(
+        found(at(2)).await,
+        Some(overlapping.id),
+        "the latest start wins"
+    );
+    assert_eq!(
+        found(at(3)).await,
+        Some(overlapping.id),
+        "the end is included"
+    );
+    assert_eq!(found(at(4)).await, None);
+    assert_eq!(found(at(0) - TimeDelta::seconds(1)).await, None);
+    assert_eq!(found(at(6)).await, Some(open.id));
+    assert_eq!(found(start() + TimeDelta::days(1)).await, Some(open.id));
+}

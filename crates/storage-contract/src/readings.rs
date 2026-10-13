@@ -216,3 +216,35 @@ where
     );
     assert!(fx.store.audit_log().await.unwrap().is_empty());
 }
+
+pub async fn readings_between_returns_live_readings_in_the_window<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReadingWrites>
+        + ListRepo
+        + ReadingRepo,
+{
+    let scene = scene(fx).await;
+    let at = |minutes: i64| start() - TimeDelta::minutes(minutes);
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    let mut add = async |minutes: i64, event_id: Option<EventId>| {
+        tx.create_reading(NewReading {
+            user_id: scene.user.id,
+            event_id,
+            observed_at: at(minutes),
+            value: pm25(10.0),
+        })
+        .await
+        .unwrap()
+    };
+    let before = add(50, None).await;
+    let standalone = add(40, None).await;
+    let linked = add(30, Some(scene.event.id)).await;
+    let deleted = add(20, None).await;
+    let at_end = add(10, None).await;
+    tx.delete_reading(deleted.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let found = fx.store.readings_between(at(40), at(10)).await.unwrap();
+    assert_eq!(found, [standalone, linked]);
+    assert!(!found.contains(&before) && !found.contains(&at_end));
+}

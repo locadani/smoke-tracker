@@ -3,6 +3,7 @@
 use std::net::IpAddr;
 
 use axum::http::{HeaderName, Uri};
+use smoke_domain::schedule::DailySchedule;
 use thiserror::Error;
 
 /// The public address of the app (`APP_BASE_URL`). It decides the cookie flags, HSTS, and the
@@ -85,6 +86,9 @@ pub struct WebConfig {
     /// A header set by a trusted reverse proxy that carries the client's address
     /// (`CLIENT_IP_HEADER`). Without it the peer address is used.
     pub client_ip_header: Option<HeaderName>,
+    /// The local time zone pages show and read times in, and the daily auto-close hour
+    /// (`APP_TIMEZONE`, `AUTO_CLOSE_HOUR`).
+    pub schedule: DailySchedule,
 }
 
 #[cfg(test)]

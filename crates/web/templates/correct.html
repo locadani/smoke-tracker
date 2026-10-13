@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("report-correct") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("report-correct") }}</h1>
+<p>{{ tr.t("correct-hint") }}</p>
+{% if check %}
+<p>{{ tr.t("correct-check-hint") }}</p>
+{% endif %}
+{% if let Some(error) = form.error %}
+<p class="notice" role="alert">{{ tr.t(error) }}</p>
+{% endif %}
+<form method="post" action="/reports/{{ id }}/correct" class="stack">
+  {% include "report_fields.html" %}
+  <label>{{ tr.t("correct-time") }}
+    <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" required>
+  </label>
+  <label>{{ tr.t("report-note") }}
+    <textarea name="note" rows="2" maxlength="2000">{{ form.note }}</textarea>
+  </label>
+  <button type="submit">{{ tr.t("correct-submit") }}</button>
+</form>
+<p><a href="/reports/{{ id }}">{{ tr.t("prompt-cancel") }}</a></p>
+{% include "rating_dialog.html" %}
+{% endblock %}

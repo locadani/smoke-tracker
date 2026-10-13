@@ -32,8 +32,6 @@ pub fn database_url(get: impl Fn(&str) -> Option<String>) -> Result<String, Conf
 #[derive(Debug, Clone)]
 pub struct ServeConfig {
     pub web: WebConfig,
-    /// The local time zone and the auto-close hour (used by the sweep in milestone 4).
-    pub schedule: DailySchedule,
     pub bind_addr: SocketAddr,
 }
 
@@ -79,8 +77,8 @@ impl ServeConfig {
             web: WebConfig {
                 base_url,
                 client_ip_header,
+                schedule,
             },
-            schedule,
             bind_addr,
         })
     }
@@ -119,8 +117,8 @@ mod tests {
             ServeConfig::from_lookup(lookup(&[("APP_BASE_URL", "https://smoke.example.org/")]))
                 .unwrap();
         assert_eq!(config.web.base_url.origin(), "https://smoke.example.org");
-        assert_eq!(config.schedule.tz(), chrono_tz::Europe::Rome);
-        assert_eq!(config.schedule.hour(), 4);
+        assert_eq!(config.web.schedule.tz(), chrono_tz::Europe::Rome);
+        assert_eq!(config.web.schedule.hour(), 4);
         assert_eq!(config.bind_addr, "127.0.0.1:8080".parse().unwrap());
         assert_eq!(config.web.client_ip_header, None);
         assert_eq!(
@@ -139,8 +137,8 @@ mod tests {
             ("CLIENT_IP_HEADER", "Fly-Client-IP"),
         ]))
         .unwrap();
-        assert_eq!(config.schedule.tz(), chrono_tz::Europe::Istanbul);
-        assert_eq!(config.schedule.hour(), 5);
+        assert_eq!(config.web.schedule.tz(), chrono_tz::Europe::Istanbul);
+        assert_eq!(config.web.schedule.hour(), 5);
         assert_eq!(config.bind_addr, "0.0.0.0:3000".parse().unwrap());
         assert_eq!(config.web.client_ip_header.unwrap(), "fly-client-ip");
     }

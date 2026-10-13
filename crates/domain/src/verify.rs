@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 use crate::audit::{AuditEntity, ChainError, ChainedEntry, GENESIS_HASH, verify_chain};
-use crate::records::Audited;
+use crate::records::{Audited, SmellReport};
 use crate::repos::{SnapshotRepo, StoreResult};
 
 /// The audit log and every audited record, read at one moment.
@@ -96,7 +96,7 @@ pub fn verify_snapshots(entries: &[ChainedEntry], current: &[Snapshot]) -> Vec<S
                 entity: snapshot.entity,
                 entity_id: snapshot.entity_id,
             }),
-            Some(entry) if entry.record.after.as_ref() != Some(&snapshot.value) => {
+            Some(entry) if !matches_audited(entry, &snapshot.value) => {
                 problems.push(SnapshotProblem::Differs {
                     entity: snapshot.entity,
                     entity_id: snapshot.entity_id,
@@ -116,6 +116,18 @@ pub fn verify_snapshots(entries: &[ChainedEntry], current: &[Snapshot]) -> Vec<S
     }
     problems.sort_by_key(SnapshotProblem::key);
     problems
+}
+
+/// Whether `current` equals the entry's `after` snapshot. Report snapshots audited before rooms
+/// had their own levels are compared in today's shape (decision #104).
+fn matches_audited(entry: &ChainedEntry, current: &Value) -> bool {
+    match &entry.record.after {
+        Some(after) if entry.record.entity == AuditEntity::SmellReport => {
+            *SmellReport::upgrade_snapshot(after) == *current
+        }
+        Some(after) => after == current,
+        None => false,
+    }
 }
 
 /// Runs both checks against a store.
@@ -199,9 +211,13 @@ mod tests {
             AuditEntity::SmellReport,
             7,
             AuditAction::Create,
-            json!({ "intensity": 6 }),
+            json!({ "rooms": [{ "room": 1, "level": 6 }] }),
         )]);
-        let current = [snap(AuditEntity::SmellReport, 7, json!({ "intensity": 9 }))];
+        let current = [snap(
+            AuditEntity::SmellReport,
+            7,
+            json!({ "rooms": [{ "room": 1, "level": 9 }] }),
+        )];
         assert_eq!(
             verify_snapshots(&entries, &current),
             [SnapshotProblem::Differs {
@@ -210,6 +226,23 @@ mod tests {
                 audit_id: 1
             }]
         );
+    }
+
+    #[test]
+    fn a_report_audited_before_room_levels_still_matches_its_converted_record() {
+        let entries = chain(&[(
+            AuditEntity::SmellReport,
+            7,
+            AuditAction::Create,
+            json!({ "intensity": 6, "rooms": [1, 3] }),
+        )]);
+        let converted = json!({ "rooms": [{ "room": 1, "level": 6 }, { "room": 3, "level": 6 }] });
+        let current = [snap(AuditEntity::SmellReport, 7, converted)];
+        assert_eq!(verify_snapshots(&entries, &current), []);
+
+        let edited = json!({ "rooms": [{ "room": 1, "level": 6 }, { "room": 3, "level": 9 }] });
+        let current = [snap(AuditEntity::SmellReport, 7, edited)];
+        assert_eq!(verify_snapshots(&entries, &current).len(), 1);
     }
 
     #[test]

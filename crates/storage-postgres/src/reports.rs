@@ -1,10 +1,12 @@
 //! Smell reports, with their rooms and symptoms in link tables. Deleted softly.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::records::{NewReport, ReportValues, SmellReport};
+use smoke_domain::records::{NewReport, ReportValues, RoomLevel, SmellReport};
 use smoke_domain::repos::{Conflict, ReportRepo, ReportWrites, StoreError, StoreResult};
-use smoke_domain::types::{EventId, Intensity, ReportId, RoomId, SymptomId, UserId};
+use smoke_domain::types::{EventId, Level, ReportId, RoomId, SymptomId, UserId};
 use sqlx::PgConnection;
 
 use crate::convert::{corrupt, instant, micros, opt_instant};
@@ -13,23 +15,25 @@ use crate::{PostgresStore, PostgresTx};
 
 struct ReportRow {
     id: i64,
-    event_id: i64,
+    event_id: Option<i64>,
     user_id: i64,
     observed_at: i64,
     recorded_at: i64,
-    intensity: i64,
     note: Option<String>,
     deleted_at: Option<i64>,
 }
 
 async fn load(conn: &mut PgConnection, row: ReportRow) -> StoreResult<SmellReport> {
-    let rooms = sqlx::query_scalar!(
-        "SELECT room_id FROM smell_report_rooms WHERE smell_report_id = $1 ORDER BY room_id",
+    let rooms = sqlx::query!(
+        "SELECT room_id, level FROM smell_report_rooms WHERE smell_report_id = $1 ORDER BY room_id",
         row.id,
     )
     .fetch_all(&mut *conn)
     .await
-    .db()?;
+    .db()?
+    .into_iter()
+    .map(|l| (l.room_id, l.level))
+    .collect();
     let symptoms = sqlx::query_scalar!(
         "SELECT symptom_id FROM smell_report_symptoms WHERE smell_report_id = $1 ORDER BY symptom_id",
         row.id,
@@ -37,12 +41,27 @@ async fn load(conn: &mut PgConnection, row: ReportRow) -> StoreResult<SmellRepor
     .fetch_all(&mut *conn)
     .await
     .db()?;
-    let intensity = u8::try_from(row.intensity)
-        .map_err(corrupt)
-        .and_then(|value| Intensity::new(value).map_err(corrupt))?;
+    assemble(row, rooms, symptoms)
+}
+
+/// A report from its row, its `(room id, level)` pairs and its symptom ids.
+fn assemble(
+    row: ReportRow,
+    rooms: Vec<(i64, i64)>,
+    symptoms: Vec<i64>,
+) -> StoreResult<SmellReport> {
+    let rooms = rooms
+        .into_iter()
+        .map(|(room, level)| {
+            let level = u8::try_from(level).map_err(corrupt)?;
+            Ok(RoomLevel {
+                room: RoomId(room),
+                level: Level::new(level).map_err(corrupt)?,
+            })
+        })
+        .collect::<StoreResult<_>>()?;
     let values = ReportValues::new(
-        intensity,
-        rooms.into_iter().map(RoomId).collect(),
+        rooms,
         symptoms.into_iter().map(SymptomId).collect(),
         row.note.as_deref(),
     )
@@ -52,13 +71,22 @@ async fn load(conn: &mut PgConnection, row: ReportRow) -> StoreResult<SmellRepor
     }
     Ok(SmellReport {
         id: ReportId(row.id),
-        event_id: EventId(row.event_id),
+        event_id: row.event_id.map(EventId),
         user_id: UserId(row.user_id),
         observed_at: instant(row.observed_at)?,
         recorded_at: instant(row.recorded_at)?,
         values,
         deleted_at: opt_instant(row.deleted_at)?,
     })
+}
+
+/// Groups `(report id, link)` pairs by report.
+fn group<T>(links: impl IntoIterator<Item = (i64, T)>) -> HashMap<i64, Vec<T>> {
+    let mut grouped: HashMap<i64, Vec<T>> = HashMap::new();
+    for (report, linked) in links {
+        grouped.entry(report).or_default().push(linked);
+    }
+    grouped
 }
 
 async fn load_all(conn: &mut PgConnection, rows: Vec<ReportRow>) -> StoreResult<Vec<SmellReport>> {
@@ -72,7 +100,7 @@ async fn load_all(conn: &mut PgConnection, rows: Vec<ReportRow>) -> StoreResult<
 async fn fetch(conn: &mut PgConnection, id: ReportId) -> StoreResult<Option<SmellReport>> {
     let row = sqlx::query_as!(
         ReportRow,
-        "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+        "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
          FROM smell_reports WHERE id = $1",
         id.0,
     )
@@ -105,9 +133,10 @@ async fn require_live(conn: &mut PgConnection, id: ReportId) -> StoreResult<Smel
 async fn insert_links(conn: &mut PgConnection, id: i64, values: &ReportValues) -> StoreResult<()> {
     for room in values.rooms() {
         sqlx::query!(
-            "INSERT INTO smell_report_rooms (smell_report_id, room_id) VALUES ($1, $2)",
+            "INSERT INTO smell_report_rooms (smell_report_id, room_id, level) VALUES ($1, $2, $3)",
             id,
-            room.0,
+            room.room.0,
+            i64::from(room.level.get()),
         )
         .execute(&mut *conn)
         .await
@@ -163,7 +192,7 @@ impl ReportRepo for PostgresStore {
         let mut conn = self.read().await?;
         let rows = sqlx::query_as!(
             ReportRow,
-            "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+            "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
              FROM smell_reports WHERE event_id = $1 AND deleted_at IS NULL \
              ORDER BY observed_at, id",
             event.0,
@@ -172,6 +201,70 @@ impl ReportRepo for PostgresStore {
         .await
         .db()?;
         load_all(&mut conn, rows).await
+    }
+
+    /// Three queries whatever the number of reports: the rows, then all their room links and
+    /// all their symptom links.
+    async fn reports_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> StoreResult<Vec<SmellReport>> {
+        let (from, to) = (micros(from), micros(to));
+        let mut conn = self.read().await?;
+        let rows = sqlx::query_as!(
+            ReportRow,
+            "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
+             FROM smell_reports WHERE deleted_at IS NULL AND observed_at >= $1 AND observed_at < $2 \
+             ORDER BY observed_at, id",
+            from,
+            to,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let rooms = sqlx::query!(
+            "SELECT l.smell_report_id, l.room_id, l.level FROM smell_report_rooms l \
+             JOIN smell_reports r ON r.id = l.smell_report_id \
+             WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 \
+             ORDER BY l.smell_report_id, l.room_id",
+            from,
+            to,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let symptoms = sqlx::query!(
+            "SELECT l.smell_report_id, l.symptom_id FROM smell_report_symptoms l \
+             JOIN smell_reports r ON r.id = l.smell_report_id \
+             WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 \
+             ORDER BY l.smell_report_id, l.symptom_id",
+            from,
+            to,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let mut rooms = group(
+            rooms
+                .into_iter()
+                .map(|l| (l.smell_report_id, (l.room_id, l.level))),
+        );
+        let mut symptoms = group(
+            symptoms
+                .into_iter()
+                .map(|l| (l.smell_report_id, l.symptom_id)),
+        );
+        rows.into_iter()
+            .map(|row| {
+                let id = row.id;
+                assemble(
+                    row,
+                    rooms.remove(&id).unwrap_or_default(),
+                    symptoms.remove(&id).unwrap_or_default(),
+                )
+            })
+            .collect()
     }
 }
 
@@ -183,13 +276,12 @@ impl ReportWrites for PostgresTx {
     async fn create_report(&mut self, new: NewReport) -> StoreResult<SmellReport> {
         let now = micros(self.now());
         let id = sqlx::query_scalar!(
-            "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, intensity, note) \
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id AS \"id!\"",
-            new.event_id.0,
+            "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, note) \
+             VALUES ($1, $2, $3, $4, $5) RETURNING id AS \"id!\"",
+            new.event_id.map(|event| event.0),
             new.user_id.0,
             micros(new.observed_at),
             now,
-            i64::from(new.values.intensity().get()),
             new.values.note(),
         )
         .fetch_one(self.conn())
@@ -209,9 +301,8 @@ impl ReportWrites for PostgresTx {
     ) -> StoreResult<SmellReport> {
         let before = require_live(self.conn(), id).await?;
         sqlx::query!(
-            "UPDATE smell_reports SET observed_at = $1, intensity = $2, note = $3 WHERE id = $4",
+            "UPDATE smell_reports SET observed_at = $1, note = $2 WHERE id = $3",
             micros(observed_at),
-            i64::from(values.intensity().get()),
             values.note(),
             id.0,
         )
@@ -225,7 +316,7 @@ impl ReportWrites for PostgresTx {
 
     async fn move_report(&mut self, id: ReportId, to: EventId) -> StoreResult<SmellReport> {
         let before = require_live(self.conn(), id).await?;
-        if before.event_id == to {
+        if before.event_id == Some(to) {
             return Ok(before);
         }
         sqlx::query!(
@@ -257,7 +348,7 @@ impl ReportWrites for PostgresTx {
 pub(crate) async fn fetch_all(conn: &mut PgConnection) -> StoreResult<Vec<SmellReport>> {
     let rows = sqlx::query_as!(
         ReportRow,
-        "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+        "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
          FROM smell_reports ORDER BY id"
     )
     .fetch_all(&mut *conn)
