@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use anyhow::Context;
 use smoke_domain::clock::Clock;
-use smoke_domain::repos::{SessionRepo, Store};
+use smoke_domain::repos::{InviteRepo, SessionRepo, Store};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::sweep::{SweepOutcome, auto_close};
 use smoke_web::{AppState, DbSessions};
@@ -17,6 +17,9 @@ use crate::config::ServeConfig;
 
 /// How often expired sessions are deleted.
 const SESSION_SWEEP_EVERY: Duration = Duration::from_secs(60 * 60);
+
+/// How often expired invites are deleted (spec §11: daily).
+const INVITE_SWEEP_EVERY: Duration = Duration::from_secs(24 * 60 * 60);
 
 /// How often the auto-close sweep checks whether a 04:00 boundary has passed. A check that
 /// finds nothing to do is one small read.
@@ -46,10 +49,12 @@ pub async fn run<S: Store + Clone + 'static>(
         clock.clone(),
         config.web.schedule,
     ));
+    let invites = tokio::spawn(sweep_invites(store.clone(), clock.clone()));
     let app = smoke_web::router(AppState::new(store, clock, config.web));
     let served = smoke_web::serve(listener, app, shutdown_signal()).await;
     sweeper.abort();
     closer.abort();
+    invites.abort();
     served.context("the server stopped with an error")
 }
 
@@ -75,6 +80,20 @@ async fn sweep_sessions<S: SessionRepo + Clone + 'static>(sessions: DbSessions<S
         ticks.tick().await;
         if let Err(error) = sessions.delete_expired().await {
             warn!(%error, "could not delete expired sessions");
+        }
+    }
+}
+
+/// Deletes expired invites at startup and then daily. Cloud Run may sleep the app for days;
+/// an expired link is refused anyway, so a late run only tidies up.
+async fn sweep_invites<S: InviteRepo>(store: S, clock: Arc<dyn Clock>) {
+    let mut ticks = tokio::time::interval(INVITE_SWEEP_EVERY);
+    loop {
+        ticks.tick().await;
+        match store.delete_expired_invites(clock.now()).await {
+            Ok(0) => {}
+            Ok(removed) => info!(removed, "deleted expired invites"),
+            Err(error) => warn!(%error, "could not delete expired invites"),
         }
     }
 }
@@ -109,23 +128,24 @@ async fn shutdown_signal() {
 mod tests {
     use chrono::{DateTime, TimeDelta, Utc};
     use smoke_domain::clock::FakeClock;
-    use smoke_domain::records::{NewEvent, NewUser};
-    use smoke_domain::repos::{Commit, EventRepo, EventWrites, Transactional, UserWrites};
-    use smoke_domain::types::{CloseReason, Locale, Role, Username};
+    use smoke_domain::records::{Invite, NewEvent, NewInvite, NewUser, User};
+    use smoke_domain::repos::{
+        Commit, EventRepo, EventWrites, InviteWrites, Transactional, UserWrites,
+    };
+    use smoke_domain::types::{CloseReason, InvitePurpose, Locale, Role, TokenHash, Username};
     use smoke_storage_sqlite::SqliteStore;
 
     use super::*;
 
-    #[tokio::test]
-    async fn the_event_sweep_runs_as_soon_as_the_server_starts() {
-        let dir = tempfile::tempdir().unwrap();
+    async fn store_with_resident(
+        dir: &tempfile::TempDir,
+        clock: Arc<FakeClock>,
+    ) -> (SqliteStore, User) {
         let url = format!("sqlite://{}", dir.path().join("serve.db").display());
-        let evening: DateTime<Utc> = "2026-01-15T20:00:00Z".parse().unwrap();
-        let clock = Arc::new(FakeClock::new(evening));
-        let store = SqliteStore::connect(&url, clock.clone()).await.unwrap();
+        let store = SqliteStore::connect(&url, clock).await.unwrap();
         store.migrate().await.unwrap();
         let mut tx = store.begin(None).await.unwrap();
-        let owner = tx
+        let resident = tx
             .create_user(NewUser {
                 username: Username::new("daniele").unwrap(),
                 password_hash: None,
@@ -135,6 +155,17 @@ mod tests {
             })
             .await
             .unwrap();
+        tx.commit().await.unwrap();
+        (store, resident)
+    }
+
+    #[tokio::test]
+    async fn the_event_sweep_runs_as_soon_as_the_server_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let evening: DateTime<Utc> = "2026-01-15T20:00:00Z".parse().unwrap();
+        let clock = Arc::new(FakeClock::new(evening));
+        let (store, owner) = store_with_resident(&dir, clock.clone()).await;
+        let mut tx = store.begin(None).await.unwrap();
         let event = tx
             .create_event(NewEvent {
                 owner_id: owner.id,
@@ -158,5 +189,38 @@ mod tests {
         }
         task.abort();
         assert_eq!(closed.map(|c| c.reason), Some(CloseReason::Auto0400));
+    }
+
+    #[tokio::test]
+    async fn the_invite_sweep_runs_as_soon_as_the_server_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let evening: DateTime<Utc> = "2026-01-15T20:00:00Z".parse().unwrap();
+        let clock = Arc::new(FakeClock::new(evening));
+        let (store, resident) = store_with_resident(&dir, clock.clone()).await;
+        let token = TokenHash::of("token");
+        let mut tx = store.begin(Some(resident.id)).await.unwrap();
+        tx.create_invite(NewInvite {
+            user_id: resident.id,
+            purpose: InvitePurpose::PasswordReset,
+            token_hash: token.clone(),
+            created_by: resident.id,
+            expires_at: evening + Invite::LIFETIME,
+        })
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        clock.advance(TimeDelta::hours(1));
+
+        let task = tokio::spawn(sweep_invites(store.clone(), clock));
+        let mut found = Some(());
+        for _ in 0..100 {
+            found = store.invite_by_token(&token).await.unwrap().map(|_| ());
+            if found.is_none() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+        task.abort();
+        assert_eq!(found, None);
     }
 }

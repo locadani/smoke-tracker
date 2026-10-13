@@ -4,7 +4,7 @@
 use std::borrow::Cow;
 use std::fmt;
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, TimeDelta, Utc};
 use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
@@ -13,8 +13,8 @@ use crate::audit::AuditEntity;
 use crate::events::EventSummary;
 use crate::permissions::Actor;
 use crate::types::{
-    CloseReason, EventId, Level, ListName, Locale, Pm25, ReadingId, ReportId, Role, RoomArea,
-    RoomId, SymptomId, UserId, Username,
+    CloseReason, EventId, InviteId, InvitePurpose, Level, ListName, Locale, Pm25, ReadingId,
+    ReportId, Role, RoomArea, RoomId, SymptomId, TokenHash, UserId, Username,
 };
 
 /// A record the audit log keeps snapshots of.
@@ -84,6 +84,46 @@ impl Audited for User {
     fn audit_id(&self) -> i64 {
         self.id.0
     }
+}
+
+/// A one-time link to set up an account or reset its password (spec §8.3). The token's hash is
+/// stored but never part of the record or its audit snapshot.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct Invite {
+    pub id: InviteId,
+    pub user_id: UserId,
+    pub purpose: InvitePurpose,
+    pub created_by: UserId,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+}
+
+impl Invite {
+    /// How long a link works after it is created.
+    pub const LIFETIME: TimeDelta = TimeDelta::minutes(5);
+
+    /// Unused and not yet expired: from `expires_at` on, the link is dead.
+    pub fn is_usable(&self, now: DateTime<Utc>) -> bool {
+        self.used_at.is_none() && now < self.expires_at
+    }
+}
+
+impl Audited for Invite {
+    const ENTITY: AuditEntity = AuditEntity::Invite;
+
+    fn audit_id(&self) -> i64 {
+        self.id.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewInvite {
+    pub user_id: UserId,
+    pub purpose: InvitePurpose,
+    pub token_hash: TokenHash,
+    pub created_by: UserId,
+    pub expires_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -653,6 +693,37 @@ mod tests {
         assert_eq!(Event::ENTITY, AuditEntity::Event);
         assert_eq!(SmellReport::ENTITY, AuditEntity::SmellReport);
         assert_eq!(Pm25Reading::ENTITY, AuditEntity::Pm25Reading);
+        assert_eq!(Invite::ENTITY, AuditEntity::Invite);
+    }
+
+    #[test]
+    fn an_invite_works_once_and_for_five_minutes() {
+        let created_at = t("2026-01-15T20:00:00Z");
+        let invite = Invite {
+            id: InviteId(1),
+            user_id: UserId(2),
+            purpose: InvitePurpose::Setup,
+            created_by: UserId(1),
+            created_at,
+            expires_at: created_at + Invite::LIFETIME,
+            used_at: None,
+        };
+        assert!(invite.is_usable(created_at));
+        assert!(invite.is_usable(created_at + TimeDelta::seconds(299)));
+        assert!(!invite.is_usable(created_at + Invite::LIFETIME));
+        let used = Invite {
+            used_at: Some(created_at),
+            ..invite.clone()
+        };
+        assert!(!used.is_usable(created_at));
+        assert_eq!(
+            invite.snapshot(),
+            json!({
+                "id": 1, "user_id": 2, "purpose": "setup", "created_by": 1,
+                "created_at": "2026-01-15T20:00:00Z", "expires_at": "2026-01-15T20:05:00Z",
+                "used_at": null
+            })
+        );
     }
 
     #[test]

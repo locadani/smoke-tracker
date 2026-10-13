@@ -12,6 +12,7 @@ pub mod audit;
 pub mod corrections;
 pub mod events;
 pub mod fixture;
+pub mod invites;
 pub mod lists;
 pub mod logbook;
 pub mod migrations;
@@ -98,6 +99,11 @@ macro_rules! contract_tests {
             sessions::expiring_a_user_ends_their_sessions,
             sessions::a_rolled_back_password_change_keeps_the_sessions,
             sessions::sessions_are_not_audited,
+            invites::an_invite_is_found_by_its_token_hash_only,
+            invites::an_invite_is_used_once_and_that_is_audited,
+            invites::a_new_invite_replaces_the_users_unused_ones,
+            invites::an_invite_for_an_unknown_user_is_refused,
+            invites::expired_invites_are_removed_without_an_audit_entry,
             logbook::logging_now_with_nothing_open_starts_an_open_event,
             logbook::same_smell_joins_the_open_event,
             logbook::a_new_event_closes_the_open_one_at_its_last_report,
