@@ -69,7 +69,7 @@ fn write_canonical(value: &Value, out: &mut Vec<u8>) {
         }
         Value::Object(map) => {
             let mut entries: Vec<_> = map.iter().collect();
-            entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            entries.sort_unstable_by_key(|&(key, _)| key);
             out.push(b'{');
             for (i, (key, item)) in entries.into_iter().enumerate() {
                 if i > 0 {
