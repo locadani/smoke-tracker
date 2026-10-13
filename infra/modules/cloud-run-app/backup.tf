@@ -6,6 +6,11 @@ resource "google_storage_bucket" "backups" {
   uniform_bucket_level_access = true
   public_access_prevention    = "enforced"
 
+  # Expired dumps would otherwise stay (and be billed) for 7 more days in soft delete.
+  soft_delete_policy {
+    retention_duration_seconds = 0
+  }
+
   lifecycle_rule {
     action {
       type = "Delete"

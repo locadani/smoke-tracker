@@ -281,6 +281,10 @@ run "backup_bucket_is_private_and_expires_old_dumps" {
     condition     = anytrue([for r in google_storage_bucket.backups.lifecycle_rule : tolist(r.action)[0].type == "Delete" && tolist(r.condition)[0].age == 30])
     error_message = "Dumps older than 30 days are deleted."
   }
+  assert {
+    condition     = tolist(google_storage_bucket.backups.soft_delete_policy)[0].retention_duration_seconds == 0
+    error_message = "Deleted dumps are not kept (and billed) in soft delete."
+  }
 }
 
 run "no_backup_job_before_the_secret_has_a_value" {
