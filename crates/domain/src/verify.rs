@@ -119,7 +119,7 @@ pub fn verify_snapshots(entries: &[ChainedEntry], current: &[Snapshot]) -> Vec<S
 }
 
 /// Whether `current` equals the entry's `after` snapshot. Report snapshots audited before rooms
-/// had their own levels are compared in today's shape (decision #100).
+/// had their own levels are compared in today's shape (decision #104).
 fn matches_audited(entry: &ChainedEntry, current: &Value) -> bool {
     match &entry.record.after {
         Some(after) if entry.record.entity == AuditEntity::SmellReport => {

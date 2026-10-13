@@ -1,7 +1,7 @@
 -- Each room in a smell report gets its own level 0–10, and a report's intensity becomes its
 -- highest room level (spec §6). Every existing room takes its report's intensity. A report
 -- without rooms has no room to carry its intensity, so the migration refuses to run while one
--- exists (decision #99): correct those reports first.
+-- exists (decision #103): correct those reports first.
 
 CREATE TEMP TABLE migration_0003_check (
     reports_without_rooms INTEGER NOT NULL

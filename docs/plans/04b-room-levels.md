@@ -22,7 +22,7 @@ chrono + chrono-tz, sqlx 0.9 (SQLite + Postgres), tokio. No new crates.
 
 **Spec:** `docs/specs/2026-10-13-smoke-tracker-design.md` as changed by `27463d7` (a level per
 room, 0 = clean) and `8c72055` (no-smell checks): §5, §6, §6.1, §7.1, §7.2, §9 screens 1–4,
-§13.3. Decisions: `docs/DECISIONS.md` rows #98–#105 (added by Task 4). Previous plan:
+§13.3. Decisions: `docs/DECISIONS.md` rows #102–#109 (added by Task 4). Previous plan:
 `docs/plans/04-logging-flow.md` (this plan ships in the same pull request).
 
 **Provenance:** every code block in this plan was compiled and tested before the plan was written,
@@ -37,21 +37,21 @@ consult that branch; this plan is the source of truth.
 
 Defaults were chosen so nothing blocks; each is a decision row and easy to change.
 
-1. **Reports without rooms block migration 0003** (decision #99). The migration refuses to run,
+1. **Reports without rooms block migration 0003** (decision #103). The migration refuses to run,
    changing nothing, while any report has no rooms: such a report carries a smell with no room
    to hold it. No released build can create one (milestones 1–3 have no logging, milestone 4
    ships with this change), so only local trial databases are affected; fix them with the
    previous build (add a room) or start a new local database. A placeholder room was rejected
    because it would be a row with no audit entry that `verify-audit` reports for ever.
-2. **Old audit entries are read, not rewritten** (decision #100). `verify-audit` and History read
+2. **Old audit entries are read, not rewritten** (decision #104). `verify-audit` and History read
    a report snapshot from before this change (`"intensity": 6, "rooms": [2]`) as every room at
    that intensity, which is exactly what migration 0003 stores. The hash chain is untouched.
 3. **A report inside an event may be corrected to no smell**, even the one that opened the event
-   (decision #102). Only a check is held at 0.
-4. **No smell with a selected room set above 0 is refused** with a message (decision #103); a
+   (decision #106). Only a check is held at 0.
+4. **No smell with a selected room set above 0 is refused** with a message (decision #107); a
    selected room with no level counts as 0. Rooms are pre-selected from the last report without
    levels, so every level is a fresh choice.
-5. **Summary card** (decision #104): *reports* are reports in an event, *clean checks* are checks
+5. **Summary card** (decision #108): *reports* are reports in an event, *clean checks* are checks
    outside any event (no overlap); a bedroom day needs the bedroom at level 1 or more.
 6. **About 20 new translation keys** in `it` and `tr` are drafts for native review.
 
@@ -94,7 +94,7 @@ Defaults were chosen so nothing blocks; each is a decision row and easy to chang
   and commit the regenerated `.sqlx/` files.
 - Migrations are append-only: never edit `0001`–`0003` once committed; both backends get a file
   with the same number, and `schema_parity` must keep passing (66 columns).
-- `docs/DECISIONS.md` is append-only; this plan adds rows **#98–#105**.
+- `docs/DECISIONS.md` is append-only; this plan adds rows **#102–#109**.
 - Disk: all builds share one `CARGO_TARGET_DIR`; never create another target folder, never run
   `cargo clean` or `rm -rf` on build folders (the user does that).
 
@@ -148,7 +148,7 @@ Defaults were chosen so nothing blocks; each is a decision row and easy to chang
 
 ```
 smoke-tracker/
-├─ docs/DECISIONS.md, plans/ROADMAP.md   + rows #98–#105, link to this plan
+├─ docs/DECISIONS.md, plans/ROADMAP.md   + rows #102–#109, link to this plan
 └─ crates/
    ├─ domain/src/
    │  ├─ types.rs        Level (0..=10) replaces Intensity
@@ -192,11 +192,11 @@ event (with only the web changes needed to compile), Task 3 the screens for chec
 ### Task 1: A level 0–10 per room, end to end
 
 Each room of a report gets its own level, and the report's intensity becomes its highest room
-level (spec §6, decision #98). The domain type `Level` (0–10) replaces `Intensity` (1–10);
+level (spec §6, decision #102). The domain type `Level` (0–10) replaces `Intensity` (1–10);
 migration 0003 moves the level onto `smell_report_rooms`, copying each report's old intensity,
-and refuses reports without rooms (decision #99). Report snapshots audited before the change are
-read in today's shape (decision #100). The Log and correction forms show a level row under each
-selected room (decision #103); History reads "Bedroom 6 → 7, added Kitchen 3"; the rating guide
+and refuses reports without rooms (decision #103). Report snapshots audited before the change are
+read in today's shape (decision #104). The Log and correction forms show a level row under each
+selected room (decision #107); History reads "Bedroom 6 → 7, added Kitchen 3"; the rating guide
 gains level 0 "Clean". Until Task 2 a report still needs at least one room
 (`DomainError::NoRooms`).
 
@@ -1907,7 +1907,7 @@ index de6452f..0f501b1 100644
  }
  
 +/// Whether `current` equals the entry's `after` snapshot. Report snapshots audited before rooms
-+/// had their own levels are compared in today's shape (decision #100).
++/// had their own levels are compared in today's shape (decision #104).
 +fn matches_audited(entry: &ChainedEntry, current: &Value) -> bool {
 +    match &entry.record.after {
 +        Some(after) if entry.record.entity == AuditEntity::SmellReport => {
@@ -1970,7 +1970,7 @@ index 0000000..b4c9724
 +-- Each room in a smell report gets its own level 0–10, and a report's intensity becomes its
 +-- highest room level (spec §6). Every existing room takes its report's intensity. A report
 +-- without rooms has no room to carry its intensity, so the migration refuses to run while one
-+-- exists (decision #99): correct those reports first.
++-- exists (decision #103): correct those reports first.
 +-- Kept in step with crates/storage-sqlite/migrations; tests/schema_parity.rs compares the columns.
 +
 +DO $$
@@ -2188,7 +2188,7 @@ index 0000000..1357c89
 +-- Each room in a smell report gets its own level 0–10, and a report's intensity becomes its
 +-- highest room level (spec §6). Every existing room takes its report's intensity. A report
 +-- without rooms has no room to carry its intensity, so the migration refuses to run while one
-+-- exists (decision #99): correct those reports first.
++-- exists (decision #103): correct those reports first.
 +
 +CREATE TEMP TABLE migration_0003_check (
 +    reports_without_rooms INTEGER NOT NULL
@@ -3240,11 +3240,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 2: No-smell reports and checks outside any event
 
 A no-smell report (every room at 0, or no rooms at all, meaning the whole home) never opens,
-closes or reopens an event (spec §7.1–§7.2, decisions #101–#102). Logged now it joins the open
+closes or reopens an event (spec §7.1–§7.2, decisions #105–#106). Logged now it joins the open
 event whatever the answer, or stands alone as a check (`event_id` NULL); backdated it joins the
 event picked, or none for "New event". A check can be corrected but never above 0, and moved into
 an event but never into a new one. Migration 0004 makes `smell_reports.event_id` nullable (SQLite
-rebuilds the reports table and both link tables, decision #105). The web layer changes only what
+rebuilds the reports table and both link tables, decision #109). The web layer changes only what
 the optional event needs to compile and to show a check's page; the screens come in Task 3.
 
 **Files:**
@@ -5332,7 +5332,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 3: Web — No smell, checks in the Events list and the summary card
 
-The screens for checks (spec §9 screens 1–4, decisions #101, #103, #104): a **No smell** button
+The screens for checks (spec §9 screens 1–4, decisions #105, #107, #108): a **No smell** button
 for everyone who may log (guests too) that records the selected rooms at 0 or, with none
 selected, the whole home; no question when a no-smell report is logged now; "No event: just a
 check" in place of "New event" when one is backdated; a saved message; "N clean checks" on the
@@ -6405,11 +6405,11 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 4: Decisions and roadmap
 
 **Files:**
-- Modify: `docs/DECISIONS.md` (append rows #98–#105; the file is append-only)
+- Modify: `docs/DECISIONS.md` (append rows #102–#109; the file is append-only)
 - Modify: `docs/plans/ROADMAP.md`
 
-**Interfaces:** none (documentation). The code comments of Tasks 1–2 already cite decisions #99
-and #100.
+**Interfaces:** none (documentation). The code comments of Tasks 1–2 already cite decisions #103
+and #104.
 
 - [ ] **Step 1: Append the decisions and link this plan from the roadmap**
 
@@ -6449,7 +6449,7 @@ index 22445a3..4d40006 100644
 
 ```bash
 git add docs/DECISIONS.md docs/plans/ROADMAP.md
-git commit -m "docs: decisions #98–#105 for room levels and no-smell checks; roadmap links the plan
+git commit -m "docs: decisions #102–#109 for room levels and no-smell checks; roadmap links the plan
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -6469,7 +6469,7 @@ scripts/sqlx-prepare.sh --check
 ```
 
 A local database created by the milestone 4 branch before this change migrates on the next
-`migrate` or `serve`, unless it holds a report without rooms (decision #99): then the migration
+`migrate` or `serve`, unless it holds a report without rooms (decision #103): then the migration
 stops with `every_smell_report_needs_a_room` and changes nothing.
 
 ---
