@@ -37,3 +37,13 @@ output "workload_identity_provider_name" {
   description = "Full provider name for google-github-actions/auth."
   value       = google_iam_workload_identity_pool_provider.github.name
 }
+
+output "backups_bucket" {
+  description = "Bucket that holds the nightly database dumps."
+  value       = google_storage_bucket.backups.name
+}
+
+output "backup_job_name" {
+  description = "Cloud Run job that runs the backup; null until attach_database_url is true."
+  value       = try(google_cloud_run_v2_job.backup[0].name, null)
+}

@@ -75,6 +75,36 @@ ARM (`arm64`), so moving means building for both.
 - **Least privilege.** Each grant is on one resource where possible (one secret, one registry,
   one service), not on the whole project.
 
+## Terraform state vs Azure Bicep
+
+- **Bicep looks stateless, but isn't.** Azure Resource Manager keeps the record of what exists in
+  each resource group, so a Bicep deployment compares the file with Azure's own record. By default
+  it doesn't delete resources removed from the file ("incremental" mode); deleting needs
+  "complete" mode or deployment stacks.
+- **Terraform keeps its own record (the state)** because it talks to any cloud's API directly, and
+  those APIs know which project a resource is in, but not which configuration owns it. The state maps each block of code to a
+  real resource ID, which is what lets Terraform rename, delete and plan quickly.
+- **Google's closest equivalent to Bicep** was Deployment Manager (retired in 2026). Its successor,
+  Infrastructure Manager, is managed Terraform that stores the state for you.
+- **Chicken and egg:** the state bucket can't hold its own state before it exists. The bootstrap
+  creates it with a local state, then `terraform init -migrate-state` moves that state into it.
+
+## Deploying
+
+- One build: `deploy.yml` builds the image once, scans that image, and pushes the same image. What
+  was scanned is what runs.
+- A guard refuses to deploy while `DATABASE_URL` is not attached; without it the app would start on
+  a throwaway SQLite file.
+- Terraform owns the service's settings; the workflow changes only the image.
+
+## Backups
+
+- Cloud Scheduler starts a Cloud Run job, the job runs `pg_dump` and writes into a bucket, and a
+  lifecycle rule deletes dumps after 30 days.
+- A dump is written as `.partial` and renamed when it succeeds, so a leftover `.partial` marks a
+  failed run.
+- A restore (`pg_restore --clean`) overwrites the live data. Practise it on a scratch database.
+
 ## Where to find this without help
 
 - Cloud Run quickstart: <https://cloud.google.com/run/docs/quickstarts>
@@ -100,6 +130,8 @@ ARM (`arm64`), so moving means building for both.
 - Google's free outgoing traffic covers North America only, so pages sent from Frankfurt, and
   queries to Neon (on AWS), cost a fraction of a cent.
 - Storage buckets outside the US are not in the free tier; a few KB costs nothing in practice.
+- The backups bucket turns soft delete off, so expired dumps stop costing at once. The state
+  bucket keeps the default 7 days: it is a recovery net.
 - A **budget alert only warns**, it never stops spending. At most one running instance caps the
   compute; traffic is not capped.
 - When the database password changes, destroy the old secret version: disabled versions still

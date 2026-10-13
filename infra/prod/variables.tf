@@ -4,7 +4,7 @@ variable "project_id" {
 }
 
 variable "state_bucket" {
-  description = "Bucket that holds Terraform state, created by hand before the first run."
+  description = "Bucket that holds Terraform state, created by infra/bootstrap."
   type        = string
 }
 

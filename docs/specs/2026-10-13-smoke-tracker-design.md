@@ -24,6 +24,8 @@ the app must make logging take **about 5 seconds on a phone**.
 **Non-goals for v1** (see §14): data export, push reminders, automatic sensor ingestion,
 offline logging, browser end-to-end tests, choosing the hosting provider.
 
+> *Superseded: hosting is chosen, see docs/specs/2026-10-13-hosting-infra-design.md and decisions #76–#85.*
+
 ---
 
 ## 2. Constraints
@@ -374,6 +376,8 @@ QR code. There is no email.
 
 ## 10. Architecture
 
+> *Superseded: production runs on Postgres from the start (decision #77); SQLite stays for local use and tests. See docs/specs/2026-10-13-hosting-infra-design.md and decisions #76–#85.*
+
 Cargo workspace:
 
 ```
@@ -416,6 +420,9 @@ never sees SQL; it uses the repository traits only.
   features in domain-visible behaviour.
 
 ### 10.2 `migrate-to-postgres` command
+
+> *Superseded: not needed, production starts on Postgres (decision #77). See docs/specs/2026-10-13-hosting-infra-design.md.*
+
 ```
 smoke-tracker migrate-to-postgres --from sqlite://data.db --to postgres://…
 ```
@@ -480,6 +487,8 @@ reverse proxy writes the client address into).
 - Deploy credentials only in GitHub Actions Secrets.
 - Personal data (e.g. commit email) never in tracked files.
 
+> *Superseded: deploys log in with Workload Identity Federation, no stored key; see docs/specs/2026-10-13-hosting-infra-design.md and decisions #76–#85.*
+
 ---
 
 ## 13. CI/CD, tooling, deployment, testing
@@ -492,6 +501,8 @@ reverse proxy writes the client address into).
 | `codeql.yml` | push, PR, weekly | CodeQL (kept only if Rust analysis is stable) |
 | `release.yml` | push to `main`, tags | build and push the Docker image to GHCR; deploy job added once hosting is chosen |
 
+> *Superseded: `release.yml` and GHCR are replaced by `deploy.yml` and Artifact Registry; see docs/specs/2026-10-13-hosting-infra-design.md and decisions #76–#85.*
+
 - **Dependabot:** Cargo, GitHub Actions, Docker (weekly).
 - **Branch protection on `main`:** PRs required, CI must pass.
 - **Caching:** `Swatinem/rust-cache`.
@@ -499,6 +510,8 @@ reverse proxy writes the client address into).
   limited). Needs a `SNYK_TOKEN` secret.
 
 ### 13.2 Hosting and backups
+
+> *Superseded: hosting is Cloud Run + Neon, with a nightly `pg_dump` instead of Litestream → R2; see docs/specs/2026-10-13-hosting-infra-design.md and decisions #76–#85.*
 - **Hosting:** deferred decision. Requirement: free and a persistent disk. Candidates are Oracle
   Cloud Always Free and Google Cloud e2-micro. Free-tier terms are re-checked at decision time.
   Moving to Neon (§10.2) widens the options to stateless hosts.
@@ -527,6 +540,8 @@ The workflow is test-first (TDD). Browser E2E tests are out of scope for v1.
 - Offline logging (service worker queue).
 - Browser E2E tests (Playwright).
 - Hosting choice and deploy job.
+
+> *Superseded: done, see docs/specs/2026-10-13-hosting-infra-design.md and decisions #76–#85.*
 
 ### GitHub issue to create: push reminders
 

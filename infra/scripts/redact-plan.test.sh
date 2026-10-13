@@ -21,4 +21,7 @@ for order in "my-proj-123 987654 my-proj-123-tfstate" "my-proj-123-tfstate 98765
   [ "$got" = "Refreshing state... [id=b/***/x] p=*** n=***" ] || fail "redacts a bucket name containing the project ID ($order)" "$got"
 done
 
+got=$(printf 'bucket = "my-proj-123-smoke-tracker-backups"\n' | "$here/redact-plan.sh" my-proj-123 987654 my-proj-123-tfstate)
+[ "$got" = 'bucket = "***-smoke-tracker-backups"' ] || fail "hides the project ID inside the backups bucket name" "$got"
+
 echo "redact-plan: all tests passed"

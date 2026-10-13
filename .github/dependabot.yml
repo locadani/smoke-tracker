@@ -17,6 +17,7 @@ updates:
       interval: weekly
   - package-ecosystem: terraform
     directories:
+      - /infra/bootstrap
       - /infra/prod
       - /infra/modules/cloud-run-app
     schedule:

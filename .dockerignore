@@ -13,3 +13,5 @@ data
 # The image's own stable toolchain builds the release; the file would download another one
 # with rustfmt and clippy for nothing.
 rust-toolchain.toml
+# Written into the workspace by google-github-actions/auth
+gha-creds-*.json

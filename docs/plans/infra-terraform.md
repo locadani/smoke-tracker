@@ -1,5 +1,7 @@
 # Hosting Infrastructure (Terraform) Implementation Plan
 
+> Superseded in part: the state bucket and budget are created by `infra/bootstrap/` (decision #82); app settings, deploys and backups by `docs/plans/infra-go-live.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Describe Smoke Tracker's Google Cloud hosting (Cloud Run, Artifact Registry, Secret Manager, service accounts, GitHub keyless login) as Terraform in `infra/`, checked and planned on every PR.

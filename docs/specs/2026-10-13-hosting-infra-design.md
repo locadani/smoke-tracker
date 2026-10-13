@@ -21,16 +21,15 @@ Google Cloud side as **Terraform** code in this repository.
 **Constraints**
 
 - **Cost ≈ €0.** Everything runs inside free tiers except outgoing traffic from Frankfurt (the
-  free allowance covers North America only) and the few-KB state bucket (the free storage tier is
-  US-only). Expected bill: €0.00–0.01 a month. A €1 budget alert warns; it does not cap.
+  free allowance covers North America only) and the small state and backup buckets (the free storage tier
+  is US-only). Expected bill: €0.00–0.01 a month. A €1 budget alert (created by `infra/bootstrap`) warns; it does not cap.
 - No secret in the repository, in Terraform state, in a Docker image, or in GitHub.
 - CI/CD tracked and triggered by GitHub.
 - The development machine is a work PC: nothing is installed locally. Terraform runs in
   **Google Cloud Shell** (browser).
 
 **Non-goals:** Terraform for Neon; Terraform applied automatically by CI; a separate
-infrastructure repository; the deploy workflow, the daily backup and running admin commands in
-production (all follow milestone 3, §8).
+infrastructure repository; running `create-resident` as a Cloud Run job (§8).
 
 ---
 
@@ -38,17 +37,21 @@ production (all follow milestone 3, §8).
 
 | Piece | How | Why |
 |---|---|---|
-| Google project, billing account, €1 budget alert | Manual (done) | Terraform needs a project with billing before it can run |
-| State bucket | Manual, once | Terraform needs somewhere to keep its state before its first run |
+| Google project, billing account | Manual (done) | Terraform needs a project with billing before it can run |
+| €1 budget alert | Terraform (`bootstrap/`), applied by hand | Billing permissions stay out of CI; a hand-made budget is deleted so alerts don't arrive twice |
+| State bucket | Terraform (`bootstrap/`), first run with a local state | Terraform needs somewhere to keep its state, so this small configuration creates the bucket, then moves its own state into it |
 | Neon project (Frankfurt, `aws-eu-central-1`) | Manual (done) | Neon has no official Terraform provider; the community one warns that upgrades can replace resources, which for a database means losing data |
 | `DATABASE_URL` secret **value** | Manual, once | A value managed by Terraform is stored in its state in plain text |
-| GitHub repository variables | Manual, once, copied from Terraform outputs | Setting them from Terraform would need a GitHub admin token |
+| GitHub secrets and variable | Manual, once, copied from Terraform outputs | Setting them from Terraform would need a GitHub admin token |
 | Project APIs | Terraform | The 5 enabled by hand are adopted (enabling is idempotent); the others it needs are added (§4.0) |
 | Artifact Registry repository + cleanup policies | Terraform | Already created by hand; adopted with an `import` block, and its incomplete cleanup policy is corrected (§4.3) |
 | Secret Manager secret `DATABASE_URL` (the container, no value) | Terraform | |
 | Service accounts and their permissions | Terraform | |
 | Workload Identity Federation pool and provider | Terraform | |
 | Cloud Run service | Terraform | Terraform owns its settings; the deploy workflow owns which image runs |
+| App settings (base URL, client IP header, log level) | Terraform (`prod/main.tf`) | Reviewed in PRs |
+| Nightly backup (bucket, job, schedule) | Terraform (module `backup.tf`) | Code like the rest (§8) |
+| First resident | Manual, once, from Cloud Shell | The command asks for the password interactively (§8) |
 
 `infra/README.md` repeats this table.
 
@@ -59,10 +62,13 @@ production (all follow milestone 3, §8).
 ```
 infra/
 ├─ README.md               manual vs Terraform, first-time setup, routine
+├─ bootstrap/              the state bucket and the €1 budget alert (local state first, then migrated)
+├─ scripts/                redact-plan.sh (and its test): hides IDs before a plan is posted on a PR
 ├─ modules/
 │  └─ cloud-run-app/       one app on Cloud Run (reusable)
 │     ├─ main.tf           Artifact Registry, secret, service accounts and their grants
 │     ├─ service.tf        Cloud Run service
+│     ├─ backup.tf         nightly backup: bucket, job, schedule, grants
 │     ├─ github-login.tf   Workload Identity Federation, limited to one repository
 │     ├─ variables.tf
 │     ├─ outputs.tf
@@ -86,16 +92,16 @@ infra/
   is downloaded once into `~/bin`, which persists between Cloud Shell sessions.
 - Exact Terraform and `hashicorp/google` versions are pinned in `versions.tf`. The plan chooses
   them from current releases, and checks that Dependabot supports the chosen Terraform version.
-- `.terraform.lock.hcl` is committed for `prod/`.
+- `.terraform.lock.hcl` is committed for `prod/` and `bootstrap/`.
 - Resource names come from the app name, so a second app in the same project doesn't clash:
   `smoke-tracker-run`, `smoke-tracker-deploy`, secret `smoke-tracker-database-url`.
 
 ### 3.1 Values kept out of the repository
 
 The project ID and state bucket name are not secret, but are kept out of the public repository,
-like the GitHub variables (§6):
+like the GitHub secrets (§6):
 
-- `prod/terraform.tfvars` and `prod/backend.hcl` are **gitignored**; `.example` files are
+- `prod/` and `bootstrap/` each have a `terraform.tfvars` and a `backend.hcl`, **gitignored**; `.example` files are
   committed.
 - In Cloud Shell, the user creates them once from the examples.
 - In CI they come from GitHub **secrets** (§6), which GitHub masks in logs automatically.
@@ -182,14 +188,17 @@ versions.
   small PR sets it to `true` (§7). The service `depends_on` the runtime account's secret grant.
 - `lifecycle { ignore_changes = [template[0].containers[0].image, client, client_version] }`:
   the deploy workflow changes the image, and Terraform must not roll it back. The deploy
-  workflow skips its default labels (§8), so deploys don't show up as drift.
+  workflow (`gcloud run services update`) stamps client annotations on the revision template,
+  and `service.tf` ignores template labels/annotations (plus image, client, client_version), so
+  deploys don't show up as drift.
 - `deletion_protection = true`.
-- The app's other settings (for example `CLIENT_IP_HEADER`) are added after milestone 3 (§8).
+- The app's settings are the module's `env` input, set in `prod/main.tf` (§8).
 
 ### 4.6 Outputs
 
-Service URL, project number, Workload Identity provider name, deploy and plan account emails,
-image repository URL. These are copied into GitHub (§6).
+Service URL (the fixed address built from the project number, same as `APP_BASE_URL`), project
+number, Workload Identity provider name, deploy and plan account emails, image repository URL,
+`backups_bucket`, and (bootstrap) `state_bucket`. These are copied into GitHub (§6).
 
 ---
 
@@ -199,8 +208,8 @@ Trigger: pull requests and pushes to `main` that change `infra/**` or `infra.yml
 
 | Job | Steps |
 |---|---|
-| `check` | `terraform fmt -check -recursive`; `terraform init -backend=false`, `terraform validate` and `terraform test` for the module; `validate` for `prod/`; the redaction script's test; Trivy config scan of `infra/` |
-| `plan` | Pull requests from this repository only (`head.repo.full_name == github.repository`). Logs in as `terraform-plan` through Workload Identity Federation; `terraform init` with the backend config from variables; `terraform plan -lock=false`; posts the plan as a PR comment, updating the previous one |
+| `check` | `terraform fmt -check -recursive`; `terraform init -backend=false`, `terraform validate` and `terraform test` for the module and for `bootstrap/`; `validate` for `prod/`; the redaction script's test; Trivy config scan of `infra/` |
+| `plan` | Pull requests from this repository only (`head.repo.full_name == github.repository`). Logs in as `terraform-plan` through Workload Identity Federation; `terraform init` with the backend config from secrets; `terraform plan -lock=false`; posts the plan as a PR comment, updating the previous one |
 
 - `plan` uses `-lock=false` because taking the lock writes to the bucket, and the plan account
   is read-only.
@@ -214,7 +223,7 @@ Trigger: pull requests and pushes to `main` that change `infra/**` or `infra.yml
   tag, because tags can be moved.
 - Trivy findings that are intended (the service is public on purpose) are suppressed one by one,
   each with its reason, never with a blanket rule.
-- Dependabot gains a `terraform` entry (weekly) for `infra/prod` and `infra/modules/cloud-run-app`.
+- Dependabot gains a `terraform` entry (weekly) for `infra/prod`, `infra/bootstrap` and `infra/modules/cloud-run-app`.
 
 Applying stays manual (§7).
 
@@ -232,7 +241,7 @@ project ID and number on most lines.
 
 ---
 
-## 6. GitHub settings
+## 6. GitHub secrets and variable
 
 - **Secrets** (identifiers, not credentials; stored as secrets only so GitHub masks them):
   `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PLAN_SA`,
@@ -247,20 +256,24 @@ Set by hand from the Terraform outputs.
 
 **First time**
 
-1. Create the state bucket: Cloud Storage, `europe-west3`, standard class, uniform access,
-   public access prevention on, object versioning on.
-2. In Cloud Shell:
-   1. download the pinned Terraform into `~/bin`;
-   2. check that the Service Usage and Cloud Resource Manager APIs are enabled;
-   3. clone the repository; create `terraform.tfvars` and `backend.hcl` from the examples;
-   4. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),
+1. In Cloud Shell, download the pinned Terraform into `~/bin`, check that the Service Usage,
+   Cloud Resource Manager and Cloud Storage APIs are enabled, and clone the repository.
+2. Run `infra/bootstrap` in Cloud Shell: it creates the state bucket (`europe-west3`, standard
+   class, uniform access, public access prevention, object versioning, the current state plus 9 older versions kept) with a local state, then moves its own state into the bucket; the local copy is deleted only after
+   the bucket is checked to hold it. It also creates the €1 budget alert.
+3. In Cloud Shell:
+   1. create `terraform.tfvars` and `backend.hcl` in `infra/prod` from the examples;
+   2. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),
       `terraform apply`.
-3. Add the Neon connection string as the first version of the `smoke-tracker-database-url`
+4. Add the Neon connection string as the first version of the `smoke-tracker-database-url`
    secret (console).
-4. Set the GitHub secrets and variable (§6).
-5. A small PR sets `attach_database_url = true` in `prod/main.tf`; after merging,
+5. Set the GitHub secrets and variable (§6).
+6. A small PR sets `attach_database_url = true` in `prod/main.tf`; after merging,
    `terraform apply`.
-6. Open the service URL: Google's sample page appears.
+7. Open the service URL: Google's sample page appears.
+8. Re-run the latest Deploy run in GitHub (Actions → Deploy → Re-run all jobs): the app replaces
+   the sample page.
+9. Create the first resident from Cloud Shell (§8).
 
 **Routine:** PR → read the plan comment → merge → in Cloud Shell `git pull`, `terraform plan`
 (should match the comment), `terraform apply`.
@@ -270,24 +283,45 @@ redeploy (instances read the secret at startup).
 
 ---
 
-## 8. After milestone 3
+## 8. Settings, deploys, backups, first resident
 
-Separate PRs, not part of this spec's implementation:
+Built after the first apply, in the go-live plan (`docs/plans/infra-go-live.md`).
 
-- `deploy.yml`: on push to `main`, build the `linux/amd64` image, push it to Artifact Registry and
-  deploy it to Cloud Run as `smoke-tracker-deploy`, with the action's default labels skipped
-  (`skip_default_labels: true`). This replaces the GHCR push in the original spec's
-  `release.yml` (§13.1); that spec gets a short "superseded" note, with the user's approval. It triggers only on `push` to `main` (never `workflow_call`,
-  `pull_request_target` or `workflow_dispatch`), because the deploy account trusts `deploy.yml` on
-  `main`.
-- The app's settings as Cloud Run environment variables in `prod/`.
-- Database connection: Neon's **direct** connection (the app keeps its own pool; migrations need
-  a direct connection). Neon suspends after 5 idle minutes, so the pool's idle timeout is under
-  5 minutes and connections are tested before use.
-- Admin commands such as `create-resident` run as a one-off Cloud Run job with the same image and
-  secret.
-- Daily backup of the Neon database (Neon's free plan keeps 6 hours of history). This replaces
-  Litestream → R2 in the original spec (§13.2), with the same "superseded" note.
+- **Settings.** The module's `env` input; `prod/` sets `APP_BASE_URL` (built from the project
+  number), `CLIENT_IP_HEADER=X-Forwarded-For` and `RUST_LOG=info`.
+- **`deploy.yml`.** Runs on push to `main` only, never `workflow_call`, `pull_request_target` or
+  `workflow_dispatch`, because the deploy account trusts `deploy.yml` on `main`. It ignores
+  changes to docs and `infra/`, and skips until the GitHub secrets exist. It builds the image
+  **once** with a neutral tag, scans that image with Trivy, and only then logs in, so the scanned
+  image is the deployed image. A guard refuses to deploy while `DATABASE_URL` is not attached to
+  the service (without it the image would fall back to a throwaway SQLite file). It then pushes
+  the image tagged with the commit SHA to Artifact Registry and runs
+  `gcloud run services update --image`; `gcloud run services update` stamps client
+  annotations on the revision template, and `service.tf` ignores template labels/annotations (plus
+  image, client, client_version), so deploys are not drift.
+  This replaces the GHCR push in the original spec's `release.yml` (§13.1), which is deleted.
+- **Database connection.** Neon's **direct** connection (the app keeps its own pool; migrations
+  need a direct connection). Neon suspends after 5 idle minutes, so the pool's idle timeout is
+  under 5 minutes and connections are tested before use. The string uses `sslmode=require`:
+  encrypted, but sqlx does not verify the certificate; `verify-full` would need
+  `sslrootcert=system` for `pg_dump`, which sqlx would read as a file path. Neon's
+  `channel_binding=require` is ignored by sqlx, with a warning in the log.
+- **Backup.** Cloud Scheduler starts the Cloud Run job `smoke-tracker-backup` daily at 03:00
+  (Europe/Berlin). It runs `pg_dump --format=custom` into the bucket `<project>-smoke-tracker-backups`
+  (`europe-west3`), as `smoke-tracker-<UTC time>.dump`, written first as `.dump.partial` and
+  renamed on success. Dumps are deleted after 30 days. The job exists only once
+  `attach_database_url` is `true`. The bucket is in the EU, so outside the free tier; a few dumps
+  cost fractions of a cent. Neon's free plan keeps only 6 hours of history, which is why this
+  exists. It replaces Litestream → R2 in the original spec (§13.2). Restore with
+  `pg_restore --clean --if-exists --no-owner --single-transaction`, run in a `postgres:18-alpine`
+  container so the client matches the dump; it overwrites live data (`infra/README.md`).
+  `postgres:18-alpine` is accepted as a moving Docker Hub tag: pinning a digest would need manual
+  updates; revisit if the threat model changes.
+- **First resident.** Run once from Cloud Shell: `docker run -it` of the deployed image with
+  `create-resident`, passing `DATABASE_URL` from Secret Manager to that one process. A Cloud Run
+  job was considered and dropped: the command asks for the password on a terminal, and a job has
+  none, so the password would have to be an argument or a secret, which leaks it into the job's
+  configuration or logs.
 
 ---
 
@@ -296,7 +330,7 @@ Separate PRs, not part of this spec's implementation:
 - CI: `check` passes; `plan` posts a comment on a test PR, with the project ID and number shown
   as `***`.
 - After the first-time setup: `terraform plan` reports **no changes**; the service URL shows the
-  sample page.
+  sample page; after go-live, the app's sign-in page, where the first resident can sign in.
 - The `import` adopts the existing Artifact Registry repository without replacing it.
 - The Artifact Registry repository shows both cleanup policies, dry run off.
 
@@ -308,5 +342,5 @@ Separate PRs, not part of this spec's implementation:
 - `README.md`: Terraform in the hosting diagram; link to `infra/`.
 - `docs/learning/hosting.md`: state, plan vs apply, imports, why some pieces stay manual.
 - `docs/DECISIONS.md`: entries for Cloud Run + Neon (replacing #38 and #39), Terraform, state in
-  GCS, Neon manual, apply from Cloud Shell. Numbered after milestone 3's #56–#73. Wording shown
+  GCS, Neon manual, apply from Cloud Shell. Numbered after milestone 3's #56–#75. Wording shown
   to the user before committing.

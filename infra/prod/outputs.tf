@@ -1,6 +1,6 @@
 output "service_url" {
-  description = "Open this to check the service."
-  value       = module.app.service_url
+  description = "The address the app is configured with (APP_BASE_URL); open this to check the service."
+  value       = local.app_base_url
 }
 
 output "project_number" {
@@ -31,4 +31,9 @@ output "image_repository" {
 output "database_url_secret" {
   description = "Add the Neon connection string as this secret's first version."
   value       = module.app.database_url_secret_id
+}
+
+output "backups_bucket" {
+  description = "Bucket that holds the nightly database dumps."
+  value       = module.app.backups_bucket
 }

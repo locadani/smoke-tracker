@@ -26,6 +26,15 @@ resource "google_cloud_run_v2_service" "app" {
       }
 
       dynamic "env" {
+        for_each = var.env
+        iterator = setting
+        content {
+          name  = setting.key
+          value = setting.value
+        }
+      }
+
+      dynamic "env" {
         for_each = var.attach_database_url ? [google_secret_manager_secret.database_url.secret_id] : []
         content {
           name = "DATABASE_URL"
@@ -42,10 +51,14 @@ resource "google_cloud_run_v2_service" "app" {
 
   lifecycle {
     # The deploy workflow owns the running image; without this, every apply would roll it back.
+    # gcloud stamps client annotations (e.g. client.knative.dev/user-image) on the revision
+    # template, so template labels and annotations are not managed by Terraform.
     ignore_changes = [
       template[0].containers[0].image,
       client,
       client_version,
+      template[0].labels,
+      template[0].annotations,
     ]
   }
 
