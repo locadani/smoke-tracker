@@ -453,7 +453,7 @@ reverse proxy writes the client address into).
   - Free hosts may sleep the app, so the result is identical whether the sweep runs at 04:00 or
     catches up later.
 - **Expiry** is checked on every request (`expires_at <= now`: an account is expired from that exact instant); no job is needed.
-- **Cleanup:** expired sessions are removed hourly by the server; expired invites are removed daily.
+- **Cleanup:** expired sessions are removed hourly through tower-sessions' `ExpiredDeletion`; expired invites are removed daily.
 - **Time:** stored in UTC, with `chrono-tz` for local conversion. 04:00 exists exactly once a day
   in Europe/Rome (DST shifts happen at 02:00/03:00).
 - **Clock trait:** all "now" calls go through `Clock`, so tests use a fake clock.

@@ -139,7 +139,7 @@ smoke-tracker/
    │  ├─ src/lib.rs                   router::<S>() and serve()
    │  ├─ src/config.rs                BaseUrl, WebConfig
    │  ├─ src/state.rs                 AppState<S>
-   │  ├─ src/sessions.rs              DbSessions<S>: tower-sessions SessionStore over SessionRepo
+   │  ├─ src/sessions.rs              DbSessions<S>: tower-sessions SessionStore + ExpiredDeletion
    │  ├─ src/security.rs              security headers, Origin / Sec-Fetch-Site check
    │  ├─ src/request_id.rs            random 16-hex request ids
    │  ├─ src/assets.rs                embedded static files with ETags, /healthz
@@ -151,7 +151,7 @@ smoke-tracker/
    │  ├─ templates/{base,error,login,home}.html
    │  ├─ locales/{en,it,tr}/main.ftl
    │  ├─ static/{app.css,favicon.svg,htmx-2.0.11.min.js}
-   │  └─ tests/{common/mod.rs,security.rs,errors.rs,login.rs,i18n.rs}
+   │  └─ tests/{common/mod.rs,security.rs,sessions.rs,errors.rs,login.rs,i18n.rs}
    └─ app/                            NEW  package smoke-tracker (lib smoke_app, bin smoke-tracker)
       ├─ src/{lib,main,cli,config,backend}.rs
       ├─ src/commands/{mod,serve,create_resident,verify_audit}.rs
@@ -1567,7 +1567,8 @@ Unknown pages answer a bare `404` until Task 5 adds error pages.
 - Create: `crates/web/src/{state,sessions,security,request_id,assets}.rs`
 - Create: `crates/web/static/app.css`, `crates/web/static/favicon.svg`,
   `crates/web/static/htmx-2.0.11.min.js`
-- Create: `crates/web/tests/common/mod.rs`, `crates/web/tests/security.rs`
+- Create: `crates/web/tests/common/mod.rs`, `crates/web/tests/security.rs`,
+  `crates/web/tests/sessions.rs`
 
 **Interfaces:**
 - Consumes: `SessionRepo`, `StoredSession` (Task 2); `BaseUrl`, `WebConfig`, `password` (Task 3);
@@ -1576,6 +1577,10 @@ Unknown pages answer a bare `404` until Task 5 adds error pages.
   - `smoke_web::AppState<S>` — `AppState::new(store: S, clock: Arc<dyn Clock>, config:
     WebConfig)`; fields `store`, `clock`, `config: Arc<WebConfig>` are `pub(crate)`.
   - `smoke_web::router<S: Store + Clone + 'static>(AppState<S>) -> axum::Router`.
+  - `smoke_web::DbSessions<S>` — `DbSessions::new(store: S, clock: Arc<dyn Clock>)`;
+    implements `tower_sessions::SessionStore` and
+    `tower_sessions::session_store::ExpiredDeletion` (`delete_expired()` removes every
+    session whose `expires_at <= clock.now()`).
   - `smoke_web::serve(TcpListener, Router, shutdown: impl Future<Output = ()> + Send + 'static)
     -> io::Result<()>` (with `ConnectInfo<SocketAddr>` and graceful shutdown).
   - `crate::sessions::{USER_ID_KEY = "user_id", SECURE_COOKIE = "__Host-session",
@@ -1966,10 +1971,72 @@ async fn assets_are_served_with_their_type_and_revalidated() {
 }
 ```
 
+Create `crates/web/tests/sessions.rs`:
+
+```rust
+//! Expired sessions are removed through tower-sessions' `ExpiredDeletion` (spec §11).
+
+mod common;
+
+use chrono::{DateTime, TimeDelta, Utc};
+use common::*;
+use smoke_domain::clock::Clock;
+use smoke_domain::records::StoredSession;
+use smoke_domain::repos::SessionRepo;
+use smoke_web::DbSessions;
+use sqlx::SqlitePool;
+use tower_sessions::session_store::ExpiredDeletion;
+
+fn session(id_hash: &str, expires_at: DateTime<Utc>) -> StoredSession {
+    StoredSession {
+        id_hash: id_hash.to_owned(),
+        user_id: None,
+        data: "{}".to_owned(),
+        expires_at,
+    }
+}
+
+async fn stored_ids(app: &TestApp) -> Vec<String> {
+    let pool = SqlitePool::connect(&app.db_url).await.unwrap();
+    sqlx::query_scalar("SELECT id_hash FROM sessions ORDER BY id_hash")
+        .fetch_all(&pool)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn delete_expired_removes_only_expired_sessions() {
+    let app = TestApp::new().await;
+    let now = app.clock.now();
+    for (id_hash, expires_at) in [
+        ("ended", now - TimeDelta::seconds(1)),
+        ("ends-now", now),
+        ("fresh", now + TimeDelta::days(30)),
+    ] {
+        app.store
+            .create_session(&session(id_hash, expires_at))
+            .await
+            .unwrap();
+    }
+
+    let sessions = DbSessions::new(app.store.clone(), app.clock.clone());
+    sessions.delete_expired().await.unwrap();
+    assert_eq!(stored_ids(&app).await, ["fresh"]);
+
+    sessions.delete_expired().await.unwrap();
+    assert_eq!(
+        stored_ids(&app).await,
+        ["fresh"],
+        "running again is harmless"
+    );
+}
+```
+
 - [ ] **Step 3: Run the tests to verify they fail**
 
-Run: `cargo test -p smoke-web --test security`
-Expected: compile errors — `smoke_web::router` and `smoke_web::AppState` are not defined.
+Run: `cargo test -p smoke-web --test security --test sessions`
+Expected: compile errors — `smoke_web::router`, `smoke_web::AppState` and
+`smoke_web::DbSessions` are not defined.
 
 - [ ] **Step 4: Implement the state and request ids**
 
@@ -2066,7 +2133,8 @@ mod tests {
 
 - [ ] **Step 5: Implement the session store**
 
-`crates/web/src/sessions.rs`:
+`crates/web/src/sessions.rs` — the `SessionStore` for tower-sessions, and its
+`ExpiredDeletion`, which the binary's hourly loop calls (Task 10):
 
 ```rust
 //! Server-side sessions (spec §8.4): `tower-sessions` keeps the cookie and the session data;
@@ -2086,7 +2154,7 @@ use smoke_domain::types::UserId;
 use tower_sessions::cookie::SameSite;
 use tower_sessions::cookie::time::{Duration, OffsetDateTime};
 use tower_sessions::session::{Id, Record};
-use tower_sessions::session_store::{self, SessionStore};
+use tower_sessions::session_store::{self, ExpiredDeletion, SessionStore};
 use tower_sessions::{Expiry, SessionManagerLayer};
 
 use crate::config::BaseUrl;
@@ -2113,7 +2181,7 @@ where
     } else {
         LOCAL_COOKIE
     };
-    SessionManagerLayer::new(DbSessions { store, clock })
+    SessionManagerLayer::new(DbSessions::new(store, clock))
         .with_name(name)
         .with_secure(base_url.is_https())
         .with_http_only(true)
@@ -2122,11 +2190,18 @@ where
         .with_expiry(Expiry::OnInactivity(Duration::days(LIFETIME_DAYS)))
 }
 
-/// A `tower-sessions` store over any storage backend.
+/// A `tower-sessions` store over any storage backend. Public so the binary can run its
+/// [`ExpiredDeletion`] sweep.
 #[derive(Clone)]
-pub(crate) struct DbSessions<S> {
+pub struct DbSessions<S> {
     store: S,
     clock: Arc<dyn Clock>,
+}
+
+impl<S> DbSessions<S> {
+    pub fn new(store: S, clock: Arc<dyn Clock>) -> Self {
+        Self { store, clock }
+    }
 }
 
 impl<S> fmt::Debug for DbSessions<S> {
@@ -2212,6 +2287,27 @@ where
             .delete_session(&id_hash(id))
             .await
             .map_err(backend)
+    }
+}
+
+/// tower-sessions' interface for removing expired sessions (spec §11). The binary calls it
+/// from its own hourly loop rather than `continuously_delete_expired`, which skips the run at
+/// startup and stops for good after the first error.
+#[async_trait]
+impl<S> ExpiredDeletion for DbSessions<S>
+where
+    S: SessionRepo + Clone + 'static,
+{
+    async fn delete_expired(&self) -> session_store::Result<()> {
+        let removed = self
+            .store
+            .delete_expired_sessions(self.clock.now())
+            .await
+            .map_err(backend)?;
+        if removed > 0 {
+            tracing::info!(removed, "deleted expired sessions");
+        }
+        Ok(())
     }
 }
 
@@ -2513,6 +2609,7 @@ use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tracing::Level;
 
 pub use crate::auth::password;
+pub use crate::sessions::DbSessions;
 pub use crate::state::AppState;
 
 /// Form posts are small; anything larger is refused before a handler runs.
@@ -2575,8 +2672,9 @@ pub async fn serve(
 
 Run: `cargo test -p smoke-web && cargo clippy -p smoke-web --all-targets -- -D warnings`
 Expected: all pass, including `every_response_carries_the_security_headers`,
-`cross_site_posts_are_refused`, `the_vendored_htmx_is_the_published_release` and
-`records_round_trip_through_the_stored_form`; no warnings.
+`cross_site_posts_are_refused`, `the_vendored_htmx_is_the_published_release`,
+`records_round_trip_through_the_stored_form` and
+`delete_expired_removes_only_expired_sessions`; no warnings.
 
 - [ ] **Step 10: Commit**
 
@@ -2586,7 +2684,7 @@ git commit -m "feat(web): generic Axum router with DB sessions, security headers
 
 AppState<S> carries the store as a type parameter, so each backend gets its
 own monomorphised router. DbSessions implements tower-sessions' async
-SessionStore over the domain SessionRepo; assets are include_bytes!-ed with
+SessionStore and ExpiredDeletion over the domain SessionRepo; assets are include_bytes!-ed with
 ETags; every response gets a strict CSP and a request id.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
@@ -3398,7 +3496,7 @@ indicator `<style>` and from using `eval`, both of which the CSP would block:
  use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
  use tower_http::trace::{DefaultOnResponse, TraceLayer};
  use tracing::Level;
-@@ -33,7 +37,8 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
+@@ -34,7 +38,8 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
  /// The whole application. Static assets and the health check skip sessions and the database.
  pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
      let pages = Router::new()
@@ -3408,7 +3506,7 @@ indicator `<style>` and from using `eval`, both of which the CSP would block:
          .layer(sessions::layer(
              state.store.clone(),
              state.clock.clone(),
-@@ -43,6 +48,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
+@@ -44,6 +49,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
              state.config.clone(),
              security::check_origin,
          ))
@@ -4394,7 +4492,7 @@ The translation test must also see the login notices:
  use smoke_domain::repos::Store;
  use tokio::net::TcpListener;
  use tower_http::catch_panic::CatchPanicLayer;
-@@ -36,9 +36,22 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
+@@ -37,9 +37,22 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
  
  /// The whole application. Static assets and the health check skip sessions and the database.
  pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
@@ -5209,7 +5307,7 @@ pub(crate) async fn choose<S: Store + Clone + 'static>(
 ```diff
 --- a/crates/web/src/lib.rs
 +++ b/crates/web/src/lib.rs
-@@ -46,6 +46,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
+@@ -47,6 +47,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
              get(routes::login::form).post(routes::login::submit::<S>),
          )
          .route("/logout", post(routes::login::logout))
@@ -5708,7 +5806,8 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 10: App crate — the commands
 
-`serve` (migrations, then the server and an hourly expired-session sweep, until SIGTERM or
+`serve` (migrations, then the server and an hourly expired-session sweep through
+tower-sessions' `ExpiredDeletion`, until SIGTERM or
 Ctrl-C), `migrate` (migrations + starter lists; safe to repeat), `create-resident <username>`
 (password prompted twice, never echoed, never an argument), and `verify-audit` (prints the head
 hash and every problem; exit code 1 when anything is wrong). Errors exit with 2. Logs go to
@@ -5721,7 +5820,9 @@ stderr so command output on stdout stays clean.
 **Interfaces:**
 - Consumes: `smoke_web::{router, serve, AppState, password}`; `ServeConfig`, `Backend`,
   `with_store!` (Task 9); `smoke_domain::verify::{verify_store, AuditReport, SnapshotProblem}`
-  (milestone 2); `SessionRepo::delete_expired_sessions` (Task 2).
+  (milestone 2); `smoke_web::DbSessions` and its `ExpiredDeletion` impl (Task 4). The app
+  crate gains the `tower-sessions` dependency (already in the workspace) to call
+  `delete_expired()`.
 - Produces:
   - `smoke_app::cli::{Cli, Command::{Serve, Migrate, CreateResident { username, locale },
     VerifyAudit}}`.
@@ -6137,8 +6238,9 @@ use std::time::Duration;
 use anyhow::Context;
 use smoke_domain::clock::Clock;
 use smoke_domain::repos::{SessionRepo, Store};
-use smoke_web::AppState;
+use smoke_web::{AppState, DbSessions};
 use tokio::net::TcpListener;
+use tower_sessions::session_store::ExpiredDeletion;
 use tracing::{info, warn};
 
 use crate::config::ServeConfig;
@@ -6161,22 +6263,24 @@ pub async fn run<S: Store + Clone + 'static>(
         auto_close_hour = config.schedule.hour(),
         "listening"
     );
-    let sweeper = tokio::spawn(sweep_sessions(store.clone(), clock.clone()));
+    let sweeper = tokio::spawn(sweep_sessions(DbSessions::new(
+        store.clone(),
+        clock.clone(),
+    )));
     let app = smoke_web::router(AppState::new(store, clock, config.web));
     let served = smoke_web::serve(listener, app, shutdown_signal()).await;
     sweeper.abort();
     served.context("the server stopped with an error")
 }
 
-/// Deletes expired sessions at startup and then every hour.
-async fn sweep_sessions<S: SessionRepo>(store: S, clock: Arc<dyn Clock>) {
+/// Deletes expired sessions at startup and then every hour, through tower-sessions'
+/// [`ExpiredDeletion`]. A failed run is logged and the next one still happens.
+async fn sweep_sessions<S: SessionRepo + Clone + 'static>(sessions: DbSessions<S>) {
     let mut ticks = tokio::time::interval(SESSION_SWEEP_EVERY);
     loop {
         ticks.tick().await;
-        match store.delete_expired_sessions(clock.now()).await {
-            Ok(0) => {}
-            Ok(removed) => info!(removed, "deleted expired sessions"),
-            Err(error) => warn!(%error, "could not delete expired sessions"),
+        if let Err(error) = sessions.delete_expired().await {
+            warn!(%error, "could not delete expired sessions");
         }
     }
 }
@@ -6324,6 +6428,13 @@ async fn main() -> ExitCode {
  [dependencies]
  anyhow.workspace = true
  chrono-tz.workspace = true
+@@ -22,6 +26,7 @@ smoke-storage-sqlite.workspace = true
+ smoke-web.workspace = true
+ thiserror.workspace = true
+ tokio = { workspace = true, features = ["net", "signal", "time"] }
++tower-sessions.workspace = true
+ tracing.workspace = true
+ tracing-subscriber.workspace = true
 ```
 
 - [ ] **Step 5: Run the tests and the binary**
@@ -6349,8 +6460,8 @@ git add crates/app
 git commit -m "feat(app): clap CLI with serve, migrate, create-resident and verify-audit
 
 The binary is a thin main over a library, so every command is testable. serve
-shuts down gracefully on SIGTERM via tokio::select!, and a spawned task sweeps
-expired sessions hourly. verify-audit maps problems to exit code 1.
+shuts down gracefully on SIGTERM via tokio::select!, and a spawned task calls
+tower-sessions' ExpiredDeletion hourly, logging failures instead of stopping. verify-audit maps problems to exit code 1.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -6641,7 +6752,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 Append to the table in `docs/DECISIONS.md`:
 
 ```markdown
-| 56 | 2026-10-13 | Sessions | Our own `tower_sessions::SessionStore` over a domain **`SessionRepo`**, with a `sessions` table in both migrations | `tower-sessions-sqlx-store` | Its 0.15.0 release needs `sqlx ^0.8` and `tower-sessions ^0.14`: a second sqlx next to our 0.9. Our store is ~100 lines, works on both backends, and keeps `web` free of SQL |
+| 56 | 2026-10-13 | Sessions | Our own `tower_sessions::SessionStore` over a domain **`SessionRepo`**, with a `sessions` table in both migrations | `tower-sessions-sqlx-store` | Its 0.15.0 release needs `sqlx ^0.8` and `tower-sessions ^0.14`: a second sqlx next to our 0.9. Our store is ~100 lines, works on both backends, and keeps `web` free of SQL. It also implements `ExpiredDeletion`, called from the server's own hourly loop: the library's `continuously_delete_expired` skips the run at startup and stops for good after one error |
 | 57 | 2026-10-13 | Sessions | The database stores the **SHA-256 of the session id**, never the id | Store the id | A copy of the database (a backup, a leak) cannot be used to take over a session |
 | 58 | 2026-10-13 | Sessions | `set_password` and `expire_user` **delete the user's sessions in the same transaction** | Delete them from the web layer afterwards | The spec's "deleted on password change / expiry" can never be skipped, and a rolled-back change keeps them |
 | 59 | 2026-10-13 | Sessions | 30-day lifetime **renewed at most once a day**; sign-in cycles the session id | Renew on every request | One database write per day per active user instead of one per request; a new id at sign-in prevents session fixation |
@@ -6693,8 +6804,9 @@ cargo deny check
 
 ### Task 13: Spec wording — ✅ approved and applied (2026-10-13); skip
 
-The user approved all four edits on 2026-10-13; they were committed with this plan update. **Executors: skip this task.** They align the spec with
-decisions #56, #61 and #62; nothing in the code depends on them.
+The user approved all four edits on 2026-10-13; they are committed. **Executors: skip this
+task.** They align the spec with decisions #56, #61 and #62; nothing in the code depends on
+them.
 
 **Files:**
 - Modify: `docs/specs/2026-10-13-smoke-tracker-design.md`
@@ -6710,7 +6822,7 @@ decisions #56, #61 and #62; nothing in the code depends on them.
 3. §10.5 — append `CLIENT_IP_HEADER` (optional; the header a trusted reverse proxy writes the
    client address into) to the list of variables.
 4. §11, *Cleanup* — from *"expired sessions are removed by tower-sessions"* to *"expired
-   sessions are removed hourly by the server"*.
+   sessions are removed hourly through tower-sessions' `ExpiredDeletion`"*.
 
 - [x] **Step 2: Apply exactly the approved edits and commit**
 
@@ -6743,7 +6855,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 | §10.4 | `serve`, `migrate`, `create-resident`, `verify-audit` (`migrate-to-postgres` is milestone 7) | 10 |
 | §10.5 | Config from the environment, defaults, `.env.example` | 9, 11 |
 | §11 | Expiry checked on every request (`expires_at <= now`) | 6 (`load_user`) |
-| §11 | Expired sessions cleaned up | 2, 10 |
+| §11 | Expired sessions cleaned up (through `ExpiredDeletion`) | 2, 4, 10 |
 | §12 | `thiserror` in libraries, `anyhow` in the binary | 3–10 |
 | §12 | Unexpected errors logged with a request id; "Something went wrong (ref: …)" | 4, 5 |
 | §12 | Askama auto-escaping; Origin / `Sec-Fetch-Site` check; strict CSP, HSTS, nosniff, Referrer-Policy, frame-ancestors | 4, 5, 6 |
