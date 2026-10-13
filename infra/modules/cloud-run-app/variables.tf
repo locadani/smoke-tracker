@@ -13,8 +13,8 @@ variable "name" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z][a-z0-9-]{4,22}$", var.name))
-    error_message = "name must be 5-23 characters of a-z, 0-9 and '-', starting with a letter, so that '<name>-deploy' fits a 30-character service account ID."
+    condition     = can(regex("^[a-z][a-z0-9-]{3,21}[a-z0-9]$", var.name))
+    error_message = "name must be 5-23 characters of a-z, 0-9 and '-', starting with a letter and ending with a letter or digit, so that '<name>-deploy' fits a 30-character service account ID."
   }
 }
 

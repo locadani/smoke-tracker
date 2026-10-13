@@ -72,6 +72,42 @@ run "name_must_fit_account_ids" {
   expect_failures = [var.name]
 }
 
+run "name_of_23_characters_is_accepted" {
+  command = plan
+
+  variables {
+    name = "abcdefghij-klmnopqrstuv"
+  }
+}
+
+run "name_of_5_characters_is_accepted" {
+  command = plan
+
+  variables {
+    name = "abcde"
+  }
+}
+
+run "name_ending_in_hyphen_is_rejected" {
+  command = plan
+
+  variables {
+    name = "smoke-tracker-"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "name_of_4_characters_is_rejected" {
+  command = plan
+
+  variables {
+    name = "abcd"
+  }
+
+  expect_failures = [var.name]
+}
+
 run "runtime_account_can_only_read_its_secret" {
   assert {
     condition     = google_service_account.runtime.account_id == "smoke-tracker-run"

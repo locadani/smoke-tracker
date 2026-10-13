@@ -24,5 +24,5 @@ resource "google_storage_bucket_iam_member" "terraform_plan_reads_state" {
 resource "google_service_account_iam_member" "terraform_plan_github" {
   service_account_id = google_service_account.terraform_plan.name
   role               = "roles/iam.workloadIdentityUser"
-  member             = "principalSet://iam.googleapis.com/${module.app.workload_identity_pool_name}/attribute.repository_id/1416787003"
+  member             = "principalSet://iam.googleapis.com/${module.app.workload_identity_pool_name}/attribute.repository_id/${local.github_repository_id}"
 }
