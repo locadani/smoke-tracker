@@ -8,6 +8,7 @@ pub mod clock;
 pub mod error;
 pub mod events;
 pub mod permissions;
+pub mod records;
 pub mod schedule;
 pub mod types;
 
