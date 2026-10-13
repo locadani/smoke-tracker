@@ -105,6 +105,9 @@ pub trait EventRepo: Send + Sync {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     ) -> impl Future<Output = StoreResult<Vec<Event>>> + Send;
+    /// Events closed by the 04:00 sweep whose notice nobody has seen yet, ordered by
+    /// `opened_at`.
+    fn unseen_auto_closed(&self) -> impl Future<Output = StoreResult<Vec<Event>>> + Send;
 }
 
 pub trait ReportRepo: Send + Sync {
@@ -115,6 +118,12 @@ pub trait ReportRepo: Send + Sync {
     fn reports_for_event(
         &self,
         event: EventId,
+    ) -> impl Future<Output = StoreResult<Vec<SmellReport>>> + Send;
+    /// Reports that are not deleted, observed in `[from, to)`, ordered by observed time.
+    fn reports_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
     ) -> impl Future<Output = StoreResult<Vec<SmellReport>>> + Send;
 }
 
@@ -128,6 +137,12 @@ pub trait ReadingRepo: Send + Sync {
     fn readings_for_event(
         &self,
         event: EventId,
+    ) -> impl Future<Output = StoreResult<Vec<Pm25Reading>>> + Send;
+    /// Readings that are not deleted, observed in `[from, to)`, ordered by observed time.
+    fn readings_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
     ) -> impl Future<Output = StoreResult<Vec<Pm25Reading>>> + Send;
 }
 
@@ -197,6 +212,11 @@ pub trait EventWrites: Send {
     /// Reads inside the transaction, so a decision and the write that follows it see the same data.
     fn open_event(&mut self) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     fn event(&mut self, id: EventId) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
+    /// The most recently opened event whose span contains `at`; an open event has no end yet.
+    fn event_at(
+        &mut self,
+        at: DateTime<Utc>,
+    ) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     /// The observed time of the event's latest report that is not deleted.
     fn latest_report_at(
         &mut self,

@@ -95,6 +95,27 @@ impl ReadingRepo for PostgresStore {
         .map(ReadingRow::into_reading)
         .collect()
     }
+
+    async fn readings_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> StoreResult<Vec<Pm25Reading>> {
+        sqlx::query_as!(
+            ReadingRow,
+            "SELECT id, user_id, event_id, observed_at, recorded_at, value_ugm3, deleted_at \
+             FROM pm25_readings WHERE deleted_at IS NULL AND observed_at >= $1 AND observed_at < $2 \
+             ORDER BY observed_at, id",
+            micros(from),
+            micros(to),
+        )
+        .fetch_all(&mut *self.read().await?)
+        .await
+        .db()?
+        .into_iter()
+        .map(ReadingRow::into_reading)
+        .collect()
+    }
 }
 
 impl ReadingWrites for PostgresTx {

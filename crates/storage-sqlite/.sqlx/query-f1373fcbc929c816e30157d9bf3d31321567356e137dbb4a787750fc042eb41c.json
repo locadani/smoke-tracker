@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT l.smell_report_id, l.room_id FROM smell_report_rooms l JOIN smell_reports r ON r.id = l.smell_report_id WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 ORDER BY l.smell_report_id, l.room_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "smell_report_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "smell_report_id"
+          }
+        }
+      },
+      {
+        "name": "room_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "room_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f1373fcbc929c816e30157d9bf3d31321567356e137dbb4a787750fc042eb41c"
+}

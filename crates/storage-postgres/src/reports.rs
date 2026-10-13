@@ -1,5 +1,7 @@
 //! Smell reports, with their rooms and symptoms in link tables. Deleted softly.
 
+use std::collections::HashMap;
+
 use chrono::{DateTime, Utc};
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::records::{NewReport, ReportValues, SmellReport};
@@ -37,6 +39,11 @@ async fn load(conn: &mut PgConnection, row: ReportRow) -> StoreResult<SmellRepor
     .fetch_all(&mut *conn)
     .await
     .db()?;
+    assemble(row, rooms, symptoms)
+}
+
+/// A report from its row and the ids in its link tables.
+fn assemble(row: ReportRow, rooms: Vec<i64>, symptoms: Vec<i64>) -> StoreResult<SmellReport> {
     let intensity = u8::try_from(row.intensity)
         .map_err(corrupt)
         .and_then(|value| Intensity::new(value).map_err(corrupt))?;
@@ -59,6 +66,15 @@ async fn load(conn: &mut PgConnection, row: ReportRow) -> StoreResult<SmellRepor
         values,
         deleted_at: opt_instant(row.deleted_at)?,
     })
+}
+
+/// Groups `(report id, linked id)` pairs by report.
+fn group(links: impl IntoIterator<Item = (i64, i64)>) -> HashMap<i64, Vec<i64>> {
+    let mut grouped: HashMap<i64, Vec<i64>> = HashMap::new();
+    for (report, linked) in links {
+        grouped.entry(report).or_default().push(linked);
+    }
+    grouped
 }
 
 async fn load_all(conn: &mut PgConnection, rows: Vec<ReportRow>) -> StoreResult<Vec<SmellReport>> {
@@ -172,6 +188,66 @@ impl ReportRepo for PostgresStore {
         .await
         .db()?;
         load_all(&mut conn, rows).await
+    }
+
+    /// Three queries whatever the number of reports: the rows, then all their room links and
+    /// all their symptom links.
+    async fn reports_between(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+    ) -> StoreResult<Vec<SmellReport>> {
+        let (from, to) = (micros(from), micros(to));
+        let mut conn = self.read().await?;
+        let rows = sqlx::query_as!(
+            ReportRow,
+            "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+             FROM smell_reports WHERE deleted_at IS NULL AND observed_at >= $1 AND observed_at < $2 \
+             ORDER BY observed_at, id",
+            from,
+            to,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let rooms = sqlx::query!(
+            "SELECT l.smell_report_id, l.room_id FROM smell_report_rooms l \
+             JOIN smell_reports r ON r.id = l.smell_report_id \
+             WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 \
+             ORDER BY l.smell_report_id, l.room_id",
+            from,
+            to,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let symptoms = sqlx::query!(
+            "SELECT l.smell_report_id, l.symptom_id FROM smell_report_symptoms l \
+             JOIN smell_reports r ON r.id = l.smell_report_id \
+             WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 \
+             ORDER BY l.smell_report_id, l.symptom_id",
+            from,
+            to,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let mut rooms = group(rooms.into_iter().map(|l| (l.smell_report_id, l.room_id)));
+        let mut symptoms = group(
+            symptoms
+                .into_iter()
+                .map(|l| (l.smell_report_id, l.symptom_id)),
+        );
+        rows.into_iter()
+            .map(|row| {
+                let id = row.id;
+                assemble(
+                    row,
+                    rooms.remove(&id).unwrap_or_default(),
+                    symptoms.remove(&id).unwrap_or_default(),
+                )
+            })
+            .collect()
     }
 }
 

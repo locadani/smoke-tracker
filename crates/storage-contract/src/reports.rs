@@ -361,3 +361,35 @@ where
     );
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
 }
+
+pub async fn reports_between_returns_live_reports_with_their_links<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReportWrites>
+        + ListRepo
+        + ReportRepo,
+{
+    let scene = scene(fx).await;
+    let (r0, r1, s0) = (scene.rooms[0].id, scene.rooms[1].id, scene.symptoms[0].id);
+    let at = |minutes: i64| start() - TimeDelta::minutes(minutes);
+    let before = add_report(fx, &scene, at(50), report_values(2, &[r0], &[])).await;
+    let first = add_report(fx, &scene, at(40), report_values(5, &[r1, r0], &[s0])).await;
+    let second = add_report(fx, &scene, at(30), report_values(6, &[], &[])).await;
+    let deleted = add_report(fx, &scene, at(20), report_values(7, &[r0], &[s0])).await;
+    let at_end = add_report(fx, &scene, at(10), report_values(8, &[r1], &[])).await;
+    let mut tx = fx.store.begin(None).await.unwrap();
+    tx.delete_report(deleted.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let found = fx.store.reports_between(at(40), at(10)).await.unwrap();
+    assert_eq!(found, [first.clone(), second]);
+    assert_eq!(found[0].values.rooms(), [r0, r1]);
+    assert_eq!(found[0].values.symptoms(), [s0]);
+    assert!(!found.contains(&before) && !found.contains(&at_end));
+    assert!(
+        fx.store
+            .reports_between(at(5), start())
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
