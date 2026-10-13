@@ -15,6 +15,7 @@ use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
 use smoke_domain::records::{NewUser, User};
 use smoke_domain::repos::{Commit, Transactional, UserWrites};
+use smoke_domain::schedule::DailySchedule;
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -50,6 +51,7 @@ impl TestApp {
         let config = WebConfig {
             base_url: BaseUrl::parse(base_url).unwrap(),
             client_ip_header: client_ip_header.map(HeaderName::from_static),
+            schedule: DailySchedule::new(chrono_tz::Europe::Rome, 4).unwrap(),
         };
         let router = smoke_web::router(AppState::new(store.clone(), clock.clone(), config));
         Self {
