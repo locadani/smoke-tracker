@@ -48,6 +48,7 @@ macro_rules! contract_tests {
             lists::hiding_a_room_is_audited_once,
             lists::symptoms_can_be_created_and_hidden,
             lists::hiding_an_unknown_symptom_is_not_found,
+            lists::only_residents_edit_the_lists,
             events::a_new_event_can_be_the_open_event,
             events::only_one_event_can_be_open,
             events::closing_and_reopening_are_audited,

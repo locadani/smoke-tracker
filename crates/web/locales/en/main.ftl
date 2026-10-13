@@ -183,6 +183,15 @@ settings-password-wrong = The current password is not correct.
 settings-saved-language = Language saved.
 settings-saved-password = Password changed. Your other devices are signed out.
 settings-guides = Guides
+settings-lists-hint = Hidden items are no longer offered on the forms; reports that name them keep them.
+settings-list-hidden = hidden
+settings-list-hide = Hide
+settings-list-show = Show again
+settings-room-add = New room
+settings-symptom-add = New symptom
+settings-list-add = Add
+settings-list-name-invalid = A name needs 1 to 60 characters.
+settings-saved-lists = Lists saved.
 
 error-not-found-title = Page not found
 error-not-found = This page does not exist.

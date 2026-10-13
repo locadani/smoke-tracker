@@ -1,0 +1,13 @@
+{# A room or symptom in Settings, with the button that hides or shows it again. Expects `item`. #}
+<li>
+  <form method="post" action="{{ item.action }}" class="item">
+    <span>{{ item.label }}{% if let Some(area) = item.area %} · {{ tr.t(area) }}{% endif %}{% if item.hidden %} · <em>{{ tr.t("settings-list-hidden") }}</em>{% endif %}</span>
+    {% if item.hidden %}
+    <input type="hidden" name="hidden" value="false">
+    <button type="submit" class="link">{{ tr.t("settings-list-show") }}</button>
+    {% else %}
+    <input type="hidden" name="hidden" value="true">
+    <button type="submit" class="link">{{ tr.t("settings-list-hide") }}</button>
+    {% endif %}
+  </form>
+</li>

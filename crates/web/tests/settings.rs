@@ -4,8 +4,8 @@ mod common;
 
 use axum::http::StatusCode;
 use common::*;
-use smoke_domain::repos::UserRepo;
-use smoke_domain::types::{Locale, Role};
+use smoke_domain::repos::{ListRepo, UserRepo};
+use smoke_domain::types::{Locale, Role, RoomArea};
 
 const NEW_PASSWORD: &str = "a brand new passphrase";
 
@@ -151,4 +151,113 @@ async fn guessing_the_current_password_locks_like_signing_in() {
         .await;
     assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
     assert!(text(response).await.contains("Too many attempts."));
+}
+
+#[tokio::test]
+async fn residents_add_rooms_and_symptoms_and_hide_them_from_the_forms() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+
+    for (path, body) in [
+        ("/settings/rooms", "name=Balcony&area=common"),
+        ("/settings/symptoms", "name=Dizziness"),
+    ] {
+        let response = app.send(post_form(path, body, Some(&cookie))).await;
+        assert_eq!(location(&response), Some("/settings?saved=lists"), "{path}");
+    }
+    let rooms = app.store.rooms().await.unwrap();
+    let balcony = rooms.last().unwrap();
+    assert_eq!(
+        (
+            balcony.name.as_str(),
+            balcony.area,
+            balcony.i18n_key.as_deref()
+        ),
+        ("Balcony", RoomArea::Common, None)
+    );
+    let log = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(log.contains("<span>Balcony</span>"), "{log}");
+    assert!(log.contains("Dizziness"), "{log}");
+
+    let hide = format!("/settings/rooms/{}/hidden", balcony.id);
+    let response = app
+        .send(post_form(&hide, "hidden=true", Some(&cookie)))
+        .await;
+    assert_eq!(location(&response), Some("/settings?saved=lists"));
+    let log = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(!log.contains("Balcony"), "{log}");
+    let settings = text(app.send(get_with("/settings?saved=lists", &cookie)).await).await;
+    assert!(settings.contains("Lists saved."), "{settings}");
+    assert!(
+        settings.contains("Balcony · Common areas · <em>hidden</em>"),
+        "{settings}"
+    );
+    assert!(settings.contains(">Show again</button>"), "{settings}");
+
+    app.send(post_form(&hide, "hidden=false", Some(&cookie)))
+        .await;
+    let log = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(log.contains("<span>Balcony</span>"), "{log}");
+}
+
+#[tokio::test]
+async fn a_name_must_have_one_to_sixty_characters() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let long = format!("name={}", "x".repeat(61));
+    for (path, body) in [
+        ("/settings/rooms", "name=+++&area=inside"),
+        ("/settings/symptoms", long.as_str()),
+    ] {
+        let response = app.send(post_form(path, body, Some(&cookie))).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{path}"
+        );
+        let html = text(response).await;
+        assert!(html.contains("A name needs 1 to 60 characters."), "{html}");
+    }
+    assert_eq!(app.store.rooms().await.unwrap().len(), 6);
+    assert_eq!(app.store.symptoms().await.unwrap().len(), 6);
+}
+
+#[tokio::test]
+async fn only_residents_see_and_edit_the_lists() {
+    let app = TestApp::new().await;
+    app.add_user("guest", Role::Guest, Locale::En).await;
+    app.add_user("lawyer", Role::Viewer, Locale::En).await;
+    for name in ["guest", "lawyer"] {
+        let cookie = app.sign_in(name).await;
+        let html = text(app.send(get_with("/settings", &cookie)).await).await;
+        assert!(!html.contains("/settings/rooms"), "{name}: {html}");
+        for (path, body) in [
+            ("/settings/rooms", "name=Balcony&area=common"),
+            ("/settings/rooms/1/hidden", "hidden=true"),
+            ("/settings/symptoms", "name=Dizziness"),
+            ("/settings/symptoms/1/hidden", "hidden=true"),
+        ] {
+            let response = app.send(post_form(path, body, Some(&cookie))).await;
+            assert_eq!(response.status(), StatusCode::FORBIDDEN, "{name} {path}");
+        }
+    }
+    assert_eq!(app.store.rooms().await.unwrap().len(), 6);
+    assert!(app.store.rooms().await.unwrap()[0].hidden_at.is_none());
+}
+
+#[tokio::test]
+async fn hiding_an_unknown_item_is_not_found() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let response = app
+        .send(post_form(
+            "/settings/rooms/99/hidden",
+            "hidden=true",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }

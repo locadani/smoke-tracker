@@ -183,6 +183,15 @@ settings-password-wrong = Mevcut şifre doğru değil.
 settings-saved-language = Dil kaydedildi.
 settings-saved-password = Şifre değiştirildi. Diğer cihazlarınızda oturum kapatıldı.
 settings-guides = Kılavuzlar
+settings-lists-hint = Gizlenen öğeler artık formlarda sunulmaz; onları içeren kayıtlar korunur.
+settings-list-hidden = gizli
+settings-list-hide = Gizle
+settings-list-show = Yeniden göster
+settings-room-add = Yeni oda
+settings-symptom-add = Yeni belirti
+settings-list-add = Ekle
+settings-list-name-invalid = Bir ad 1 ile 60 karakter arasında olmalı.
+settings-saved-lists = Listeler kaydedildi.
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

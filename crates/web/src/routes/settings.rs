@@ -1,4 +1,5 @@
-//! Settings (spec §9 screen 7): language and password for everyone.
+//! Settings (spec §9 screen 7): language and password for everyone, and the room and symptom
+//! lists for residents (edited in [`crate::routes::lists`]).
 
 use askama::Template;
 use axum::Form;
@@ -7,6 +8,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use smoke_domain::people::change_password;
+use smoke_domain::permissions::{Action, can};
 use smoke_domain::records::User;
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::types::{Locale, NewPassword};
@@ -17,6 +19,7 @@ use crate::auth::limiter::LoginLimiter;
 use crate::auth::{self, CurrentUser, password};
 use crate::error::{AppError, page};
 use crate::i18n::Tr;
+use crate::routes::lists::{self, ListsView};
 use crate::routes::people_refusal;
 use crate::state::AppState;
 
@@ -33,6 +36,14 @@ pub(crate) struct LanguageChoice {
     pub(crate) current: bool,
 }
 
+/// The messages above the page's sections: what was just saved, or why a form was refused.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct Notices {
+    pub(crate) saved: Option<&'static str>,
+    pub(crate) password_error: Option<&'static str>,
+    pub(crate) list_error: Option<&'static str>,
+}
+
 #[derive(Template)]
 #[template(path = "settings.html")]
 struct SettingsPage {
@@ -41,19 +52,23 @@ struct SettingsPage {
     /// For password managers, which file the new password under this name.
     username: String,
     languages: Vec<LanguageChoice>,
-    /// A translation key confirming what was just saved.
-    saved: Option<&'static str>,
-    /// A translation key saying why the password was not changed.
-    password_error: Option<&'static str>,
+    notices: Notices,
+    /// `None` for people who may not edit the lists.
+    lists: Option<ListsView>,
 }
 
-fn settings_page(
-    status: StatusCode,
+pub(crate) async fn settings_page<S: Store>(
+    state: &AppState<S>,
     user: &User,
     tr: Tr,
-    saved: Option<&'static str>,
-    password_error: Option<&'static str>,
+    status: StatusCode,
+    notices: Notices,
 ) -> Result<Response, AppError> {
+    let lists = if can(&user.actor(), Action::EditLists, state.clock.now()) {
+        Some(lists::view(state, tr).await?)
+    } else {
+        None
+    };
     page(
         status,
         &SettingsPage {
@@ -68,8 +83,8 @@ fn settings_page(
                     current: locale == user.locale,
                 })
                 .collect(),
-            saved,
-            password_error,
+            notices,
+            lists,
         },
     )
 }
@@ -79,7 +94,8 @@ pub(crate) struct ShowQuery {
     saved: Option<String>,
 }
 
-pub(crate) async fn show(
+pub(crate) async fn show<S: Store + Clone + 'static>(
+    State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
     Query(query): Query<ShowQuery>,
@@ -87,9 +103,14 @@ pub(crate) async fn show(
     let saved = match query.saved.as_deref() {
         Some("language") => Some("settings-saved-language"),
         Some("password") => Some("settings-saved-password"),
+        Some("lists") => Some("settings-saved-lists"),
         _ => None,
     };
-    settings_page(StatusCode::OK, &user, tr, saved, None)
+    let notices = Notices {
+        saved,
+        ..Notices::default()
+    };
+    settings_page(&state, &user, tr, StatusCode::OK, notices).await
 }
 
 #[derive(Deserialize)]
@@ -145,18 +166,23 @@ pub(crate) async fn change<S: Store + Clone + 'static>(
     tr: Tr,
     Form(form): Form<PasswordForm>,
 ) -> Result<Response, AppError> {
-    let refuse =
-        |refused: Refused| settings_page(refused.status(), &user, tr, None, Some(refused.key()));
+    let refuse = async |refused: Refused| {
+        let notices = Notices {
+            password_error: Some(refused.key()),
+            ..Notices::default()
+        };
+        settings_page(&state, &user, tr, refused.status(), notices).await
+    };
     if form.new != form.repeat {
-        return refuse(Refused::Mismatch);
+        return refuse(Refused::Mismatch).await;
     }
     let Ok(new_password) = NewPassword::new(form.new) else {
-        return refuse(Refused::Length);
+        return refuse(Refused::Length).await;
     };
     let now = state.clock.now();
     let key = LoginLimiter::key(user.username.as_str());
     if !state.limiter.begin(&key, address, now) {
-        return refuse(Refused::Locked);
+        return refuse(Refused::Locked).await;
     }
     let stored = user.password_hash.clone();
     let current = form.current;
@@ -165,7 +191,7 @@ pub(crate) async fn change<S: Store + Clone + 'static>(
     })
     .await?;
     let Some(new_hash) = new_hash else {
-        return refuse(Refused::WrongCurrent);
+        return refuse(Refused::WrongCurrent).await;
     };
     state.limiter.succeeded(&key, address, now);
     let new_hash = new_hash.map_err(AppError::internal)?;
@@ -183,6 +209,10 @@ pub(crate) async fn change<S: Store + Clone + 'static>(
 #[cfg(test)]
 pub(crate) fn keys() -> Vec<&'static str> {
     let mut keys: Vec<_> = Refused::ALL.iter().map(|r| r.key()).collect();
-    keys.extend(["settings-saved-language", "settings-saved-password"]);
+    keys.extend([
+        "settings-saved-language",
+        "settings-saved-password",
+        "settings-saved-lists",
+    ]);
     keys
 }

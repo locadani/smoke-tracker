@@ -8,6 +8,7 @@ pub mod clock;
 pub mod error;
 pub mod events;
 pub mod history;
+pub mod lists;
 pub mod logbook;
 pub mod people;
 pub mod permissions;

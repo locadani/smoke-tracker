@@ -2,13 +2,16 @@
 
 use chrono::TimeDelta;
 use smoke_domain::audit::{AuditAction, AuditEntity};
+use smoke_domain::lists::{ListError, add_room, add_symptom, set_room_hidden, set_symptom_hidden};
 use smoke_domain::records::{NewRoom, NewSymptom};
-use smoke_domain::repos::{AuditRepo, Commit, ListRepo, ListWrites, StoreError, Transactional};
+use smoke_domain::repos::{
+    AuditRepo, Commit, ListRepo, ListWrites, Store, StoreError, Transactional,
+};
 use smoke_domain::starter::{STARTER_ROOMS, STARTER_SYMPTOMS, seed_starter_lists};
-use smoke_domain::types::{ListName, RoomArea, SymptomId};
+use smoke_domain::types::{ListName, Role, RoomArea, RoomId, SymptomId};
 
 use crate::Fixture;
-use crate::fixture::start;
+use crate::fixture::{add_user, start};
 
 pub async fn seeding_adds_the_starter_lists_once<S>(fx: &Fixture<S>)
 where
@@ -141,4 +144,49 @@ where
         ),
         "{error:?}"
     );
+}
+
+pub async fn only_residents_edit_the_lists<S: Store>(fx: &Fixture<S>) {
+    seed_starter_lists(&fx.store).await.unwrap();
+    let resident = add_user(fx, "daniele", Role::Resident).await;
+    let guest = add_user(fx, "guest", Role::Guest).await;
+    let viewer = add_user(fx, "lawyer", Role::Viewer).await;
+    let balcony = ListName::new("Balcony").unwrap();
+    let entries = fx.store.audit_log().await.unwrap().len();
+
+    for outsider in [&guest, &viewer] {
+        let actor = outsider.actor();
+        let mut tx = fx.store.begin(Some(outsider.id)).await.unwrap();
+        let refused = [
+            add_room(&mut tx, &actor, balcony.clone(), RoomArea::Common, start())
+                .await
+                .map(|_| ()),
+            set_room_hidden(&mut tx, &actor, RoomId(1), true, start())
+                .await
+                .map(|_| ()),
+            add_symptom(&mut tx, &actor, balcony.clone(), start())
+                .await
+                .map(|_| ()),
+            set_symptom_hidden(&mut tx, &actor, SymptomId(1), true, start())
+                .await
+                .map(|_| ()),
+        ];
+        for result in refused {
+            assert!(matches!(result, Err(ListError::Forbidden)), "{result:?}");
+        }
+    }
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), entries);
+
+    let actor = resident.actor();
+    let mut tx = fx.store.begin(Some(resident.id)).await.unwrap();
+    let room = add_room(&mut tx, &actor, balcony, RoomArea::Common, start())
+        .await
+        .unwrap();
+    assert_eq!((room.i18n_key, room.area), (None, RoomArea::Common));
+    let hidden = set_room_hidden(&mut tx, &actor, room.id, true, start())
+        .await
+        .unwrap();
+    assert_eq!(hidden.hidden_at, Some(start()));
+    let missing = set_symptom_hidden(&mut tx, &actor, SymptomId(99), true, start()).await;
+    assert!(matches!(missing, Err(ListError::NotFound)), "{missing:?}");
 }

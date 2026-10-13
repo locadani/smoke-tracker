@@ -2,7 +2,7 @@
 {% block title %}{{ tr.t("settings-title") }}{% endblock %}
 {% block content %}
 <h1>{{ tr.t("settings-title") }}</h1>
-{% if let Some(saved) = saved %}
+{% if let Some(saved) = notices.saved %}
 <p class="notice" role="status">{{ tr.t(saved) }}</p>
 {% endif %}
 <section>
@@ -16,7 +16,7 @@
 </section>
 <section>
   <h2>{{ tr.t("settings-password") }}</h2>
-  {% if let Some(error) = password_error %}
+  {% if let Some(error) = notices.password_error %}
   <p class="notice" role="alert">{{ tr.t(error) }}</p>
   {% endif %}
   <form method="post" action="/settings/password" class="stack">
@@ -34,6 +34,42 @@
     <button type="submit">{{ tr.t("settings-password-submit") }}</button>
   </form>
 </section>
+{% if let Some(lists) = lists %}
+<section id="lists">
+  <h2>{{ tr.t("log-rooms") }}</h2>
+  <p class="hint">{{ tr.t("settings-lists-hint") }}</p>
+  {% if let Some(error) = notices.list_error %}
+  <p class="notice" role="alert">{{ tr.t(error) }}</p>
+  {% endif %}
+  <ul class="items">
+    {% for item in lists.rooms %}
+    {% include "list_item.html" %}
+    {% endfor %}
+  </ul>
+  <form method="post" action="/settings/rooms" class="stack">
+    <label>{{ tr.t("settings-room-add") }}
+      <input name="name" maxlength="60" required>
+    </label>
+    <fieldset class="choices">
+      <label><input type="radio" name="area" value="inside" checked> {{ tr.t("log-inside") }}</label>
+      <label><input type="radio" name="area" value="common"> {{ tr.t("log-common") }}</label>
+    </fieldset>
+    <button type="submit" class="secondary">{{ tr.t("settings-list-add") }}</button>
+  </form>
+  <h2>{{ tr.t("log-symptoms") }}</h2>
+  <ul class="items">
+    {% for item in lists.symptoms %}
+    {% include "list_item.html" %}
+    {% endfor %}
+  </ul>
+  <form method="post" action="/settings/symptoms" class="stack">
+    <label>{{ tr.t("settings-symptom-add") }}
+      <input name="name" maxlength="60" required>
+    </label>
+    <button type="submit" class="secondary">{{ tr.t("settings-list-add") }}</button>
+  </form>
+</section>
+{% endif %}
 <section>
   <h2>{{ tr.t("settings-guides") }}</h2>
   <ul class="rows">

@@ -183,6 +183,15 @@ settings-password-wrong = La password attuale non è corretta.
 settings-saved-language = Lingua salvata.
 settings-saved-password = Password cambiata. Gli altri dispositivi sono stati disconnessi.
 settings-guides = Guide
+settings-lists-hint = Le voci nascoste non sono più proposte nei moduli; le segnalazioni che le citano le mantengono.
+settings-list-hidden = nascosto
+settings-list-hide = Nascondi
+settings-list-show = Mostra di nuovo
+settings-room-add = Nuova stanza
+settings-symptom-add = Nuovo sintomo
+settings-list-add = Aggiungi
+settings-list-name-invalid = Un nome deve avere da 1 a 60 caratteri.
+settings-saved-lists = Elenchi salvati.
 
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.
