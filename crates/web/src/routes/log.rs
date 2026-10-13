@@ -19,7 +19,7 @@ use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
 use crate::routes::guide::{Level, levels};
-use crate::routes::notices;
+use crate::routes::{can_open, notices};
 use crate::state::AppState;
 use crate::{labels, time};
 
@@ -117,6 +117,16 @@ pub(crate) fn fields(
     }
 }
 
+/// What the Log screen says about the open event.
+pub(crate) enum Status {
+    /// No event is open.
+    None,
+    /// The viewer may see the open event, which started at this time.
+    Open(String),
+    /// An event is open but the viewer may not know about it, so the screen says nothing.
+    Hidden,
+}
+
 pub(crate) struct FormView {
     fields: Fields,
     pm25: String,
@@ -133,7 +143,7 @@ pub(crate) struct FormView {
 pub(crate) struct LogPage {
     tr: Tr,
     signed_in: Option<String>,
-    open_since: Option<String>,
+    status: Status,
     /// The open event, when the user may close it.
     close_event: Option<i64>,
     /// "The event from … was auto-closed", shown while another event is open (spec §7.4).
@@ -182,6 +192,13 @@ pub(crate) async fn log_page<S: Store>(
     let schedule = &state.config.schedule;
     let actor = user.actor();
     let open = state.store.open_event().await?;
+    let open_reports = match &open {
+        Some(event) => state.store.reports_for_event(event.id).await?,
+        None => Vec::new(),
+    };
+    let shown = open
+        .as_ref()
+        .filter(|e| can_open(&actor, e, &open_reports, now));
     let rooms = state.store.rooms().await?;
 
     let (month_start, month_end) = schedule.month_span(schedule.local_date(now));
@@ -213,11 +230,8 @@ pub(crate) async fn log_page<S: Store>(
             Some(draft) => draft,
             None => {
                 let mut blank = Draft::default();
-                if let Some(open) = &open {
-                    let reports = state.store.reports_for_event(open.id).await?;
-                    if let Some(last) = reports.iter().rev().find(|r| r.user_id == user.id) {
-                        blank.rooms = last.values.rooms().to_vec();
-                    }
+                if let Some(last) = open_reports.iter().rev().find(|r| r.user_id == user.id) {
+                    blank.rooms = last.values.rooms().to_vec();
                 }
                 blank
             }
@@ -228,7 +242,7 @@ pub(crate) async fn log_page<S: Store>(
             pm25: draft.pm25,
             observed_at: draft.observed_at,
             note: draft.note,
-            update: open.is_some(),
+            update: shown.is_some(),
             error,
         })
     } else {
@@ -238,11 +252,14 @@ pub(crate) async fn log_page<S: Store>(
     Ok(LogPage {
         tr,
         signed_in: Some(user.username.to_string()),
-        close_event: open
-            .as_ref()
+        close_event: shown
             .filter(|e| can(&actor, Action::ManageEvent { owner: e.owner_id }, now))
             .map(|e| e.id.0),
-        open_since: open.map(|e| time::since(tr.0, e.opened_at, now, schedule.tz())),
+        status: match (&open, shown) {
+            (None, _) => Status::None,
+            (Some(_), Some(e)) => Status::Open(time::since(tr.0, e.opened_at, now, schedule.tz())),
+            (Some(_), None) => Status::Hidden,
+        },
         notice,
         saved,
         summary,

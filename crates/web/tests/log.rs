@@ -95,6 +95,63 @@ async fn viewers_and_expired_guests_see_no_form() {
 }
 
 #[tokio::test]
+async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let guest = app.add_user("guest", Role::Guest, Locale::En).await;
+    let stranger = app.add_user("stranger", Role::Guest, Locale::En).await;
+    let first = app
+        .log(&me, "2026-01-15T18:05:00Z", 4, &[], EventChoice::New)
+        .await;
+    let id = first.report.event_id;
+    let close = format!(r#"action="/events/{}/close""#, id.0);
+
+    let cookie = app.sign_in("guest").await;
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    for hidden in [
+        "since 19:05",
+        "Update: situation changed",
+        "No smell event in progress.",
+    ] {
+        assert!(!html.contains(hidden), "{hidden}: {html}");
+    }
+    assert!(html.contains(">Log smell</button>"), "{html}");
+
+    app.log(
+        &guest,
+        "2026-01-15T19:50:00Z",
+        3,
+        &[],
+        EventChoice::Join(id),
+    )
+    .await;
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(
+        html.contains("Smell event in progress since 19:05."),
+        "{html}"
+    );
+    assert!(
+        html.contains(">Update: situation changed</button>"),
+        "{html}"
+    );
+    assert!(!html.contains(&close), "{html}");
+
+    let mut tx = app.store.begin(None).await.unwrap();
+    tx.expire_user(stranger.id).await.unwrap();
+    tx.expire_user(guest.id).await.unwrap();
+    tx.commit().await.unwrap();
+    let cookie = app.sign_in("stranger").await;
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(!html.contains("since 19:05"), "{html}");
+    assert!(!html.contains("No smell event in progress."), "{html}");
+    let cookie = app.sign_in("guest").await;
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(html.contains("since 19:05."), "{html}");
+    assert!(!html.contains(r#"action="/log""#), "{html}");
+}
+
+#[tokio::test]
 async fn the_summary_counts_this_month_and_guests_count_only_their_own() {
     let app = TestApp::new().await;
     app.at("2026-01-20T12:00:00Z");

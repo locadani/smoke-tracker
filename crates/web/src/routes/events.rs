@@ -22,7 +22,7 @@ use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
 use crate::labels;
-use crate::routes::refusal;
+use crate::routes::{can_open, refusal};
 use crate::state::AppState;
 use crate::time::{self, TimeInputError};
 
@@ -77,11 +77,6 @@ fn day(days: &mut BTreeMap<NaiveDate, Day>, tr: Tr, date: NaiveDate) -> &mut Day
         events: Vec::new(),
         readings: Vec::new(),
     })
-}
-
-/// Whether `actor` may open this event: it is theirs to see, or they reported in it.
-fn can_open(actor: &Actor, event: &Event, reports: &[SmellReport], now: DateTime<Utc>) -> bool {
-    can_see(actor, event.owner_id, now) || reports.iter().any(|r| can_see(actor, r.user_id, now))
 }
 
 pub(crate) async fn list<S: Store + Clone + 'static>(
