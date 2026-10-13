@@ -103,7 +103,7 @@ flowchart LR
 
 | Piece | What it does | Where secrets live |
 |---|---|---|
-| GitHub Actions | Builds the Docker image and deploys it on every merge to `main` | None. Project and account identifiers are stored as GitHub secrets only so they are masked in public logs |
+| GitHub Actions | Builds the Docker image and deploys it on every push to `main` that changes the app (changes only to `docs/`, `*.md` or `infra/` don't deploy) | None. Project and account identifiers are stored as GitHub secrets only so they are masked in public logs |
 | Workload Identity Federation | Lets this repository's workflows act as narrowly-scoped service accounts (`smoke-tracker-deploy` for deploys, `terraform-plan` for read-only plans), with short-lived tokens instead of a stored key | — |
 | Artifact Registry | Stores the Docker images (repository `smoke-tracker`); a cleanup policy deletes old images and keeps the latest 3 | — |
 | Cloud Run | Runs the app as the `smoke-tracker-run` service account. Scales to zero when idle and allows at most one instance | — |

@@ -188,14 +188,17 @@ versions.
   small PR sets it to `true` (§7). The service `depends_on` the runtime account's secret grant.
 - `lifecycle { ignore_changes = [template[0].containers[0].image, client, client_version] }`:
   the deploy workflow changes the image, and Terraform must not roll it back. The deploy
-  workflow skips its default labels (§8), so deploys don't show up as drift.
+  workflow (`gcloud run services update`) stamps client annotations on the revision template,
+  and `service.tf` ignores template labels/annotations (plus image, client, client_version), so
+  deploys don't show up as drift.
 - `deletion_protection = true`.
 - The app's settings are the module's `env` input, set in `prod/main.tf` (§8).
 
 ### 4.6 Outputs
 
-Service URL, project number, Workload Identity provider name, deploy and plan account emails,
-image repository URL. These are copied into GitHub (§6).
+Service URL (the fixed address built from the project number, same as `APP_BASE_URL`), project
+number, Workload Identity provider name, deploy and plan account emails, image repository URL,
+`backups_bucket`, and (bootstrap) `state_bucket`. These are copied into GitHub (§6).
 
 ---
 
@@ -220,7 +223,7 @@ Trigger: pull requests and pushes to `main` that change `infra/**` or `infra.yml
   tag, because tags can be moved.
 - Trivy findings that are intended (the service is public on purpose) are suppressed one by one,
   each with its reason, never with a blanket rule.
-- Dependabot gains a `terraform` entry (weekly) for `infra/prod` and `infra/modules/cloud-run-app`.
+- Dependabot gains a `terraform` entry (weekly) for `infra/prod`, `infra/bootstrap` and `infra/modules/cloud-run-app`.
 
 Applying stays manual (§7).
 
@@ -293,7 +296,9 @@ Built after the first apply, in the go-live plan (`docs/plans/infra-go-live.md`)
   image is the deployed image. A guard refuses to deploy while `DATABASE_URL` is not attached to
   the service (without it the image would fall back to a throwaway SQLite file). It then pushes
   the image tagged with the commit SHA to Artifact Registry and runs
-  `gcloud run services update --image`; the default labels are skipped, so deploys are not drift.
+  `gcloud run services update --image`; `gcloud run services update` stamps client
+  annotations on the revision template, and `service.tf` ignores template labels/annotations (plus
+  image, client, client_version), so deploys are not drift.
   This replaces the GHCR push in the original spec's `release.yml` (§13.1), which is deleted.
 - **Database connection.** Neon's **direct** connection (the app keeps its own pool; migrations
   need a direct connection). Neon suspends after 5 idle minutes, so the pool's idle timeout is
@@ -310,6 +315,8 @@ Built after the first apply, in the go-live plan (`docs/plans/infra-go-live.md`)
   exists. It replaces Litestream → R2 in the original spec (§13.2). Restore with
   `pg_restore --clean --if-exists --no-owner --single-transaction`, run in a `postgres:18-alpine`
   container so the client matches the dump; it overwrites live data (`infra/README.md`).
+  `postgres:18-alpine` is accepted as a moving Docker Hub tag: pinning a digest would need manual
+  updates; revisit if the threat model changes.
 - **First resident.** Run once from Cloud Shell: `docker run -it` of the deployed image with
   `create-resident`, passing `DATABASE_URL` from Secret Manager to that one process. A Cloud Run
   job was considered and dropped: the command asks for the password on a terminal, and a job has

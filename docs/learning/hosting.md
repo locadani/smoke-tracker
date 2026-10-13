@@ -130,6 +130,8 @@ ARM (`arm64`), so moving means building for both.
 - Google's free outgoing traffic covers North America only, so pages sent from Frankfurt, and
   queries to Neon (on AWS), cost a fraction of a cent.
 - Storage buckets outside the US are not in the free tier; a few KB costs nothing in practice.
+- The backups bucket turns soft delete off, so expired dumps stop costing at once. The state
+  bucket keeps the default 7 days: it is a recovery net.
 - A **budget alert only warns**, it never stops spending. At most one running instance caps the
   compute; traffic is not capped.
 - When the database password changes, destroy the old secret version: disabled versions still

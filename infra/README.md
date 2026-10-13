@@ -16,7 +16,7 @@ Smoke Tracker's Google Cloud setup, as Terraform. Design:
 | Project APIs, image registry, secret (without value), service accounts and grants, GitHub login, Cloud Run service | Terraform | Reviewed in PRs, repeatable |
 | App settings (base URL, client IP header, log level) | Terraform (`prod/main.tf`) | Reviewed in PRs, repeatable |
 | Nightly backup | Terraform (module `backup.tf`) | Bucket, job, schedule and their grants are code like the rest |
-| Deploying the app | `deploy.yml` on every merge to `main` | Terraform owns the settings; the workflow only changes which image runs |
+| Deploying the app | `deploy.yml` on every push to `main` that changes the app (changes only to `docs/`, `*.md` or `infra/` don't deploy) | Terraform owns the settings; the workflow only changes which image runs |
 | First resident | Manual, once, from Cloud Shell | The command asks for the password interactively |
 
 ## Layout
@@ -48,8 +48,9 @@ followed by an apply fails until the pool is undeleted.
 
 ## Changing the bootstrap (bucket, budget)
 
-Open a PR first. CI validates and tests `bootstrap/` but posts no plan (its state is out of the
-plan account's reach). After merging, in Cloud Shell:
+Open a PR first. CI validates and tests `bootstrap/` but posts no plan (the read-only plan account
+has no billing-budget permissions; it can read the bootstrap state, which holds only bucket and
+budget settings). After merging, in Cloud Shell:
 
 ```bash
 cd ~/smoke-tracker && git pull && cd infra/bootstrap && terraform init -backend-config=backend.hcl
