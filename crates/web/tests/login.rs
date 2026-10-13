@@ -303,3 +303,27 @@ async fn behind_a_proxy_the_configured_header_names_the_client() {
     let other_client = app.send(attempt("203.0.113.2", "daniele", PASSWORD)).await;
     assert_eq!(other_client.status(), StatusCode::SEE_OTHER);
 }
+
+#[tokio::test]
+async fn parallel_guesses_cannot_get_past_the_limit() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let mut attempts = tokio::task::JoinSet::new();
+    for _ in 0..12 {
+        let router = app.router.clone();
+        attempts.spawn(async move {
+            let request = login_request("daniele", "not the password");
+            tower::ServiceExt::oneshot(router, request).await.unwrap()
+        });
+    }
+    let mut verified = 0;
+    let mut refused = 0;
+    while let Some(response) = attempts.join_next().await {
+        match response.unwrap().status() {
+            StatusCode::UNAUTHORIZED => verified += 1,
+            StatusCode::TOO_MANY_REQUESTS => refused += 1,
+            other => panic!("unexpected {other}"),
+        }
+    }
+    assert_eq!((verified, refused), (5, 7));
+}

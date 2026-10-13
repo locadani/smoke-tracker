@@ -1,7 +1,7 @@
 //! Failed sign-in limits, kept in memory (one instance; spec §8.1).
 //!
-//! - A username is locked for 15 minutes after 5 failures within 15 minutes.
-//! - An address is blocked for 15 minutes after 20 failures within 15 minutes, whatever the
+//! - A username is locked for 15 minutes after 5 attempts within 15 minutes.
+//! - An address is blocked for 15 minutes after 20 attempts within 15 minutes, whatever the
 //!   usernames, so one client cannot try every account.
 
 use std::borrow::Borrow;
@@ -62,75 +62,41 @@ impl Strikes {
     }
 }
 
-#[derive(Debug)]
-struct Counter<K> {
-    rule: Rule,
-    entries: Mutex<HashMap<K, Strikes>>,
+fn is_locked<K, Q>(map: &HashMap<K, Strikes>, key: &Q, now: DateTime<Utc>) -> bool
+where
+    K: Eq + Hash + Borrow<Q>,
+    Q: Eq + Hash + ?Sized,
+{
+    map.get(key).is_some_and(|s| s.is_locked(now))
 }
 
-impl<K: Eq + Hash> Counter<K> {
-    fn new(rule: Rule) -> Self {
-        Self {
-            rule,
-            entries: Mutex::new(HashMap::new()),
-        }
+fn strike<K: Eq + Hash>(map: &mut HashMap<K, Strikes>, rule: Rule, key: K, now: DateTime<Utc>) {
+    if map.len() > PRUNE_ABOVE {
+        map.retain(|_, s| !s.is_finished(rule, now));
     }
-
-    fn is_locked<Q>(&self, key: &Q, now: DateTime<Utc>) -> bool
-    where
-        K: Borrow<Q>,
-        Q: Eq + Hash + ?Sized,
-    {
-        self.lock().get(key).is_some_and(|s| s.is_locked(now))
+    let strikes = map.entry(key).or_insert_with(|| Strikes::new(now));
+    if strikes.is_finished(rule, now) {
+        *strikes = Strikes::new(now);
     }
-
-    fn strike(&self, key: K, now: DateTime<Utc>) {
-        let rule = self.rule;
-        let mut entries = self.lock();
-        if entries.len() > PRUNE_ABOVE {
-            entries.retain(|_, s| !s.is_finished(rule, now));
-        }
-        let strikes = entries.entry(key).or_insert_with(|| Strikes::new(now));
-        if strikes.is_finished(rule, now) {
-            *strikes = Strikes::new(now);
-        }
-        strikes.failures += 1;
-        if strikes.failures >= rule.max_failures {
-            *strikes = Strikes {
-                locked_until: Some(now + rule.lockout),
-                ..Strikes::new(now)
-            };
-        }
-    }
-
-    fn forget<Q>(&self, key: &Q)
-    where
-        K: Borrow<Q>,
-        Q: Eq + Hash + ?Sized,
-    {
-        self.lock().remove(key);
-    }
-
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<K, Strikes>> {
-        self.entries
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    strikes.failures += 1;
+    if strikes.failures >= rule.max_failures {
+        *strikes = Strikes {
+            locked_until: Some(now + rule.lockout),
+            ..Strikes::new(now)
+        };
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
+struct Tables {
+    usernames: HashMap<String, Strikes>,
+    addresses: HashMap<IpAddr, Strikes>,
+}
+
+/// Both tables sit behind one lock, so checking and counting an attempt is a single step.
+#[derive(Debug, Default)]
 pub(crate) struct LoginLimiter {
-    usernames: Counter<String>,
-    addresses: Counter<IpAddr>,
-}
-
-impl Default for LoginLimiter {
-    fn default() -> Self {
-        Self {
-            usernames: Counter::new(PER_USERNAME),
-            addresses: Counter::new(PER_ADDRESS),
-        }
-    }
+    tables: Mutex<Tables>,
 }
 
 impl LoginLimiter {
@@ -138,24 +104,41 @@ impl LoginLimiter {
     /// "daniele" share one counter, and so do names that are not valid usernames at all.
     pub(crate) fn key(raw: &str) -> String {
         raw.trim()
-            .to_lowercase()
+            .to_ascii_lowercase()
             .chars()
             .take(MAX_KEY_CHARS)
             .collect()
     }
 
-    pub(crate) fn is_blocked(&self, key: &str, address: IpAddr, now: DateTime<Utc>) -> bool {
-        self.usernames.is_locked(key, now) || self.addresses.is_locked(&address, now)
+    /// Admits a sign-in attempt, or refuses it while the username or the address is locked.
+    /// An admitted attempt is counted as a failure at once, before any password work, so
+    /// parallel guesses cannot all slip past the check; `succeeded` takes the count back.
+    pub(crate) fn begin(&self, key: &str, address: IpAddr, now: DateTime<Utc>) -> bool {
+        let mut tables = self.lock();
+        if is_locked(&tables.usernames, key, now) || is_locked(&tables.addresses, &address, now) {
+            return false;
+        }
+        strike(&mut tables.usernames, PER_USERNAME, key.to_owned(), now);
+        strike(&mut tables.addresses, PER_ADDRESS, address, now);
+        true
     }
 
-    pub(crate) fn record_failure(&self, key: String, address: IpAddr, now: DateTime<Utc>) {
-        self.usernames.strike(key, now);
-        self.addresses.strike(address, now);
+    /// A correct password clears the username's failures and refunds the address's strike, so
+    /// legitimate sign-ins do not use up the address budget. A lock already in force is kept.
+    pub(crate) fn succeeded(&self, key: &str, address: IpAddr, now: DateTime<Utc>) {
+        let mut tables = self.lock();
+        tables.usernames.remove(key);
+        if let Some(strikes) = tables.addresses.get_mut(&address)
+            && !strikes.is_locked(now)
+        {
+            strikes.failures = strikes.failures.saturating_sub(1);
+        }
     }
 
-    /// A successful sign-in clears the username's failures; the address keeps its count.
-    pub(crate) fn record_success(&self, key: &str) {
-        self.usernames.forget(key);
+    fn lock(&self) -> std::sync::MutexGuard<'_, Tables> {
+        self.tables
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -173,56 +156,82 @@ mod tests {
         IpAddr::V4(Ipv4Addr::new(192, 0, 2, last))
     }
 
+    fn nth_ip(n: usize) -> IpAddr {
+        IpAddr::V4(Ipv4Addr::new(198, 51, (n / 250) as u8, (n % 250) as u8))
+    }
+
     #[test]
-    fn the_fifth_failure_locks_the_username_for_fifteen_minutes() {
+    fn the_sixth_attempt_for_a_username_is_refused_for_fifteen_minutes() {
         let limiter = LoginLimiter::default();
-        for _ in 0..4 {
-            limiter.record_failure("daniele".into(), ip(1), t0());
+        for _ in 0..5 {
+            assert!(limiter.begin("daniele", ip(1), t0()));
         }
-        assert!(!limiter.is_blocked("daniele", ip(2), t0()));
-        limiter.record_failure("daniele".into(), ip(1), t0());
-        assert!(limiter.is_blocked("daniele", ip(2), t0()));
-        assert!(limiter.is_blocked(
+        assert!(!limiter.begin("daniele", ip(2), t0()));
+        assert!(!limiter.begin(
             "daniele",
             ip(2),
             t0() + TimeDelta::minutes(15) - TimeDelta::seconds(1)
         ));
-        assert!(!limiter.is_blocked("daniele", ip(2), t0() + TimeDelta::minutes(15)));
-        assert!(!limiter.is_blocked("partner", ip(2), t0()));
+        assert!(limiter.begin("daniele", ip(2), t0() + TimeDelta::minutes(15)));
+        assert!(limiter.begin("partner", ip(2), t0()));
     }
 
     #[test]
-    fn failures_older_than_the_window_are_forgotten() {
+    fn attempts_older_than_the_window_are_forgotten() {
         let limiter = LoginLimiter::default();
         for _ in 0..4 {
-            limiter.record_failure("daniele".into(), ip(1), t0());
+            assert!(limiter.begin("daniele", ip(1), t0()));
         }
         let later = t0() + TimeDelta::minutes(15);
-        limiter.record_failure("daniele".into(), ip(1), later);
-        assert!(!limiter.is_blocked("daniele", ip(1), later));
+        assert!(limiter.begin("daniele", ip(1), later));
+        assert!(limiter.begin("daniele", ip(1), later));
     }
 
     #[test]
-    fn a_success_clears_the_username_count() {
+    fn a_success_clears_the_username_count_and_refunds_the_address() {
         let limiter = LoginLimiter::default();
         for _ in 0..4 {
-            limiter.record_failure("daniele".into(), ip(1), t0());
+            assert!(limiter.begin("daniele", ip(1), t0()));
         }
-        limiter.record_success("daniele");
-        limiter.record_failure("daniele".into(), ip(1), t0());
-        assert!(!limiter.is_blocked("daniele", ip(1), t0()));
+        limiter.succeeded("daniele", ip(1), t0());
+        for _ in 0..4 {
+            assert!(limiter.begin("daniele", ip(1), t0()));
+        }
+        assert!(limiter.begin("daniele", ip(1), t0()));
+        assert!(!limiter.begin("daniele", ip(1), t0()));
+
+        let limiter = LoginLimiter::default();
+        for n in 0..19 {
+            assert!(limiter.begin(&format!("user{n}"), ip(1), t0()));
+        }
+        limiter.succeeded("user0", ip(1), t0());
+        assert!(limiter.begin("one", ip(1), t0()));
+        assert!(limiter.begin("two", ip(1), t0()));
+        assert!(!limiter.begin("three", ip(1), t0()));
     }
 
     #[test]
-    fn twenty_failures_from_one_address_block_it_for_every_username() {
+    fn twenty_attempts_from_one_address_block_it_for_every_username() {
         let limiter = LoginLimiter::default();
-        for n in 0..19 {
-            limiter.record_failure(format!("user{n}"), ip(1), t0());
+        for n in 0..20 {
+            assert!(limiter.begin(&format!("user{n}"), ip(1), t0()));
         }
-        assert!(!limiter.is_blocked("anyone", ip(1), t0()));
-        limiter.record_failure("user19".into(), ip(1), t0());
-        assert!(limiter.is_blocked("anyone", ip(1), t0()));
-        assert!(!limiter.is_blocked("anyone", ip(2), t0()));
+        assert!(!limiter.begin("anyone", ip(1), t0()));
+        assert!(limiter.begin("anyone", ip(2), t0()));
+    }
+
+    #[test]
+    fn attempts_counted_before_any_outcome_cannot_exceed_the_limits() {
+        let limiter = LoginLimiter::default();
+        let same_username = (0..50)
+            .filter(|&n| limiter.begin("daniele", nth_ip(n), t0()))
+            .count();
+        assert_eq!(same_username, 5);
+
+        let same_address = (0..50)
+            .filter(|n| limiter.begin(&format!("user{n}"), ip(1), t0()))
+            .count();
+        assert_eq!(same_address, 20);
     }
 
     #[test]
@@ -236,10 +245,12 @@ mod tests {
     fn finished_entries_are_pruned_once_there_are_many() {
         let limiter = LoginLimiter::default();
         for n in 0..=PRUNE_ABOVE {
-            limiter.record_failure(format!("user{n}"), ip(1), t0());
+            assert!(limiter.begin(&format!("user{n}"), nth_ip(n), t0()));
         }
         let later = t0() + TimeDelta::hours(1);
-        limiter.record_failure("one-more".into(), ip(3), later);
-        assert_eq!(limiter.usernames.lock().len(), 1);
+        assert!(limiter.begin("one-more", ip(3), later));
+        let tables = limiter.lock();
+        assert_eq!(tables.usernames.len(), 1);
+        assert_eq!(tables.addresses.len(), 1);
     }
 }

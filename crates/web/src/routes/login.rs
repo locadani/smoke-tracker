@@ -94,7 +94,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     let key = LoginLimiter::key(&form.username);
-    if state.limiter.is_blocked(&key, address, now) {
+    if !state.limiter.begin(&key, address, now) {
         return login_page(
             StatusCode::TOO_MANY_REQUESTS,
             tr,
@@ -111,7 +111,6 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     let valid =
         tokio::task::spawn_blocking(move || password::verify(stored.as_ref(), &attempt)).await?;
     let Some(user) = user.filter(|_| valid) else {
-        state.limiter.record_failure(key, address, now);
         return login_page(
             StatusCode::UNAUTHORIZED,
             tr,
@@ -119,7 +118,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
             Some(Notice::Failed),
         );
     };
-    state.limiter.record_success(&key);
+    state.limiter.succeeded(&key, address, now);
     if !user.actor().can_sign_in(now) {
         return login_page(
             StatusCode::FORBIDDEN,
