@@ -136,6 +136,65 @@ str_enum!(
     }
 );
 
+/// A login name. Construction trims and lowercases it, so "Daniele " and "daniele" are the same
+/// account.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[serde(transparent)]
+pub struct Username(String);
+
+impl Username {
+    pub const MIN_LEN: usize = 3;
+    pub const MAX_LEN: usize = 32;
+
+    pub fn new(raw: &str) -> Result<Self, DomainError> {
+        let name = raw.trim().to_ascii_lowercase();
+        let allowed = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || "._-".contains(c);
+        if (Self::MIN_LEN..=Self::MAX_LEN).contains(&name.len()) && name.chars().all(allowed) {
+            Ok(Self(name))
+        } else {
+            Err(DomainError::InvalidUsername(raw.to_owned()))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for Username {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// The name of a room or symptom, as typed by a resident.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct ListName(String);
+
+impl ListName {
+    pub const MAX_CHARS: usize = 60;
+
+    pub fn new(raw: &str) -> Result<Self, DomainError> {
+        let name = raw.trim();
+        if name.is_empty() || name.chars().count() > Self::MAX_CHARS {
+            Err(DomainError::InvalidListName(raw.to_owned()))
+        } else {
+            Ok(Self(name.to_owned()))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ListName {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 /// How strong a smell is, on the personal 1–10 scale.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
@@ -293,5 +352,55 @@ mod tests {
     fn ids_serialise_as_plain_numbers() {
         assert_eq!(serde_json::to_string(&UserId(7)).unwrap(), "7");
         assert_eq!(EventId(3).to_string(), "3");
+    }
+
+    #[test]
+    fn usernames_are_normalised() {
+        assert_eq!(Username::new("  Daniele ").unwrap().as_str(), "daniele");
+        assert_eq!(
+            Username::new("Daniele").unwrap(),
+            Username::new("daniele").unwrap()
+        );
+        assert_eq!(
+            Username::new("guest.2026_a-b").unwrap().to_string(),
+            "guest.2026_a-b"
+        );
+    }
+
+    #[test]
+    fn usernames_reject_bad_lengths_and_characters() {
+        for bad in [
+            "ab",
+            "",
+            "   ",
+            "has space",
+            "ünïcode",
+            "semi;colon",
+            &"x".repeat(33),
+        ] {
+            assert_eq!(
+                Username::new(bad),
+                Err(DomainError::InvalidUsername(bad.to_owned())),
+                "{bad:?}"
+            );
+        }
+        assert!(Username::new(&"x".repeat(32)).is_ok());
+        assert!(Username::new("abc").is_ok());
+    }
+
+    #[test]
+    fn list_names_are_trimmed_and_bounded() {
+        assert_eq!(ListName::new("  Balcony ").unwrap().as_str(), "Balcony");
+        assert_eq!(
+            ListName::new("Çalışma odası").unwrap().as_str(),
+            "Çalışma odası"
+        );
+        assert!(ListName::new(&"ç".repeat(60)).is_ok());
+        for bad in ["", "   ", &"x".repeat(61)] {
+            assert_eq!(
+                ListName::new(bad),
+                Err(DomainError::InvalidListName(bad.to_owned()))
+            );
+        }
     }
 }
