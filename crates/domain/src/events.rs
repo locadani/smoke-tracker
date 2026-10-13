@@ -7,19 +7,13 @@ use crate::schedule::DailySchedule;
 use crate::types::EventId;
 
 /// Reports observed longer ago than this count as backdated.
-pub fn backdate_threshold() -> TimeDelta {
-    TimeDelta::minutes(10)
-}
+pub const BACKDATE_THRESHOLD: TimeDelta = TimeDelta::minutes(10);
 
 /// Phone clocks drift; times this far ahead of the server still count as valid.
-pub fn future_tolerance() -> TimeDelta {
-    TimeDelta::minutes(1)
-}
+pub const FUTURE_TOLERANCE: TimeDelta = TimeDelta::minutes(1);
 
 /// Consecutive reports in one event further apart than this get a warning.
-pub fn large_gap() -> TimeDelta {
-    TimeDelta::hours(3)
-}
+pub const LARGE_GAP: TimeDelta = TimeDelta::hours(3);
 
 /// Whether a report describes the present or the past.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,9 +26,9 @@ pub fn classify_observed(
     observed_at: DateTime<Utc>,
     now: DateTime<Utc>,
 ) -> Result<ObservedTime, DomainError> {
-    if observed_at > now + future_tolerance() {
+    if observed_at > now + FUTURE_TOLERANCE {
         Err(DomainError::ObservedInFuture)
-    } else if observed_at < now - backdate_threshold() {
+    } else if observed_at < now - BACKDATE_THRESHOLD {
         Ok(ObservedTime::Backdated)
     } else {
         Ok(ObservedTime::Now)
@@ -84,6 +78,10 @@ pub enum NewEventState {
 }
 
 /// At most one event is open at a time, and nothing stays open across a 04:00 boundary.
+///
+/// When the user answers "No, it had stopped: new event" to the same-smell prompt, close the
+/// open event first and then pass `another_event_open = false`; otherwise the new event is
+/// wrongly created already closed.
 pub fn new_event_state(
     observed_at: DateTime<Utc>,
     now: DateTime<Utc>,
@@ -104,20 +102,20 @@ pub fn validate_manual_close(
 ) -> Result<(), DomainError> {
     if closed_at < last_report_at {
         Err(DomainError::CloseBeforeLastReport)
-    } else if closed_at > now + future_tolerance() {
+    } else if closed_at > now + FUTURE_TOLERANCE {
         Err(DomainError::CloseInFuture)
     } else {
         Ok(())
     }
 }
 
-/// Indices of reports that follow a gap longer than [`large_gap`]. `observed_times` must be
+/// Indices of reports that follow a gap longer than [`LARGE_GAP`]. `observed_times` must be
 /// sorted ascending.
 pub fn large_gap_indices(observed_times: &[DateTime<Utc>]) -> Vec<usize> {
     observed_times
         .windows(2)
         .enumerate()
-        .filter(|(_, pair)| pair[1] - pair[0] > large_gap())
+        .filter(|(_, pair)| pair[1] - pair[0] > LARGE_GAP)
         .map(|(i, _)| i + 1)
         .collect()
 }
@@ -186,6 +184,18 @@ mod tests {
     fn future_times_are_rejected() {
         assert_eq!(
             classify_observed(now() + TimeDelta::minutes(2), now()),
+            Err(DomainError::ObservedInFuture)
+        );
+    }
+
+    #[test]
+    fn the_future_tolerance_is_inclusive_to_the_second() {
+        assert_eq!(
+            classify_observed(now() + FUTURE_TOLERANCE, now()),
+            Ok(ObservedTime::Now)
+        );
+        assert_eq!(
+            classify_observed(now() + FUTURE_TOLERANCE + TimeDelta::seconds(1), now()),
             Err(DomainError::ObservedInFuture)
         );
     }
@@ -297,6 +307,23 @@ mod tests {
         let last = t("2026-01-15T19:00:00Z");
         assert_eq!(
             validate_manual_close(now() + TimeDelta::minutes(5), last, now()),
+            Err(DomainError::CloseInFuture)
+        );
+    }
+
+    #[test]
+    fn closing_exactly_at_the_future_tolerance_is_allowed_but_not_a_second_later() {
+        let last = t("2026-01-15T19:00:00Z");
+        assert_eq!(
+            validate_manual_close(now() + FUTURE_TOLERANCE, last, now()),
+            Ok(())
+        );
+        assert_eq!(
+            validate_manual_close(
+                now() + FUTURE_TOLERANCE + TimeDelta::seconds(1),
+                last,
+                now()
+            ),
             Err(DomainError::CloseInFuture)
         );
     }

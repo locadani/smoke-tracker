@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, at, actor_id, entity, entity_id, action, before_json, after_json, prev_hash, hash FROM audit_log ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "at",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "at"
+          }
+        }
+      },
+      {
+        "name": "actor_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "actor_id"
+          }
+        }
+      },
+      {
+        "name": "entity",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "entity"
+          }
+        }
+      },
+      {
+        "name": "entity_id",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "entity_id"
+          }
+        }
+      },
+      {
+        "name": "action",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "action"
+          }
+        }
+      },
+      {
+        "name": "before_json",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "before_json"
+          }
+        }
+      },
+      {
+        "name": "after_json",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "after_json"
+          }
+        }
+      },
+      {
+        "name": "prev_hash",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "prev_hash"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "audit_log",
+            "name": "hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "8417f9c08a2f020d3a6596d0c9fb1d992801405c25d64d0495c501e3f722573f"
+}

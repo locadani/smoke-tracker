@@ -11,11 +11,23 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
+  TEST_POSTGRES_URL: postgres://postgres@localhost:5432/postgres
 
 jobs:
   check:
     name: fmt · clippy · test
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -27,3 +39,28 @@ jobs:
       - run: cargo test --workspace --locked
       - name: audit hash ignores serde_json map ordering
         run: cargo test -p smoke-domain --lib --features serde_json/preserve_order audit
+
+  sqlx:
+    name: sqlx offline data
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: install sqlx-cli
+        env:
+          RUSTFLAGS: ""
+        run: cargo install sqlx-cli --version 0.9.0 --no-default-features --features sqlite,postgres,rustls,sqlx-toml
+      - name: committed query metadata matches the queries and migrations
+        run: scripts/sqlx-prepare.sh --check

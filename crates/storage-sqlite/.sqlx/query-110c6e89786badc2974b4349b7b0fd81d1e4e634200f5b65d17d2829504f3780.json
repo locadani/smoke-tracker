@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, name, i18n_key, area, hidden_at FROM rooms ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "rooms",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "rooms",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "i18n_key",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "rooms",
+            "name": "i18n_key"
+          }
+        }
+      },
+      {
+        "name": "area",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "rooms",
+            "name": "area"
+          }
+        }
+      },
+      {
+        "name": "hidden_at",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "rooms",
+            "name": "hidden_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true
+    ]
+  },
+  "hash": "110c6e89786badc2974b4349b7b0fd81d1e4e634200f5b65d17d2829504f3780"
+}

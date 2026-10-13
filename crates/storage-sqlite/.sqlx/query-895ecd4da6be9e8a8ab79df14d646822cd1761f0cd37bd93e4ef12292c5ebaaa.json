@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO pm25_readings (user_id, event_id, observed_at, recorded_at, value_ugm3) VALUES ($1, $2, $3, $4, $5) RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "895ecd4da6be9e8a8ab79df14d646822cd1761f0cd37bd93e4ef12292c5ebaaa"
+}

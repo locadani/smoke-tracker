@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 
+use crate::DomainError;
 use crate::types::{Role, UserId};
 
 /// The signed-in user, as far as permissions are concerned.
@@ -21,6 +22,20 @@ impl Actor {
     /// Expired guests keep read access to their own data; expired viewers lose all access.
     pub fn can_sign_in(&self, now: DateTime<Utc>) -> bool {
         !(self.role == Role::Viewer && self.is_expired(now))
+    }
+}
+
+/// Residents never expire; guests always do; viewers may. A new expiry must lie in the future.
+pub fn check_expiry(
+    role: Role,
+    expires_at: Option<DateTime<Utc>>,
+    now: DateTime<Utc>,
+) -> Result<(), DomainError> {
+    match (role, expires_at) {
+        (Role::Resident, Some(_)) => Err(DomainError::ResidentsNeverExpire),
+        (Role::Guest, None) => Err(DomainError::GuestsMustExpire),
+        (_, Some(at)) if at <= now => Err(DomainError::ExpiryNotInFuture),
+        _ => Ok(()),
     }
 }
 
@@ -164,5 +179,42 @@ mod tests {
         assert!(!actor(Role::Viewer, expired()).can_sign_in(now()));
         assert!(actor(Role::Viewer, active()).can_sign_in(now()));
         assert!(actor(Role::Resident, None).can_sign_in(now()));
+    }
+
+    #[test]
+    fn expiry_rules_follow_the_role() {
+        let later = Some(now() + TimeDelta::days(7));
+        assert_eq!(check_expiry(Role::Resident, None, now()), Ok(()));
+        assert_eq!(
+            check_expiry(Role::Resident, later, now()),
+            Err(DomainError::ResidentsNeverExpire)
+        );
+        assert_eq!(check_expiry(Role::Guest, later, now()), Ok(()));
+        assert_eq!(
+            check_expiry(Role::Guest, None, now()),
+            Err(DomainError::GuestsMustExpire)
+        );
+        assert_eq!(check_expiry(Role::Viewer, None, now()), Ok(()));
+        assert_eq!(check_expiry(Role::Viewer, later, now()), Ok(()));
+    }
+
+    #[test]
+    fn a_new_expiry_must_be_in_the_future() {
+        assert_eq!(
+            check_expiry(Role::Guest, Some(now()), now()),
+            Err(DomainError::ExpiryNotInFuture)
+        );
+        assert_eq!(
+            check_expiry(Role::Viewer, Some(now() - TimeDelta::seconds(1)), now()),
+            Err(DomainError::ExpiryNotInFuture)
+        );
+    }
+
+    #[test]
+    fn the_role_rule_wins_over_the_past_date_rule() {
+        assert_eq!(
+            check_expiry(Role::Resident, Some(now() - TimeDelta::seconds(1)), now()),
+            Err(DomainError::ResidentsNeverExpire)
+        );
     }
 }

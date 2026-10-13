@@ -1,0 +1,4 @@
+[env]
+# Compile against the committed query metadata in each storage crate's `.sqlx/`, so building
+# needs no database. `scripts/sqlx-prepare.sh` regenerates it.
+SQLX_OFFLINE = "true"

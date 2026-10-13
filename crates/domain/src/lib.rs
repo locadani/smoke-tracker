@@ -8,7 +8,11 @@ pub mod clock;
 pub mod error;
 pub mod events;
 pub mod permissions;
+pub mod records;
+pub mod repos;
 pub mod schedule;
+pub mod starter;
 pub mod types;
+pub mod verify;
 
 pub use error::DomainError;

@@ -1,0 +1,23 @@
+[package]
+name = "smoke-storage-sqlite"
+version = "0.1.0"
+description = "SQLite implementation of the Smoke Tracker storage traits"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+chrono.workspace = true
+serde_json.workspace = true
+smoke-domain.workspace = true
+sqlx = { workspace = true, features = ["sqlite-bundled"] }
+
+[dev-dependencies]
+smoke-storage-contract.workspace = true
+tempfile.workspace = true
+tokio.workspace = true
+
+[lints]
+workspace = true

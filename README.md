@@ -10,13 +10,22 @@ Written in Rust (Axum, Askama, htmx, SQLite).
 
 ## Development
 
-Requirements: [rustup](https://rustup.rs) and [gitleaks](https://github.com/gitleaks/gitleaks)
-(`brew install gitleaks`).
+Requirements: [rustup](https://rustup.rs), [gitleaks](https://github.com/gitleaks/gitleaks)
+(`brew install gitleaks`), Docker, and sqlx-cli:
 
 ```sh
 git config core.hooksPath .githooks   # once per clone: blocks commits containing secrets
-cargo test --workspace
+cargo install sqlx-cli --version 0.9.0 --no-default-features --features sqlite,postgres,rustls,sqlx-toml
+
+# A throwaway local Postgres for the Postgres tests (no password, local only)
+docker run -d --name smoke-pg -e POSTGRES_HOST_AUTH_METHOD=trust -p 5432:5432 postgres:17-alpine
+export TEST_POSTGRES_URL=postgres://postgres@localhost:5432/postgres
+
+cargo test --workspace         # Postgres tests are skipped when TEST_POSTGRES_URL is unset
+scripts/sqlx-prepare.sh        # after changing a query or a migration; commit the .sqlx/ changes
 ```
+
+Building needs no database: queries are checked against the committed `.sqlx/` metadata.
 
 ## Documentation
 

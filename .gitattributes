@@ -1,0 +1,3 @@
+# Machine-generated files: GitHub collapses them in pull-request diffs.
+Cargo.lock linguist-generated=true
+crates/*/.sqlx/** linguist-generated=true

@@ -1,0 +1,4 @@
+# The query macros check this crate against SQLITE_DATABASE_URL, so the SQLite and Postgres
+# crates can be checked against different databases in one workspace.
+[common]
+database-url-var = "SQLITE_DATABASE_URL"
