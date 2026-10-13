@@ -2,7 +2,83 @@
 //! embedded static assets. It reaches the database only through the `smoke-domain` traits, so
 //! every route works the same on SQLite and Postgres.
 
+mod assets;
 mod auth;
 pub mod config;
+mod request_id;
+mod security;
+mod sessions;
+mod state;
+
+use std::future::Future;
+use std::net::SocketAddr;
+
+use axum::Router;
+use axum::extract::{DefaultBodyLimit, Request};
+use axum::http::StatusCode;
+use axum::middleware;
+use axum::routing::get;
+use smoke_domain::repos::Store;
+use tokio::net::TcpListener;
+use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
+use tower_http::trace::{DefaultOnResponse, TraceLayer};
+use tracing::Level;
 
 pub use crate::auth::password;
+pub use crate::sessions::DbSessions;
+pub use crate::state::AppState;
+
+/// Form posts are small; anything larger is refused before a handler runs.
+const BODY_LIMIT_BYTES: usize = 16 * 1024;
+
+/// The whole application. Static assets and the health check skip sessions and the database.
+pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
+    let pages = Router::new()
+        .fallback(|| async { StatusCode::NOT_FOUND })
+        .layer(sessions::layer(
+            state.store.clone(),
+            state.clock.clone(),
+            &state.config.base_url,
+        ))
+        .layer(middleware::from_fn_with_state(
+            state.config.clone(),
+            security::check_origin,
+        ))
+        .with_state(state.clone());
+
+    Router::new()
+        .route("/static/{*path}", get(assets::serve))
+        .route("/healthz", get(assets::healthz))
+        .merge(pages)
+        .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))
+        .layer(middleware::from_fn_with_state(
+            state.config.base_url.is_https(),
+            security::headers,
+        ))
+        .layer(PropagateRequestIdLayer::x_request_id())
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(request_span)
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
+        .layer(SetRequestIdLayer::x_request_id(request_id::RandomRequestId))
+}
+
+fn request_span(request: &Request) -> tracing::Span {
+    let id = request_id::of(request.headers());
+    tracing::info_span!("request", id, method = %request.method(), path = request.uri().path())
+}
+
+/// Serves `app` until `shutdown` completes, then finishes the requests in flight.
+pub async fn serve(
+    listener: TcpListener,
+    app: Router,
+    shutdown: impl Future<Output = ()> + Send + 'static,
+) -> std::io::Result<()> {
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown)
+    .await
+}
