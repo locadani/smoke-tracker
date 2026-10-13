@@ -9,6 +9,7 @@ pub mod error;
 pub mod events;
 pub mod history;
 pub mod logbook;
+pub mod people;
 pub mod permissions;
 pub mod records;
 pub mod repos;

@@ -184,6 +184,8 @@ pub trait AuditRepo: Send + Sync {
 }
 
 pub trait UserWrites: Send {
+    /// Reads inside the transaction, so a decision and the write that follows it see the same data.
+    fn user(&mut self, id: UserId) -> impl Future<Output = StoreResult<Option<User>>> + Send;
     /// Fails with [`DomainError`] if the expiry breaks the role rules
     /// ([`crate::permissions::check_expiry`]) and with [`Conflict::UsernameTaken`].
     fn create_user(&mut self, new: NewUser) -> impl Future<Output = StoreResult<User>> + Send;

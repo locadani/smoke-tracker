@@ -107,6 +107,10 @@ impl UserRepo for PostgresStore {
 }
 
 impl UserWrites for PostgresTx {
+    async fn user(&mut self, id: UserId) -> StoreResult<Option<User>> {
+        fetch(self.conn(), id).await
+    }
+
     async fn create_user(&mut self, new: NewUser) -> StoreResult<User> {
         let now = self.now();
         check_expiry(new.role, new.expires_at, now)?;

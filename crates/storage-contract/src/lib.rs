@@ -16,6 +16,7 @@ pub mod invites;
 pub mod lists;
 pub mod logbook;
 pub mod migrations;
+pub mod people;
 pub mod readings;
 pub mod reports;
 pub mod sessions;
@@ -104,6 +105,14 @@ macro_rules! contract_tests {
             invites::a_new_invite_replaces_the_users_unused_ones,
             invites::an_invite_for_an_unknown_user_is_refused,
             invites::expired_invites_are_removed_without_an_audit_entry,
+            people::an_invited_guest_sets_up_the_account_once,
+            people::a_link_stops_working_after_five_minutes,
+            people::a_reset_link_replaces_the_password_and_ends_every_session,
+            people::a_new_link_for_someone_who_never_set_up_is_a_setup_link,
+            people::only_residents_manage_people,
+            people::a_taken_username_is_refused_and_nothing_is_written,
+            people::expiry_and_reactivation_follow_the_role_rules,
+            people::a_password_change_needs_an_account_that_can_sign_in,
             logbook::logging_now_with_nothing_open_starts_an_open_event,
             logbook::same_smell_joins_the_open_event,
             logbook::a_new_event_closes_the_open_one_at_its_last_report,
