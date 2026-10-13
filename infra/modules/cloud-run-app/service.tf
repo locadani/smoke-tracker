@@ -26,6 +26,15 @@ resource "google_cloud_run_v2_service" "app" {
       }
 
       dynamic "env" {
+        for_each = var.env
+        iterator = setting
+        content {
+          name  = setting.key
+          value = setting.value
+        }
+      }
+
+      dynamic "env" {
         for_each = var.attach_database_url ? [google_secret_manager_secret.database_url.secret_id] : []
         content {
           name = "DATABASE_URL"

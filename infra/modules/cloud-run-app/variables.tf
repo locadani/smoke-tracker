@@ -57,3 +57,9 @@ variable "max_instances" {
   type        = number
   default     = 1
 }
+
+variable "env" {
+  description = "Plain (non-secret) environment settings for the app. Secrets never go here."
+  type        = map(string)
+  default     = {}
+}

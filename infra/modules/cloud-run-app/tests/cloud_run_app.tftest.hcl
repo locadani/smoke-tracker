@@ -231,3 +231,33 @@ run "outputs_for_github_settings" {
     error_message = "The secret ID is exposed for the setup instructions."
   }
 }
+
+run "plain_settings_are_passed_to_the_container" {
+  variables {
+    env = {
+      APP_BASE_URL     = "https://smoke-tracker-123.europe-west3.run.app"
+      CLIENT_IP_HEADER = "X-Forwarded-For"
+    }
+  }
+
+  assert {
+    condition     = anytrue([for e in google_cloud_run_v2_service.app.template[0].containers[0].env : e.name == "CLIENT_IP_HEADER" && e.value == "X-Forwarded-For"])
+    error_message = "Plain settings reach the container."
+  }
+  assert {
+    condition     = length(google_cloud_run_v2_service.app.template[0].containers[0].env) == 2
+    error_message = "Without attach_database_url, only the plain settings are set."
+  }
+}
+
+run "settings_and_database_url_together" {
+  variables {
+    attach_database_url = true
+    env                 = { RUST_LOG = "info" }
+  }
+
+  assert {
+    condition     = length(google_cloud_run_v2_service.app.template[0].containers[0].env) == 2
+    error_message = "One plain setting plus DATABASE_URL."
+  }
+}
