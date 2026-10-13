@@ -57,6 +57,24 @@ ARM (`arm64`), so moving means building for both.
 - Error messages usually say what is missing, with a link to fix it, for example
   "Cloud Run Admin API has not been used in project … enable it by visiting …".
 
+## Terraform
+
+- **Plan vs apply.** `plan` compares the code with reality and lists what would change; `apply`
+  makes the change. Here CI only plans (read-only account); applying is done by hand.
+- **State.** After each apply Terraform records what it manages in a state file, kept in a
+  versioned bucket. Anything Terraform manages ends up in it, which is why secret values stay
+  out of Terraform.
+- **Import.** Something created by hand can be adopted with an `import` block instead of being
+  recreated. The plan says "will be imported".
+- **`ignore_changes`.** When something else owns an attribute (the deploy workflow owns the
+  image), Terraform must ignore it, or every apply would undo the deploy.
+- **Modules.** `modules/cloud-run-app` describes one app; `prod/` uses it. A second app reuses the
+  module with different inputs.
+- **Tests without a cloud account.** `terraform test` with `mock_provider` checks the
+  configuration (names, permissions, settings) offline, in CI.
+- **Least privilege.** Each grant is on one resource where possible (one secret, one registry,
+  one service), not on the whole project.
+
 ## Where to find this without help
 
 - Cloud Run quickstart: <https://cloud.google.com/run/docs/quickstarts>
@@ -69,6 +87,9 @@ ARM (`arm64`), so moving means building for both.
 - Neon plans and connecting: <https://neon.com/docs/introduction/plans>,
   <https://neon.com/docs/connect/connect-intro>
 - Cloud Run regions and pricing tiers: <https://cloud.google.com/run/docs/locations>
+- Terraform tests and mocks: <https://developer.hashicorp.com/terraform/language/tests/mocking>
+- Import blocks: <https://developer.hashicorp.com/terraform/language/import>
+- Google provider docs: <https://registry.terraform.io/providers/hashicorp/google/latest/docs>
 
 ## Cost
 

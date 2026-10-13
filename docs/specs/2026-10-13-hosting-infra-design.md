@@ -226,7 +226,7 @@ project ID and number on most lines.
 - The IDs are stored as GitHub **secrets**, not variables: GitHub masks secrets in logs
   automatically, while variable values are printed in each step's header.
 - Masking covers logs only. Before the plan is posted as a PR comment, a small tested script
-  (`infra/scripts/redact-plan.sh`) replaces the project ID and number with `***`.
+  (`infra/scripts/redact-plan.sh`) replaces the project ID, project number and state bucket name with `***`.
 - Nothing else is published: no job summary, and the binary plan file is never uploaded as an
   artifact.
 
@@ -277,7 +277,9 @@ Separate PRs, not part of this spec's implementation:
 - `deploy.yml`: on push to `main`, build the `linux/amd64` image, push it to Artifact Registry and
   deploy it to Cloud Run as `smoke-tracker-deploy`, with the action's default labels skipped
   (`skip_default_labels: true`). This replaces the GHCR push in the original spec's
-  `release.yml` (§13.1); that spec gets a short "superseded" note, with the user's approval.
+  `release.yml` (§13.1); that spec gets a short "superseded" note, with the user's approval. It triggers only on `push` to `main` (never `workflow_call`,
+  `pull_request_target` or `workflow_dispatch`), because the deploy account trusts `deploy.yml` on
+  `main`.
 - The app's settings as Cloud Run environment variables in `prod/`.
 - Database connection: Neon's **direct** connection (the app keeps its own pool; migrations need
   a direct connection). Neon suspends after 5 idle minutes, so the pool's idle timeout is under

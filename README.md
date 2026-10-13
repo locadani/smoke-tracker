@@ -45,7 +45,7 @@ flowchart LR
         wif[Workload Identity<br/>Federation]
         ar[(Artifact Registry<br/>Docker images)]
         run[Cloud Run<br/>service: smoke-tracker]
-        sm[Secret Manager<br/>DATABASE_URL]
+        sm[Secret Manager<br/>smoke-tracker-database-url]
     end
 
     subgraph neon ["Neon · Frankfurt"]
@@ -63,14 +63,17 @@ flowchart LR
 
 | Piece | What it does | Where secrets live |
 |---|---|---|
-| GitHub Actions | Builds the Docker image and deploys it on every merge to `main` | None. Only non-secret IDs (project, region, login provider, account names), as repository variables |
-| Workload Identity Federation | Lets this repository's workflows act as narrowly-scoped service accounts (for example `github-deploy`), with short-lived tokens instead of a stored key | — |
+| GitHub Actions | Builds the Docker image and deploys it on every merge to `main` | None. Project and account identifiers are stored as GitHub secrets only so they are masked in public logs |
+| Workload Identity Federation | Lets this repository's workflows act as narrowly-scoped service accounts (`smoke-tracker-deploy` for deploys, `terraform-plan` for read-only plans), with short-lived tokens instead of a stored key | — |
 | Artifact Registry | Stores the Docker images (repository `smoke-tracker`); a cleanup policy deletes old images and keeps the latest 3 | — |
-| Cloud Run | Runs the app as the `smoke-run` service account. Scales to zero when idle and allows at most one instance | — |
-| Secret Manager | Holds the database connection string; only `smoke-run` can read it | `DATABASE_URL` |
+| Cloud Run | Runs the app as the `smoke-tracker-run` service account. Scales to zero when idle and allows at most one instance | — |
+| Secret Manager | Holds the database connection string; only `smoke-tracker-run` can read it. The app sees it as `DATABASE_URL` | `smoke-tracker-database-url` |
 | Neon | Postgres database. Pauses after 5 minutes idle and keeps 6 hours of restore history, so a daily backup job (planned) will cover older mistakes | The database password |
 
 No secret is ever stored in this repository, in a Docker image, or in GitHub.
+
+The Google Cloud side is Terraform: see [`infra/`](infra/README.md) for what is automatic, what is
+manual and why, and how changes are applied.
 
 ## Documentation
 
