@@ -1865,6 +1865,7 @@ name = "smoke-storage-contract"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "chrono-tz",
  "serde_json",
  "smoke-domain",
  "tokio",

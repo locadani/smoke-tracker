@@ -15,6 +15,7 @@ pub mod lists;
 pub mod readings;
 pub mod reports;
 pub mod sessions;
+pub mod sweep;
 pub mod transactions;
 pub mod users;
 
@@ -93,6 +94,12 @@ macro_rules! contract_tests {
             sessions::expiring_a_user_ends_their_sessions,
             sessions::a_rolled_back_password_change_keeps_the_sessions,
             sessions::sessions_are_not_audited,
+            sweep::the_first_sweep_runs_and_is_remembered,
+            sweep::a_sweep_at_four_closes_the_event_at_its_last_report,
+            sweep::a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four,
+            sweep::an_event_opened_after_the_boundary_stays_open,
+            sweep::an_event_without_reports_closes_where_it_opened,
+            sweep::on_dst_days_the_sweep_still_runs_at_four_local,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

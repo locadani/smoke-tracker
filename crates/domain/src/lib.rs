@@ -12,6 +12,7 @@ pub mod records;
 pub mod repos;
 pub mod schedule;
 pub mod starter;
+pub mod sweep;
 pub mod types;
 pub mod verify;
 
