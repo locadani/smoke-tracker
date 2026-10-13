@@ -11,6 +11,7 @@
 pub mod events;
 pub mod fixture;
 pub mod lists;
+pub mod readings;
 pub mod reports;
 pub mod transactions;
 pub mod users;
@@ -51,6 +52,10 @@ macro_rules! contract_tests {
             reports::deleting_a_report_is_soft,
             reports::latest_report_time_ignores_deleted_reports,
             reports::an_unknown_room_rolls_back_the_report,
+            readings::a_reading_can_stand_alone_or_join_an_event,
+            readings::correcting_and_deleting_a_reading_are_audited,
+            readings::pm25_values_round_trip_exactly,
+            readings::job_runs_are_remembered_but_not_audited,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

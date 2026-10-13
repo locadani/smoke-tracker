@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT last_run_at FROM jobs WHERE name = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "last_run_at",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "jobs",
+            "name": "last_run_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7f34eb9a548e674768e262c2ac206fa1d8f6af9179d45e06c85e9d347a3778cb"
+}
