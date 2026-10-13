@@ -118,6 +118,7 @@ intensity-10-desc = Like a smoke-filled room. You must leave.
 
 nav-log = Log
 nav-events = Events
+nav-people = People
 nav-settings = Settings
 
 events-title = Events
@@ -192,6 +193,31 @@ settings-symptom-add = New symptom
 settings-list-add = Add
 settings-list-name-invalid = A name needs 1 to 60 characters.
 settings-saved-lists = Lists saved.
+
+people-title = People
+role-resident = resident
+role-guest = guest
+role-viewer = viewer
+people-status-until = until { $when }
+people-status-expired = expired { $when }
+people-status-no-end = no end date
+people-status-setup = waiting for setup
+people-expire = End access now
+people-reactivate = Reactivate
+people-saved-expired = Access ended. They are signed out everywhere.
+people-saved-reactivated = Account reactivated. The old password still works.
+people-error-expiry = Pick how long a guest may stay.
+people-error-date = Enter a valid date.
+people-error-past = The end must be in the future.
+people-error-not-expired = This account has not expired.
+people-error-resident = Residents never expire.
+expiry-legend = Access ends
+expiry-1-day = in 1 day
+expiry-weekend = after the weekend
+expiry-1-week = in 1 week
+expiry-2-weeks = in 2 weeks
+expiry-date = at the end of this day:
+expiry-never = never
 
 error-not-found-title = Page not found
 error-not-found = This page does not exist.

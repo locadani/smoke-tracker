@@ -2,13 +2,17 @@
 //! page. The texts live in the translation files so they are easy to edit.
 
 use askama::Template;
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
+use smoke_domain::repos::Store;
 use smoke_domain::types::Level;
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
+use crate::header::SignedIn;
 use crate::i18n::Tr;
+use crate::state::AppState;
 
 /// One row of the guide.
 pub(crate) struct GuideRow {
@@ -39,16 +43,20 @@ pub(crate) fn keys() -> Vec<String> {
 #[template(path = "guide.html")]
 struct GuidePage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     levels: Vec<GuideRow>,
 }
 
-pub(crate) async fn rating(CurrentUser(user): CurrentUser, tr: Tr) -> Result<Response, AppError> {
+pub(crate) async fn rating<S: Store + Clone + 'static>(
+    State(state): State<AppState<S>>,
+    CurrentUser(user): CurrentUser,
+    tr: Tr,
+) -> Result<Response, AppError> {
     page(
         StatusCode::OK,
         &GuidePage {
             tr,
-            signed_in: Some(user.username.to_string()),
+            signed_in: SignedIn::of(&user, state.clock.now()),
             levels: levels(tr),
         },
     )

@@ -127,7 +127,7 @@ mod tests {
 
     use super::*;
     use crate::routes::login::Notice;
-    use crate::routes::{self, entries, guide, lists, reports, settings};
+    use crate::routes::{self, entries, guide, lists, people, reports, settings};
     use crate::{error, labels};
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -220,6 +220,7 @@ mod tests {
         used.extend(reports::HISTORY_KEYS.map(str::to_owned));
         used.extend(settings::keys().into_iter().map(str::to_owned));
         used.extend(lists::KEYS.map(str::to_owned));
+        used.extend(people::keys().into_iter().map(str::to_owned));
         let english = message_ids(Locale::En);
         let missing: Vec<_> = used.difference(&english).collect();
         assert!(

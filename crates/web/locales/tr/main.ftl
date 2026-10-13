@@ -118,6 +118,7 @@ intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
 nav-log = Kaydet
 nav-events = Olaylar
+nav-people = Kişiler
 nav-settings = Ayarlar
 
 events-title = Olaylar
@@ -192,6 +193,31 @@ settings-symptom-add = Yeni belirti
 settings-list-add = Ekle
 settings-list-name-invalid = Bir ad 1 ile 60 karakter arasında olmalı.
 settings-saved-lists = Listeler kaydedildi.
+
+people-title = Kişiler
+role-resident = ev sakini
+role-guest = misafir
+role-viewer = izleyici
+people-status-until = { $when } tarihine kadar
+people-status-expired = { $when } tarihinde süresi doldu
+people-status-no-end = bitiş tarihi yok
+people-status-setup = kurulum bekleniyor
+people-expire = Erişimi şimdi sonlandır
+people-reactivate = Yeniden etkinleştir
+people-saved-expired = Erişim sonlandırıldı. Tüm cihazlarda oturumu kapatıldı.
+people-saved-reactivated = Hesap yeniden etkinleştirildi. Eski şifre hâlâ geçerli.
+people-error-expiry = Misafirin ne kadar kalabileceğini seçin.
+people-error-date = Geçerli bir tarih girin.
+people-error-past = Bitiş gelecekte olmalı.
+people-error-not-expired = Bu hesabın süresi dolmadı.
+people-error-resident = Ev sakinlerinin süresi hiç dolmaz.
+expiry-legend = Erişimin bitişi
+expiry-1-day = 1 gün sonra
+expiry-weekend = hafta sonundan sonra
+expiry-1-week = 1 hafta sonra
+expiry-2-weeks = 2 hafta sonra
+expiry-date = bu günün sonunda:
+expiry-never = hiçbir zaman
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

@@ -118,6 +118,7 @@ intensity-10-desc = Come una stanza piena di fumo. Devi uscire.
 
 nav-log = Registra
 nav-events = Eventi
+nav-people = Persone
 nav-settings = Impostazioni
 
 events-title = Eventi
@@ -192,6 +193,31 @@ settings-symptom-add = Nuovo sintomo
 settings-list-add = Aggiungi
 settings-list-name-invalid = Un nome deve avere da 1 a 60 caratteri.
 settings-saved-lists = Elenchi salvati.
+
+people-title = Persone
+role-resident = residente
+role-guest = ospite
+role-viewer = osservatore
+people-status-until = fino al { $when }
+people-status-expired = scaduto il { $when }
+people-status-no-end = senza scadenza
+people-status-setup = in attesa di configurazione
+people-expire = Termina l'accesso ora
+people-reactivate = Riattiva
+people-saved-expired = Accesso terminato. La persona è stata disconnessa ovunque.
+people-saved-reactivated = Account riattivato. La vecchia password funziona ancora.
+people-error-expiry = Scegli quanto può restare l'ospite.
+people-error-date = Inserisci una data valida.
+people-error-past = La scadenza deve essere nel futuro.
+people-error-not-expired = Questo account non è scaduto.
+people-error-resident = I residenti non scadono mai.
+expiry-legend = L'accesso termina
+expiry-1-day = tra 1 giorno
+expiry-weekend = dopo il fine settimana
+expiry-1-week = tra 1 settimana
+expiry-2-weeks = tra 2 settimane
+expiry-date = alla fine di questo giorno:
+expiry-never = mai
 
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.

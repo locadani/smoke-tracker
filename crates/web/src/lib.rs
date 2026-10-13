@@ -8,6 +8,7 @@ pub mod config;
 mod cookies;
 mod error;
 mod forms;
+mod header;
 mod i18n;
 mod labels;
 mod request_id;
@@ -43,7 +44,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     auth::password::prepare_dummy_hash();
     let signed_in = Router::new()
         .route("/", get(routes::log::show::<S>))
-        .route("/guide/rating", get(routes::guide::rating))
+        .route("/guide/rating", get(routes::guide::rating::<S>))
         .route("/log", post(routes::entries::submit::<S>))
         .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
         .route("/events", get(routes::events::list::<S>))
@@ -56,6 +57,12 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::reports::correct_form::<S>).post(routes::reports::correct::<S>),
         )
         .route("/reports/{id}/move", post(routes::reports::relocate::<S>))
+        .route("/people", get(routes::people::list::<S>))
+        .route("/people/{id}/expire", post(routes::people::end_access::<S>))
+        .route(
+            "/people/{id}/reactivate",
+            post(routes::people::restore_access::<S>),
+        )
         .route("/settings", get(routes::settings::show::<S>))
         .route("/settings/password", post(routes::settings::change::<S>))
         .route("/settings/rooms", post(routes::lists::create_room::<S>))

@@ -16,6 +16,7 @@ use crate::auth::limiter::LoginLimiter;
 use crate::auth::{self, CurrentUser, password};
 use crate::cookies;
 use crate::error::{AppError, page};
+use crate::header::SignedIn;
 use crate::i18n::Tr;
 use crate::state::AppState;
 
@@ -47,7 +48,7 @@ impl Notice {
 #[template(path = "login.html")]
 struct LoginPage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     username: String,
     notice: Option<Notice>,
 }

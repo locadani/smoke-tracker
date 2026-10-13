@@ -13,14 +13,15 @@
 <body>
   <header class="bar">
     <span class="brand">{{ tr.t("app-name") }}</span>
-    {% if let Some(username) = signed_in %}
+    {% if let Some(me) = signed_in %}
     <nav class="menu">
       <a href="/">{{ tr.t("nav-log") }}</a>
       <a href="/events">{{ tr.t("nav-events") }}</a>
+      {% if me.people %}<a href="/people">{{ tr.t("nav-people") }}</a>{% endif %}
       <a href="/settings">{{ tr.t("nav-settings") }}</a>
     </nav>
     <form method="post" action="/logout" class="who">
-      <span>{{ tr.t1("signed-in-as", "username", username) }}</span>
+      <span>{{ tr.t1("signed-in-as", "username", me.username) }}</span>
       <button type="submit" class="link">{{ tr.t("logout") }}</button>
     </form>
     {% endif %}

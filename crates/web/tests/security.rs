@@ -218,6 +218,7 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         text(app.send(get_with("/", &cookie)).await).await,
         text(app.send(get_with("/guide/rating", &cookie)).await).await,
         text(app.send(get_with("/settings", &cookie)).await).await,
+        text(app.send(get_with("/people", &cookie)).await).await,
         text(app.send(get("/missing")).await).await,
         text(app.attempt("daniele", "not the password").await).await,
     ];

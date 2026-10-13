@@ -13,6 +13,7 @@ use axum::response::{Html, IntoResponse, Response};
 use smoke_domain::repos::StoreError;
 
 use crate::cookies;
+use crate::header::SignedIn;
 use crate::i18n::{LANG_COOKIE, Tr, negotiate};
 use crate::request_id;
 
@@ -124,7 +125,7 @@ pub(crate) fn panic_response(panic: Box<dyn Any + Send + 'static>) -> Response {
 #[template(path = "error.html")]
 struct ErrorTemplate {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     title_key: &'static str,
     message_key: &'static str,
     request_id: String,

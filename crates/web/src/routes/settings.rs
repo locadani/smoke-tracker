@@ -18,6 +18,7 @@ use crate::auth::client_ip::ClientIp;
 use crate::auth::limiter::LoginLimiter;
 use crate::auth::{self, CurrentUser, password};
 use crate::error::{AppError, page};
+use crate::header::SignedIn;
 use crate::i18n::Tr;
 use crate::routes::lists::{self, ListsView};
 use crate::routes::people_refusal;
@@ -48,7 +49,7 @@ pub(crate) struct Notices {
 #[template(path = "settings.html")]
 struct SettingsPage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     /// For password managers, which file the new password under this name.
     username: String,
     languages: Vec<LanguageChoice>,
@@ -64,7 +65,8 @@ pub(crate) async fn settings_page<S: Store>(
     status: StatusCode,
     notices: Notices,
 ) -> Result<Response, AppError> {
-    let lists = if can(&user.actor(), Action::EditLists, state.clock.now()) {
+    let now = state.clock.now();
+    let lists = if can(&user.actor(), Action::EditLists, now) {
         Some(lists::view(state, tr).await?)
     } else {
         None
@@ -73,7 +75,7 @@ pub(crate) async fn settings_page<S: Store>(
         status,
         &SettingsPage {
             tr,
-            signed_in: Some(user.username.to_string()),
+            signed_in: SignedIn::of(user, now),
             username: user.username.to_string(),
             languages: LANGUAGES
                 .iter()

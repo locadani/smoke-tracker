@@ -1,0 +1,8 @@
+{# When an account stops working: quick picks or a day (spec §8.3). Expects `expiry`. #}
+<fieldset class="expiry choices" data-role="{{ expiry.role }}">
+  <legend>{{ tr.t("expiry-legend") }}</legend>
+  {% for pick in expiry.picks %}
+  <label class="chip"><input type="radio" name="{{ expiry.pick_name }}" value="{{ pick.value }}"{% if pick.checked %} checked{% endif %}><span>{{ tr.t(pick.key) }}</span></label>
+  {% endfor %}
+  <input type="date" name="{{ expiry.date_name }}" value="{{ expiry.date }}" aria-label="{{ tr.t("expiry-date") }}">
+</fieldset>

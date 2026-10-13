@@ -304,3 +304,19 @@ button.current {
   justify-content: space-between;
   gap: var(--gap);
 }
+
+.people {
+  list-style: none;
+  padding: 0;
+}
+
+.people li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgb(128 128 128 / 30%);
+}
+
+.expiry input[type="date"] {
+  font: inherit;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+}
