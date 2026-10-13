@@ -219,11 +219,25 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         text(app.send(get_with("/guide/rating", &cookie)).await).await,
         text(app.send(get_with("/settings", &cookie)).await).await,
         text(app.send(get_with("/people", &cookie)).await).await,
+        text(app.send(get_with("/people/invite", &cookie)).await).await,
+        text(
+            app.send(post_form("/people/1/link", "", Some(&cookie)))
+                .await,
+        )
+        .await,
         text(app.send(get("/missing")).await).await,
         text(app.attempt("daniele", "not the password").await).await,
     ];
     assert!(pages[1].contains("No event: just a check"), "{}", pages[1]);
     assert!(pages[4].contains("None: a no-smell check"), "{}", pages[4]);
+    let link = pages[13].find("/invite/").expect("a reset link");
+    let accept = &pages[13][link..link + "/invite/".len() + 64];
+    let accept_page = text(app.send(get(accept)).await).await;
+    assert!(
+        accept_page.contains("<h1>Choose a new password</h1>"),
+        "{accept_page}"
+    );
+    let pages = pages.into_iter().chain([accept_page]);
     for html in pages {
         assert!(
             html.contains(r#"<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>"#),

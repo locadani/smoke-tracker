@@ -66,7 +66,7 @@ pub(crate) async fn check_origin(
         let headers = request.headers();
         tracing::warn!(
             method = %request.method(),
-            path = ?request.uri().path(),
+            path = crate::logged_path(request.uri().path()),
             sec_fetch_site = ?headers.get("sec-fetch-site"),
             origin = ?headers.get(ORIGIN),
             "refused a cross-site request"

@@ -320,3 +320,28 @@ button.current {
   padding: 0.5rem;
   border-radius: 0.5rem;
 }
+
+.invite:has(input[name="role"]:checked) .expiry {
+  display: none;
+}
+
+.invite:has(input[name="role"][value="guest"]:checked) .expiry[data-role="guest"],
+.invite:has(input[name="role"][value="viewer"]:checked) .expiry[data-role="viewer"] {
+  display: flex;
+}
+
+.qr-code {
+  margin: 0;
+  max-width: 18rem;
+}
+
+.qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.link-text {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}

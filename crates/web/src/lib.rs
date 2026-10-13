@@ -11,6 +11,7 @@ mod forms;
 mod header;
 mod i18n;
 mod labels;
+mod qr;
 mod request_id;
 mod routes;
 mod security;
@@ -58,6 +59,11 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
         )
         .route("/reports/{id}/move", post(routes::reports::relocate::<S>))
         .route("/people", get(routes::people::list::<S>))
+        .route(
+            "/people/invite",
+            get(routes::people::links::form::<S>).post(routes::people::links::create::<S>),
+        )
+        .route("/people/{id}/link", post(routes::people::links::renew::<S>))
         .route("/people/{id}/expire", post(routes::people::end_access::<S>))
         .route(
             "/people/{id}/reactivate",
@@ -86,6 +92,10 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::login::form).post(routes::login::submit::<S>),
         )
         .route("/logout", post(routes::login::logout))
+        .route(
+            "/invite/{token}",
+            get(routes::accept::form::<S>).post(routes::accept::submit::<S>),
+        )
         .route("/lang", post(routes::lang::choose::<S>))
         .fallback(routes::not_found)
         .layer(CatchPanicLayer::custom(error::panic_response))
@@ -125,7 +135,18 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
 
 fn request_span(request: &Request) -> tracing::Span {
     let id = request_id::of(request.headers());
-    tracing::info_span!("request", id, method = %request.method(), path = request.uri().path())
+    let path = logged_path(request.uri().path());
+    tracing::info_span!("request", id, method = %request.method(), path)
+}
+
+/// The path as logs show it. An invite token works like a password until it is used, so it
+/// never reaches the logs (decision #119).
+pub(crate) fn logged_path(path: &str) -> &str {
+    if path.starts_with("/invite/") {
+        "/invite/…"
+    } else {
+        path
+    }
 }
 
 /// Serves `app` until `shutdown` completes, then finishes the requests in flight.
@@ -140,4 +161,16 @@ pub async fn serve(
     )
     .with_graceful_shutdown(shutdown)
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invite_tokens_are_cut_from_logged_paths() {
+        assert_eq!(logged_path("/invite/0123abcd"), "/invite/…");
+        assert_eq!(logged_path("/events/3"), "/events/3");
+        assert_eq!(logged_path("/people/invite"), "/people/invite");
+    }
 }

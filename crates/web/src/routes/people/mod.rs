@@ -2,6 +2,7 @@
 //! buttons that end or restore their access.
 
 pub(crate) mod expiry;
+pub(crate) mod links;
 
 use askama::Template;
 use axum::extract::{Path, Query, State};
@@ -240,5 +241,6 @@ pub(crate) fn keys() -> Vec<&'static str> {
     ];
     keys.extend(Role::ALL.iter().map(|&role| role_key(role)));
     keys.extend(expiry::keys());
+    keys.extend(links::KEYS);
     keys
 }

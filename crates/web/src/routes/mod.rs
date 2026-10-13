@@ -1,5 +1,6 @@
 //! One module per feature.
 
+pub(crate) mod accept;
 pub(crate) mod entries;
 pub(crate) mod events;
 pub(crate) mod guide;

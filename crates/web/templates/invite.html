@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("invite-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("invite-title") }}</h1>
+{% if let Some(error) = error %}
+<p class="notice" role="alert">{{ tr.t(error) }}</p>
+{% endif %}
+<form method="post" action="/people/invite" class="stack invite">
+  <label>{{ tr.t("login-username") }}
+    <input name="username" value="{{ username }}" autocomplete="off" autocapitalize="none"
+           autocorrect="off" spellcheck="false" maxlength="32" required>
+  </label>
+  <p class="hint">{{ tr.t("invite-username-hint") }}</p>
+  <fieldset class="choices">
+    <legend>{{ tr.t("invite-role") }}</legend>
+    {% for role in roles %}
+    <label class="chip"><input type="radio" name="role" value="{{ role.value }}"{% if role.checked %} checked{% endif %}><span>{{ tr.t(role.key) }}</span></label>
+    {% endfor %}
+  </fieldset>
+  {% if let Some(expiry) = guest %}{% include "expiry_fields.html" %}{% endif %}
+  {% if let Some(expiry) = viewer %}{% include "expiry_fields.html" %}{% endif %}
+  <button type="submit">{{ tr.t("invite-submit") }}</button>
+</form>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("accept-title") }}{% endblock %}
+{% block content %}
+<h1>{% if setup %}{{ tr.t1("accept-welcome", "username", username) }}{% else %}{{ tr.t("accept-title") }}{% endif %}</h1>
+<p>{% if setup %}{{ tr.t("accept-setup-intro") }}{% else %}{{ tr.t1("accept-reset-intro", "username", username) }}{% endif %}</p>
+{% if let Some(error) = error %}
+<p class="notice" role="alert">{{ tr.t(error) }}</p>
+{% endif %}
+<form method="post" class="stack">
+  <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden>
+  <label>{{ tr.t("settings-password-new") }}
+    <input type="password" name="password" autocomplete="new-password" minlength="10" maxlength="128" required>
+  </label>
+  <label>{{ tr.t("settings-password-repeat") }}
+    <input type="password" name="repeat" autocomplete="new-password" minlength="10" maxlength="128" required>
+  </label>
+  <p class="hint">{{ tr.t("accept-password-hint") }}</p>
+  <fieldset class="choices">
+    <legend>{{ tr.t("language") }}</legend>
+    {% for language in languages %}
+    <label class="chip"><input type="radio" name="lang" value="{{ language.value }}"{% if language.current %} checked{% endif %}><span lang="{{ language.value }}">{{ language.name }}</span></label>
+    {% endfor %}
+  </fieldset>
+  <button type="submit">{{ tr.t("accept-submit") }}</button>
+</form>
+{% endblock %}
