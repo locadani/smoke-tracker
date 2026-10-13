@@ -188,7 +188,7 @@ audit_log                  -- append-only
   entity, entity_id
   action: create | update | delete | close | reopen | move | invite | expire | reactivate | password_change
   before_json?, after_json?
-  prev_hash, hash          -- SHA-256(canonical(entry) || prev_hash)
+  prev_hash, hash          -- SHA-256(prev_hash || "\n" || canonical(entry))
 
 jobs
   name, last_run_at        -- e.g. auto_close_sweep
@@ -203,8 +203,8 @@ stairwell (shared) (*common*).
 
 - Every write goes through **one transaction** that changes the data **and** appends an audit
   entry. Changing data without recording it is impossible through the app.
-- Each entry's `hash` = SHA-256 of a **canonical serialisation** of the entry (independent of
-  the database backend) plus the previous entry's hash.
+- Each entry's `hash` = SHA-256 of the previous entry's hash, a newline, and a **canonical
+  serialisation** of the entry (independent of the database backend).
 - **`verify-audit`** command:
   1. Recomputes the chain and reports the first broken entry.
   2. Checks that each current record equals the `after_json` of its latest audit entry. This
@@ -384,11 +384,9 @@ smoke-tracker/
 │  │   audit.rs        canonical serialisation, hash chain, verification
 │  │   clock.rs        Clock trait (real + fake for tests)
 │  │   repos.rs        repository traits (the storage boundary)
-│  ├─ storage/    implementations of the repository traits
-│  │   sqlite/         SqliteStore + migrations/sqlite
-│  │   postgres/       PostgresStore + migrations/postgres
-│  │   contract_tests/ one test suite run against both backends
-│  │   migrate.rs      SQLite → Postgres data migration
+│  ├─ storage-sqlite/    SqliteStore, migrations/, .sqlx/ (decision #45)
+│  ├─ storage-postgres/  PostgresStore, migrations/, .sqlx/, schema-parity test
+│  ├─ storage-contract/  one test suite run against both backends
 │  ├─ web/        Axum routes (one module per feature), Askama templates, htmx partials,
 │  │              i18n (.ftl), static assets (htmx, Chart.js, manifest, SW, icons)
 │  └─ app/        binary: config, wiring, scheduler, CLI (clap)
@@ -398,7 +396,7 @@ smoke-tracker/
 └─ README.md
 ```
 
-**Dependency direction:** `app → web → domain ← storage` (`app` also wires `storage`). `web`
+**Dependency direction:** `app → web → domain ← storage-*` (`app` also wires a storage crate). `web`
 never sees SQL; it uses the repository traits only.
 
 ### 10.1 Storage abstraction (Neon-ready)
@@ -408,8 +406,9 @@ never sees SQL; it uses the repository traits only.
 - The backend is chosen at runtime from `DATABASE_URL` (`sqlite://…` or `postgres://…`).
 - **Contract tests:** the storage test suite is written once against the traits and runs against
   SQLite and a Postgres service container in CI.
-- **Schema parity:** `migrations/sqlite` and `migrations/postgres` are kept in step. A CI check
+- **Schema parity:** `crates/storage-sqlite/migrations` and `crates/storage-postgres/migrations` are kept in step. A CI check
   compares the resulting tables and columns.
+- Instants are stored as integer microseconds since the Unix epoch in both backends (decision #46).
 - Portable conventions: timestamps stored identically in both backends; no backend-specific
   features in domain-visible behaviour.
 
@@ -449,7 +448,7 @@ The command has its own CI test: seed SQLite, migrate, verify.
   - It runs at startup, before every logging request, and from an in-process timer.
   - Free hosts may sleep the app, so the result is identical whether the sweep runs at 04:00 or
     catches up later.
-- **Expiry** is checked on every request (`expires_at < now`); no job is needed.
+- **Expiry** is checked on every request (`expires_at <= now`: an account is expired from that exact instant); no job is needed.
 - **Cleanup:** expired sessions are removed by tower-sessions; expired invites are removed daily.
 - **Time:** stored in UTC, with `chrono-tz` for local conversion. 04:00 exists exactly once a day
   in Europe/Rome (DST shifts happen at 02:00/03:00).
@@ -506,7 +505,7 @@ The command has its own CI test: seed SQLite, migrate, verify.
 | Layer | What | How |
 |---|---|---|
 | domain | permissions table (every cell), lifecycle rules, `Intensity` bounds, hash chain tamper detection | unit tests + proptest |
-| storage | migrations, queries, audit entry per write, soft deletes | contract tests vs SQLite (in-memory) and Postgres |
+| storage | migrations, queries, audit entry per write, soft deletes | contract tests vs SQLite (temporary file) and Postgres |
 | migration | SQLite → Postgres copy + verification | seeded end-to-end test in CI |
 | web | login and rate limit, guest isolation, expired guest can't write, viewer can't write, 5-minute invite expiry, Origin check | in-memory requests to the Axum router (`tower::ServiceExt::oneshot`) |
 | i18n | every key present in en/it/tr | single test |
@@ -519,7 +518,7 @@ The workflow is test-first (TDD). Browser E2E tests are out of scope for v1.
 ## 14. Out of scope for v1 / future work
 
 - **Export** (CSV first, then PDF), including the pinned audit hash. The data model already supports it.
-- **Push reminders.** Tracked as a GitHub issue (text below).
+- **Push reminders.** Tracked as GitHub issue #3 (text below).
 - Automatic PM2.5 sensor ingestion. PM2.5 is already its own record type.
 - Offline logging (service worker queue).
 - Browser E2E tests (Playwright).
