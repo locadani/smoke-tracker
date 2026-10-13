@@ -54,12 +54,7 @@ pub(crate) fn read_time(
     tz: Tz,
 ) -> Result<Option<DateTime<Utc>>, &'static str> {
     form.get(name)
-        .map(|value| {
-            time::parse_input(value, tz).map_err(|error| match error {
-                TimeInputError::Malformed => "log-error-time",
-                TimeInputError::Skipped => "log-error-time-skipped",
-            })
-        })
+        .map(|value| time::parse_input(value, tz).map_err(TimeInputError::key))
         .transpose()
 }
 

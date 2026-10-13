@@ -54,6 +54,11 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
     assert!(empty.contains("No events this month."), "{empty}");
     let default = text(app.send(get_with("/events?month=junk", &cookie)).await).await;
     assert!(default.contains("<strong>01/2026</strong>"), "{default}");
+    for far in ["262142-12", "-262143-01", "0001-01"] {
+        let uri = format!("/events?month={far}");
+        let html = text(app.send(get_with(&uri, &cookie)).await).await;
+        assert!(html.contains("<strong>01/2026</strong>"), "{far}: {html}");
+    }
 }
 
 #[tokio::test]

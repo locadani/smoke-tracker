@@ -15,6 +15,7 @@ use smoke_domain::logbook::{close_event, reopen_event};
 use smoke_domain::permissions::{Action, Actor, can, can_see};
 use smoke_domain::records::{Event, Pm25Reading, SmellReport, User};
 use smoke_domain::repos::{Commit, Store};
+use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, UserId};
 
 use crate::auth::CurrentUser;
@@ -22,9 +23,10 @@ use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
 use crate::labels;
+use crate::routes::entries::read_time;
 use crate::routes::{can_open, refusal};
 use crate::state::AppState;
-use crate::time::{self, TimeInputError};
+use crate::time;
 
 #[derive(Deserialize)]
 pub(crate) struct ListQuery {
@@ -79,6 +81,9 @@ fn day(days: &mut BTreeMap<NaiveDate, Day>, tr: Tr, date: NaiveDate) -> &mut Day
     })
 }
 
+/// The years the month list accepts, well inside chrono's range so month arithmetic cannot overflow.
+const SUPPORTED_YEARS: std::ops::RangeInclusive<i32> = 2000..=9999;
+
 pub(crate) async fn list<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
@@ -86,12 +91,14 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
     Query(query): Query<ListQuery>,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
+    auto_close(&state.store, &state.config.schedule, now).await?;
     let schedule = &state.config.schedule;
     let tz = schedule.tz();
     let actor = user.actor();
     let first = query
         .month
         .and_then(|m| NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").ok())
+        .filter(|first| SUPPORTED_YEARS.contains(&first.year()))
         .unwrap_or_else(|| schedule.local_date(now));
     let (from, to) = schedule.month_span(first);
     let events = state.store.events_between(from, to).await?;
@@ -340,17 +347,11 @@ pub(crate) async fn close<S: Store + Clone + 'static>(
     form: Pairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
+    auto_close(&state.store, &state.config.schedule, now).await?;
     let id = EventId(id);
     openable(&state, &user.actor(), id, now).await?;
-    let closed_at = match form.get("closed_at") {
-        None => Ok(now),
-        Some(value) => {
-            time::parse_input(value, state.config.schedule.tz()).map_err(|error| match error {
-                TimeInputError::Malformed => "log-error-time",
-                TimeInputError::Skipped => "log-error-time-skipped",
-            })
-        }
-    };
+    let closed_at =
+        read_time(&form, "closed_at", state.config.schedule.tz()).map(|at| at.unwrap_or(now));
     let result = match closed_at {
         Ok(at) => {
             let mut tx = state.store.begin(Some(user.id)).await?;
@@ -381,6 +382,7 @@ pub(crate) async fn reopen<S: Store + Clone + 'static>(
     Path(id): Path<i64>,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
+    auto_close(&state.store, &state.config.schedule, now).await?;
     let id = EventId(id);
     openable(&state, &user.actor(), id, now).await?;
     let mut tx = state.store.begin(Some(user.id)).await?;

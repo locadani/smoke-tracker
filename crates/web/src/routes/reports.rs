@@ -12,6 +12,7 @@ use smoke_domain::logbook::{MoveTarget, correct_report, move_report};
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::{Room, SmellReport, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
+use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, ReportId, Role, RoomId, SymptomId, UserId};
 
 use crate::auth::CurrentUser;
@@ -374,6 +375,7 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     form: Pairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
+    auto_close(&state.store, &state.config.schedule, now).await?;
     let schedule = state.config.schedule;
     let report = editable_report(&state, &user, ReportId(id)).await?;
     let rooms = state.store.rooms().await?;
@@ -429,6 +431,7 @@ pub(crate) async fn relocate<S: Store + Clone + 'static>(
     form: Pairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
+    auto_close(&state.store, &state.config.schedule, now).await?;
     visible_report(&state, &user, ReportId(id)).await?;
     let target = match form.get("target") {
         Some("new") => MoveTarget::New,

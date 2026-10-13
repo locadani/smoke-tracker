@@ -17,6 +17,16 @@ pub(crate) enum TimeInputError {
     Skipped,
 }
 
+impl TimeInputError {
+    /// The translation key of the message that explains the refusal.
+    pub(crate) fn key(self) -> &'static str {
+        match self {
+            Self::Malformed => "log-error-time",
+            Self::Skipped => "log-error-time-skipped",
+        }
+    }
+}
+
 /// A calendar date as the language writes it with digits.
 pub(crate) fn date(locale: Locale, date: NaiveDate) -> String {
     let pattern = match locale {
