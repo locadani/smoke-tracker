@@ -101,3 +101,56 @@ run "deploy_account_can_push_images_and_act_as_runtime" {
     error_message = "The deploy account must be able to run revisions as the runtime account."
   }
 }
+
+run "service_is_public_capped_and_protected" {
+  assert {
+    condition     = google_cloud_run_v2_service.app.invoker_iam_disabled == true
+    error_message = "The service is public through invoker_iam_disabled, not an allUsers grant."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].scaling[0].min_instance_count == 0 && google_cloud_run_v2_service.app.template[0].scaling[0].max_instance_count == 1
+    error_message = "The service scales to zero and to at most one instance."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].containers[0].resources[0].cpu_idle == true
+    error_message = "CPU must be allocated only during requests (free tier)."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].containers[0].resources[0].limits["memory"] == "512Mi"
+    error_message = "Memory defaults to 512Mi."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].service_account == google_service_account.runtime.email
+    error_message = "The service runs as the runtime account."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.deletion_protection == true
+    error_message = "The service must be protected against deletion."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service_iam_member.deploy_updates_service.role == "roles/run.developer" && google_cloud_run_v2_service_iam_member.deploy_updates_service.member == google_service_account.deploy.member
+    error_message = "The deploy account may deploy this one service, and nothing more."
+  }
+}
+
+run "database_url_not_attached_by_default" {
+  assert {
+    condition     = length(google_cloud_run_v2_service.app.template[0].containers[0].env) == 0
+    error_message = "Before the secret has a value, the service must not reference it, or instances won't start."
+  }
+}
+
+run "database_url_attached_from_secret_when_enabled" {
+  variables {
+    attach_database_url = true
+  }
+
+  assert {
+    condition     = tolist(google_cloud_run_v2_service.app.template[0].containers[0].env)[0].name == "DATABASE_URL"
+    error_message = "The app reads its connection string as DATABASE_URL."
+  }
+  assert {
+    condition     = tolist(google_cloud_run_v2_service.app.template[0].containers[0].env)[0].value_source[0].secret_key_ref[0].secret == google_secret_manager_secret.database_url.secret_id && tolist(google_cloud_run_v2_service.app.template[0].containers[0].env)[0].value_source[0].secret_key_ref[0].version == "latest"
+    error_message = "DATABASE_URL comes from the latest version of the app's secret."
+  }
+}
