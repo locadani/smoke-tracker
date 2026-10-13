@@ -762,3 +762,93 @@ where
         "no event was created"
     );
 }
+
+pub async fn a_no_smell_report_answered_continue_now_is_a_check_and_reopens_nothing<S>(
+    fx: &Fixture<S>,
+) where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let opened = start() - TimeDelta::hours(20);
+    let auto = Closure {
+        at: opened + TimeDelta::hours(1),
+        reason: CloseReason::Auto0400,
+    };
+    let closed = add_event(fx, p.resident.id, opened, Some(auto)).await;
+
+    let logged = log(
+        fx,
+        &p.resident,
+        no_smell(start()),
+        EventChoice::Continue(closed.id),
+    )
+    .await
+    .unwrap();
+    assert_eq!(logged.report.event_id, None, "a check");
+    assert_eq!(
+        event(fx, closed.id).await.closed,
+        Some(auto),
+        "still closed"
+    );
+    assert_eq!(fx.store.open_event().await.unwrap(), None);
+}
+
+pub async fn a_backdated_no_smell_report_cannot_continue_an_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let opened = start() - TimeDelta::hours(20);
+    let auto = Closure {
+        at: opened + TimeDelta::hours(1),
+        reason: CloseReason::Auto0400,
+    };
+    let closed = add_event(fx, p.resident.id, opened, Some(auto)).await;
+
+    let refused = log(
+        fx,
+        &p.resident,
+        no_smell(start() - TimeDelta::hours(2)),
+        EventChoice::Continue(closed.id),
+    )
+    .await;
+    assert!(matches!(refused, Err(LogError::Stale)), "{refused:?}");
+    assert_eq!(event(fx, closed.id).await.closed, Some(auto));
+}
+
+pub async fn a_backdated_no_smell_report_after_the_end_moves_the_end<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let opened = start() - TimeDelta::hours(5);
+    let closed = Closure {
+        at: opened + TimeDelta::hours(1),
+        reason: CloseReason::Manual,
+    };
+    let past = add_event(fx, p.resident.id, opened, Some(closed)).await;
+
+    let inside = log(
+        fx,
+        &p.resident,
+        no_smell(opened + TimeDelta::minutes(30)),
+        EventChoice::Join(past.id),
+    )
+    .await
+    .unwrap();
+    assert_eq!(inside.report.event_id, Some(past.id));
+    assert_eq!(event(fx, past.id).await.closed, Some(closed), "end kept");
+
+    let after = opened + TimeDelta::hours(2);
+    log(fx, &p.resident, no_smell(after), EventChoice::Join(past.id))
+        .await
+        .unwrap();
+    assert_eq!(
+        event(fx, past.id).await.closed,
+        Some(Closure {
+            at: after,
+            reason: CloseReason::Manual
+        }),
+        "spec 7.5: the end moves to the report time"
+    );
+}
