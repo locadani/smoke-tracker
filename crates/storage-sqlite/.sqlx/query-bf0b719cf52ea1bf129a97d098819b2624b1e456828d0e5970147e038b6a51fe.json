@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, name, i18n_key, hidden_at FROM symptoms WHERE id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "symptoms",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "symptoms",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "i18n_key",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "symptoms",
+            "name": "i18n_key"
+          }
+        }
+      },
+      {
+        "name": "hidden_at",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "symptoms",
+            "name": "hidden_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "bf0b719cf52ea1bf129a97d098819b2624b1e456828d0e5970147e038b6a51fe"
+}

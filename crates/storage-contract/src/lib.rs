@@ -9,6 +9,7 @@
 //! migrated database, or `None` to skip.
 
 pub mod fixture;
+pub mod lists;
 pub mod transactions;
 pub mod users;
 
@@ -31,6 +32,10 @@ macro_rules! contract_tests {
             users::a_dropped_transaction_leaves_no_trace,
             users::instants_are_kept_to_the_microsecond,
             users::writing_an_unknown_user_is_not_found,
+            lists::seeding_adds_the_starter_lists_once,
+            lists::a_custom_room_has_no_translation_key,
+            lists::hiding_a_room_is_audited_once,
+            lists::hiding_an_unknown_symptom_is_not_found,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

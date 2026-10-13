@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE rooms SET hidden_at = $1 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "19510710e3fec4c19595739f93ce40ccbcd86b62722ad898fc42e0ca8a78d542"
+}

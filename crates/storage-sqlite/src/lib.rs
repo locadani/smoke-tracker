@@ -7,6 +7,7 @@
 mod audit;
 mod convert;
 mod error;
+mod lists;
 mod tx;
 mod users;
 
