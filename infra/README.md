@@ -139,7 +139,7 @@ Done once, in the Google Cloud console and Cloud Shell.
    cp terraform.tfvars.example terraform.tfvars   # fill in project ID and the bucket name from step 4
    cp backend.hcl.example backend.hcl             # fill in the bucket name from step 4
    terraform init -backend-config=backend.hcl
-   terraform plan    # the registry shows "will be imported", not "created"
+   terraform plan
    terraform apply
    ```
 
