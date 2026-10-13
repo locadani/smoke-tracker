@@ -92,6 +92,22 @@ async fn renew(session: &Session, now: DateTime<Utc>) -> Result<(), AppError> {
     Ok(())
 }
 
+/// Signs `user` in on this device with a fresh session id, so an id planted before sign-in is
+/// worthless (session fixation). Used at sign-in, after accepting a link, and after a password
+/// change, which ends every earlier session of the account.
+pub(crate) async fn start_session(
+    session: &Session,
+    user: &User,
+    now: DateTime<Utc>,
+) -> Result<(), AppError> {
+    session.cycle_id().await?;
+    session.insert(USER_ID_KEY, user.id.0).await?;
+    session
+        .insert(RENEWED_AT_KEY, now.timestamp_micros())
+        .await?;
+    Ok(())
+}
+
 /// Sends visitors who are not signed in to the login page; htmx requests get `HX-Redirect`
 /// so the whole page navigates instead of swapping the login form into a fragment.
 pub(crate) async fn require_user(request: Request, next: Next) -> Response {

@@ -99,7 +99,11 @@ legend {
 }
 
 .rooms legend,
-.rooms .group,
+.rooms .group {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .room:has(input[name="room"]:checked) {
   flex-basis: 100%;
   margin: 0;
@@ -270,4 +274,21 @@ select {
   font: inherit;
   padding: 0.75rem;
   border-radius: 0.5rem;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button.current {
+  background: var(--accent);
+  color: #fff;
+}
+
+.hint {
+  font-size: 0.875rem;
+  margin: 0;
+  opacity: 0.8;
 }

@@ -56,6 +56,8 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::reports::correct_form::<S>).post(routes::reports::correct::<S>),
         )
         .route("/reports/{id}/move", post(routes::reports::relocate::<S>))
+        .route("/settings", get(routes::settings::show))
+        .route("/settings/password", post(routes::settings::change::<S>))
         .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
         .merge(signed_in)

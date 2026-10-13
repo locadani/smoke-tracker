@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("settings-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("settings-title") }}</h1>
+{% if let Some(saved) = saved %}
+<p class="notice" role="status">{{ tr.t(saved) }}</p>
+{% endif %}
+<section>
+  <h2>{{ tr.t("language") }}</h2>
+  <form method="post" action="/lang" class="choices">
+    <input type="hidden" name="return_to" value="settings">
+    {% for language in languages %}
+    <button type="submit" name="lang" value="{{ language.value }}" lang="{{ language.value }}"{% if language.current %} class="current" aria-pressed="true"{% else %} class="secondary" aria-pressed="false"{% endif %}>{{ language.name }}</button>
+    {% endfor %}
+  </form>
+</section>
+<section>
+  <h2>{{ tr.t("settings-password") }}</h2>
+  {% if let Some(error) = password_error %}
+  <p class="notice" role="alert">{{ tr.t(error) }}</p>
+  {% endif %}
+  <form method="post" action="/settings/password" class="stack">
+    <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden>
+    <label>{{ tr.t("settings-password-current") }}
+      <input type="password" name="current" autocomplete="current-password" maxlength="128" required>
+    </label>
+    <label>{{ tr.t("settings-password-new") }}
+      <input type="password" name="new" autocomplete="new-password" minlength="10" maxlength="128" required>
+    </label>
+    <label>{{ tr.t("settings-password-repeat") }}
+      <input type="password" name="repeat" autocomplete="new-password" minlength="10" maxlength="128" required>
+    </label>
+    <p class="hint">{{ tr.t("settings-password-hint") }}</p>
+    <button type="submit">{{ tr.t("settings-password-submit") }}</button>
+  </form>
+</section>
+<section>
+  <h2>{{ tr.t("settings-guides") }}</h2>
+  <ul class="rows">
+    <li><a href="/guide/rating">{{ tr.t("rating-title") }}</a></li>
+  </ul>
+</section>
+{% endblock %}

@@ -13,11 +13,10 @@ use tower_sessions::Session;
 
 use crate::auth::client_ip::ClientIp;
 use crate::auth::limiter::LoginLimiter;
-use crate::auth::{CurrentUser, password};
+use crate::auth::{self, CurrentUser, password};
 use crate::cookies;
 use crate::error::{AppError, page};
 use crate::i18n::Tr;
-use crate::sessions::{RENEWED_AT_KEY, USER_ID_KEY};
 use crate::state::AppState;
 
 /// What the login page tells the user after a failed attempt.
@@ -131,11 +130,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
             Some(Notice::Expired),
         );
     }
-    session.cycle_id().await?;
-    session.insert(USER_ID_KEY, user.id.0).await?;
-    session
-        .insert(RENEWED_AT_KEY, now.timestamp_micros())
-        .await?;
+    auth::start_session(&session, &user, now).await?;
     tracing::info!(user = user.id.0, "signed in");
     let mut response = Redirect::to("/").into_response();
     response.headers_mut().append(

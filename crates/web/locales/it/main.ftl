@@ -118,6 +118,7 @@ intensity-10-desc = Come una stanza piena di fumo. Devi uscire.
 
 nav-log = Registra
 nav-events = Eventi
+nav-settings = Impostazioni
 
 events-title = Eventi
 events-none = Nessun evento questo mese.
@@ -168,6 +169,20 @@ close-reason-manual = chiuso a mano
 close-reason-new-event = chiuso all'inizio di un nuovo evento
 close-reason-auto = chiuso automaticamente durante la notte
 close-reason-backdated = registrato in seguito
+
+settings-title = Impostazioni
+settings-password = Password
+settings-password-current = Password attuale
+settings-password-new = Nuova password
+settings-password-repeat = Ripeti la nuova password
+settings-password-hint = Da 10 a 128 caratteri. Gli altri dispositivi verranno disconnessi.
+settings-password-submit = Cambia password
+settings-password-mismatch = Le due nuove password non coincidono.
+settings-password-length = La nuova password deve avere da 10 a 128 caratteri.
+settings-password-wrong = La password attuale non è corretta.
+settings-saved-language = Lingua salvata.
+settings-saved-password = Password cambiata. Gli altri dispositivi sono stati disconnessi.
+settings-guides = Guide
 
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.

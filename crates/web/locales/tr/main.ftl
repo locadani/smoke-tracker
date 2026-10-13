@@ -118,6 +118,7 @@ intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
 nav-log = Kaydet
 nav-events = Olaylar
+nav-settings = Ayarlar
 
 events-title = Olaylar
 events-none = Bu ay olay yok.
@@ -168,6 +169,20 @@ close-reason-manual = elle kapatıldı
 close-reason-new-event = yeni bir olay başlayınca kapatıldı
 close-reason-auto = gece otomatik olarak kapatıldı
 close-reason-backdated = sonradan kaydedildi
+
+settings-title = Ayarlar
+settings-password = Şifre
+settings-password-current = Mevcut şifre
+settings-password-new = Yeni şifre
+settings-password-repeat = Yeni şifreyi tekrarlayın
+settings-password-hint = 10 ile 128 karakter arası. Diğer cihazlarınızda oturum kapatılacak.
+settings-password-submit = Şifreyi değiştir
+settings-password-mismatch = İki yeni şifre aynı değil.
+settings-password-length = Yeni şifre 10 ile 128 karakter arasında olmalı.
+settings-password-wrong = Mevcut şifre doğru değil.
+settings-saved-language = Dil kaydedildi.
+settings-saved-password = Şifre değiştirildi. Diğer cihazlarınızda oturum kapatıldı.
+settings-guides = Kılavuzlar
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

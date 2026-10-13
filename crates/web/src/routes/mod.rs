@@ -8,10 +8,12 @@ pub(crate) mod log;
 pub(crate) mod login;
 pub(crate) mod notices;
 pub(crate) mod reports;
+pub(crate) mod settings;
 
 use chrono::{DateTime, Utc};
 use smoke_domain::DomainError;
 use smoke_domain::logbook::LogError;
+use smoke_domain::people::PeopleError;
 use smoke_domain::permissions::{Actor, can_see};
 use smoke_domain::records::{Event, SmellReport};
 
@@ -50,6 +52,15 @@ pub(crate) fn refusal(error: LogError) -> Result<&'static str, AppError> {
         LogError::Invalid(DomainError::CloseInFuture) => Ok("refused-close-in-future"),
         LogError::Invalid(other) => Err(AppError::internal(other)),
         LogError::Store(error) => Err(error.into()),
+    }
+}
+
+/// What an account use case's refusal becomes when the page has no message of its own for it.
+pub(crate) fn people_refusal(error: PeopleError) -> AppError {
+    match error {
+        PeopleError::Forbidden => AppError::NotAllowed,
+        PeopleError::NotFound => AppError::NotFound,
+        other => AppError::internal(other),
     }
 }
 
