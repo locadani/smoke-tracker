@@ -28,10 +28,13 @@ const fn symptom(i18n_key: &'static str, name: &'static str) -> StarterSymptom {
     StarterSymptom { i18n_key, name }
 }
 
+/// The starter bedroom, which the summary card counts days for.
+pub const BEDROOM_KEY: &str = "room-bedroom";
+
 pub const STARTER_ROOMS: [StarterRoom; 6] = [
     room("room-living-room", "Living room", RoomArea::Inside),
     room("room-kitchen", "Kitchen", RoomArea::Inside),
-    room("room-bedroom", "Bedroom", RoomArea::Inside),
+    room(BEDROOM_KEY, "Bedroom", RoomArea::Inside),
     room("room-bathroom", "Bathroom", RoomArea::Inside),
     room("room-entrance-hall", "Entrance hall", RoomArea::Inside),
     room("room-stairwell", "Stairwell (shared)", RoomArea::Common),
