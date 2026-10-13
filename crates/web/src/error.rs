@@ -9,7 +9,7 @@ use axum::extract::Request;
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{HeaderValue, StatusCode};
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::{Html, IntoResponse, Response};
 use smoke_domain::repos::StoreError;
 
 use crate::cookies;
@@ -151,6 +151,11 @@ pub(crate) async fn render_errors(request: Request, next: Next) -> Response {
         HeaderValue::from_static("text/html; charset=utf-8"),
     );
     Response::from_parts(parts, Body::from(html))
+}
+
+/// Renders a page template with the given status.
+pub(crate) fn page(status: StatusCode, template: &impl Template) -> Result<Response, AppError> {
+    Ok((status, Html(template.render()?)).into_response())
 }
 
 /// Every message key the error pages use, for the translation tests.

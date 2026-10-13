@@ -20,7 +20,7 @@ use std::net::SocketAddr;
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
 use axum::middleware;
-use axum::routing::get;
+use axum::routing::{get, post};
 use smoke_domain::repos::Store;
 use tokio::net::TcpListener;
 use tower_http::catch_panic::CatchPanicLayer;
@@ -37,9 +37,22 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
 
 /// The whole application. Static assets and the health check skip sessions and the database.
 pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
+    let signed_in = Router::new()
+        .route("/", get(routes::home::show))
+        .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
+        .merge(signed_in)
+        .route(
+            "/login",
+            get(routes::login::form).post(routes::login::submit::<S>),
+        )
+        .route("/logout", post(routes::login::logout))
         .fallback(routes::not_found)
         .layer(CatchPanicLayer::custom(error::panic_response))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::load_user::<S>,
+        ))
         .layer(sessions::layer(
             state.store.clone(),
             state.clock.clone(),

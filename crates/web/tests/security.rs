@@ -6,6 +6,7 @@ use axum::body::Body;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{Request, StatusCode};
 use common::*;
+use smoke_domain::types::{Locale, Role};
 
 const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; \
     connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; \
@@ -107,4 +108,77 @@ async fn assets_are_served_with_their_type_and_revalidated() {
         StatusCode::NOT_FOUND
     );
     assert_eq!(text(app.send(get("/healthz")).await).await, "ok");
+}
+
+#[tokio::test]
+async fn on_plain_http_localhost_there_is_no_hsts_and_no_secure_cookie() {
+    let app = TestApp::with_config("http://localhost:8080", None).await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let mut request = login_request("daniele", PASSWORD);
+    request
+        .headers_mut()
+        .insert("origin", "http://localhost:8080".parse().unwrap());
+    request.headers_mut().remove("sec-fetch-site");
+    let response = app.send(request).await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert!(!response.headers().contains_key("strict-transport-security"));
+    let cookie = set_cookies(&response)
+        .into_iter()
+        .find(|c| c.starts_with("session="))
+        .expect("a plain session cookie");
+    assert!(!cookie.contains("Secure"), "{cookie}");
+    assert!(cookie.contains("HttpOnly"), "{cookie}");
+}
+
+#[tokio::test]
+async fn the_origin_check_uses_the_configured_url_not_the_host_header() {
+    let app = TestApp::with_config("https://smoke.example.org/", None).await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let mut request = login_request("daniele", PASSWORD);
+    request.headers_mut().remove("sec-fetch-site");
+    request
+        .headers_mut()
+        .insert("host", "10.0.0.5:8080".parse().unwrap());
+    assert_eq!(app.send(request).await.status(), StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn no_page_needs_inline_scripts_styles_or_eval() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let pages = [
+        text(app.send(get("/login")).await).await,
+        text(app.send(get_with("/", &cookie)).await).await,
+        text(app.send(get("/missing")).await).await,
+        text(app.attempt("daniele", "not the password").await).await,
+    ];
+    for html in pages {
+        assert!(
+            html.contains(r#"<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>"#),
+            "htmx must not inject styles or eval: {html}"
+        );
+        for forbidden in [
+            "<style",
+            " style=",
+            "<script>",
+            " onclick=",
+            " onload=",
+            " hx-on",
+            "javascript:",
+        ] {
+            assert!(!html.contains(forbidden), "{forbidden} in {html}");
+        }
+        for script in html.match_indices("<script").map(|(i, _)| &html[i..]) {
+            assert!(script.starts_with("<script src=\"/static/"), "{script}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn oversized_form_posts_are_refused() {
+    let app = TestApp::new().await;
+    let body = format!("username=daniele&password={}", "x".repeat(20 * 1024));
+    let response = app.send(post_form("/login", &body, None)).await;
+    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }

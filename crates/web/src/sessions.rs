@@ -22,13 +22,16 @@ use crate::config::BaseUrl;
 
 /// The signed-in user's id, as an `i64`.
 pub(crate) const USER_ID_KEY: &str = "user_id";
+/// When the session's lifetime was last extended, in microseconds since the Unix epoch.
+pub(crate) const RENEWED_AT_KEY: &str = "renewed_at";
 /// Over https the cookie is `__Host-` prefixed: Secure, `Path=/`, no `Domain`.
 pub(crate) const SECURE_COOKIE: &str = "__Host-session";
 /// Over plain http (localhost only) browsers refuse `Secure` cookies.
 pub(crate) const LOCAL_COOKIE: &str = "session";
 pub(crate) const LIFETIME_DAYS: i64 = 30;
 
-/// Sessions live 30 days from their last save.
+/// Sessions live 30 days from their last renewal; [`crate::auth::load_user`] renews at most
+/// daily, so an active session never expires and an idle one ends after a month.
 pub(crate) fn layer<S>(
     store: S,
     clock: Arc<dyn Clock>,

@@ -119,6 +119,7 @@ mod tests {
 
     use super::*;
     use crate::error;
+    use crate::routes::login::Notice;
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -183,6 +184,7 @@ mod tests {
         let mut used = template_keys();
         assert!(used.contains("app-name"), "the template scan found nothing");
         used.extend(error::KEYS.map(str::to_owned));
+        used.extend(Notice::ALL.map(|notice| notice.key().to_owned()));
         let english = message_ids(Locale::En);
         let missing: Vec<_> = used.difference(&english).collect();
         assert!(

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("home-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("home-title") }}</h1>
+<p>{{ tr.t1("home-signed-in", "username", username) }}</p>
+<p>{{ tr.t("home-coming-soon") }}</p>
+{% endblock %}
