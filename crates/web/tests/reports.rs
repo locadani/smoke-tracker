@@ -435,3 +435,71 @@ async fn a_check_has_no_event_and_cannot_be_corrected_to_a_smell() {
         .await;
     assert_eq!(location(&response), Some(&*format!("/reports/{id}")));
 }
+
+#[tokio::test]
+async fn a_correction_with_no_room_is_refused_unless_the_report_covered_the_whole_home() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let bedroom = app.room("room-bedroom").await;
+    let smell = app
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            6,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
+        .await
+        .report;
+    let check = app.no_smell(&me, "2026-01-15T19:30:00Z").await.report;
+    let cookie = app.sign_in("daniele").await;
+
+    let path = format!("/reports/{}/correct", smell.id);
+    let body = "observed_at=2026-01-15T19:05&note=kept";
+    let refused = app.send(post_form(&path, body, Some(&cookie))).await;
+    assert_eq!(refused.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let html = text(refused).await;
+    assert!(html.contains("Pick at least one room"), "{html}");
+    assert!(html.contains("kept"), "what was typed stays: {html}");
+    assert_eq!(app.store.report(smell.id).await.unwrap().unwrap(), smell);
+
+    let path = format!("/reports/{}/correct", check.id);
+    let body = "observed_at=2026-01-15T20:30&note=looked+twice";
+    let saved = app.send(post_form(&path, body, Some(&cookie))).await;
+    assert_eq!(location(&saved), Some(&*format!("/reports/{}", check.id)));
+    let after = app.store.report(check.id).await.unwrap().unwrap();
+    assert!(after.values.rooms().is_empty(), "still the whole home");
+    assert_eq!(after.values.note(), Some("looked twice"));
+}
+
+#[tokio::test]
+async fn guests_cannot_see_or_change_other_peoples_checks() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    app.add_user("guest", Role::Guest, Locale::En).await;
+    let check = app.no_smell(&me, "2026-01-15T19:00:00Z").await.report;
+    let cookie = app.sign_in("guest").await;
+    let id = check.id;
+    for response in [
+        app.send(get_with(&format!("/reports/{id}"), &cookie)).await,
+        app.send(get_with(&format!("/reports/{id}/correct"), &cookie))
+            .await,
+        app.send(post_form(
+            &format!("/reports/{id}/correct"),
+            "observed_at=2026-01-15T20:00",
+            Some(&cookie),
+        ))
+        .await,
+        app.send(post_form(
+            &format!("/reports/{id}/move"),
+            "target=nonsense",
+            Some(&cookie),
+        ))
+        .await,
+    ] {
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+    assert_eq!(app.store.report(id).await.unwrap().unwrap(), check);
+}

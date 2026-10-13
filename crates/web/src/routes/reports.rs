@@ -387,7 +387,9 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     let keep = (room_ids.as_slice(), report.values.symptoms());
     let (offered_rooms, offered_symptoms) = offered(&rooms, &symptoms, keep);
     let parsed = read_time(&form, "observed_at", schedule.tz()).and_then(|at| {
-        let values = read_values(&form, &offered_rooms, &offered_symptoms, Smell::Correction)?;
+        let whole_home = report.values.rooms().is_empty();
+        let smell = Smell::Correction { whole_home };
+        let values = read_values(&form, &offered_rooms, &offered_symptoms, smell)?;
         Ok((at.unwrap_or(report.observed_at), values))
     });
     let error = match parsed {

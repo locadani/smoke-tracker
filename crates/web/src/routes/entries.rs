@@ -75,9 +75,10 @@ pub(crate) enum Smell {
     Levels,
     /// "No smell": the selected rooms at 0, or the whole home when none is selected.
     None,
-    /// "Correct a mistake": each selected room with a level; none selected is the whole home,
-    /// clean.
-    Correction,
+    /// "Correct a mistake": each selected room with a level. No room is accepted only when the
+    /// report being corrected already covered the whole home, so a correction never turns a
+    /// report into a whole-home "no smell" by an unticked chip.
+    Correction { whole_home: bool },
 }
 
 /// Reads the rooms with their levels, the symptoms and the note. Only the offered rooms and
@@ -107,7 +108,11 @@ pub(crate) fn read_values(
     {
         return Err("log-error-form");
     }
-    if room_ids.is_empty() && smell == Smell::Levels {
+    let rooms_required = matches!(
+        smell,
+        Smell::Levels | Smell::Correction { whole_home: false }
+    );
+    if room_ids.is_empty() && rooms_required {
         return Err("log-error-rooms");
     }
     let rooms = room_ids
@@ -117,7 +122,7 @@ pub(crate) fn read_values(
             let level = match (smell, picked) {
                 (Smell::None, None | Some(0)) => Some(Level::CLEAN),
                 (Smell::None, Some(_)) => return Err("log-error-no-smell-level"),
-                (Smell::Levels | Smell::Correction, picked) => {
+                (Smell::Levels | Smell::Correction { .. }, picked) => {
                     picked.and_then(|value| Level::new(value).ok())
                 }
             };

@@ -526,6 +526,14 @@ async fn no_smell_with_an_event_open_joins_it_without_the_question() {
     let reports = app.store.reports_for_event(open.id).await.unwrap();
     assert_eq!(reports.len(), 2);
     assert!(reports[1].values.is_no_smell());
+
+    let response = app
+        .send(post_form("/log", "action=no-smell", Some(&cookie)))
+        .await;
+    assert_eq!(location(&response), Some("/?saved=no-smell"));
+    let open = app.store.open_event().await.unwrap().unwrap();
+    assert_eq!(Some(open.id), first.report.event_id, "still open");
+    assert_eq!(app.store.reports_for_event(open.id).await.unwrap().len(), 3);
 }
 
 #[tokio::test]
