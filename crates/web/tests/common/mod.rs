@@ -19,6 +19,7 @@ use smoke_domain::records::{NewUser, User};
 use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
+use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{Intensity, RoomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
@@ -135,6 +136,13 @@ impl TestApp {
         .unwrap();
         tx.commit().await.unwrap();
         logged
+    }
+
+    /// Runs the auto-close sweep at the fake clock's time, as the server's timer would.
+    pub async fn sweep(&self) {
+        auto_close(&self.store, &schedule(), self.clock.now())
+            .await
+            .unwrap();
     }
 
     pub async fn send(&self, request: Request<Body>) -> Response<Body> {

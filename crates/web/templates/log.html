@@ -2,6 +2,15 @@
 {% block title %}{{ tr.t("log-title") }}{% endblock %}
 {% block content %}
 <h1>{{ tr.t("log-title") }}</h1>
+{% if let Some(saved) = saved %}
+<p class="notice" role="status">{{ tr.t(saved) }}</p>
+{% endif %}
+{% if let Some(notice) = notice %}
+<form method="post" action="/notices/dismiss" class="notice banner">
+  <span>{{ notice }}</span>
+  <button type="submit" class="link">{{ tr.t("notice-dismiss") }}</button>
+</form>
+{% endif %}
 <p class="status">
   {% if let Some(since) = open_since %}{{ tr.t1("event-open-since", "time", since) }}{% else %}{{ tr.t("event-none") }}{% endif %}
 </p>

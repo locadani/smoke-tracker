@@ -183,7 +183,13 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
     let app = TestApp::new().await;
     app.add_user("daniele", Role::Resident, Locale::En).await;
     let cookie = app.sign_in("daniele").await;
+    app.send(post_form("/log", "intensity=4&action=smell", Some(&cookie)))
+        .await;
+    let question = app
+        .send(post_form("/log", "intensity=5&action=smell", Some(&cookie)))
+        .await;
     let pages = [
+        text(question).await,
         text(app.send(get("/login")).await).await,
         text(app.send(get_with("/", &cookie)).await).await,
         text(app.send(get_with("/guide/rating", &cookie)).await).await,

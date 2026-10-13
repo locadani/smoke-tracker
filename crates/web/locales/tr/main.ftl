@@ -31,6 +31,36 @@ log-update = Güncelle: durum değişti
 log-pm25-only = Yalnızca PM2.5 kaydet
 log-read-only = Verilere bakabilirsin ama kayıt yapamazsın.
 
+log-saved-report = Bildirim kaydedildi.
+log-saved-pm25 = PM2.5 ölçümü kaydedildi.
+log-error-intensity = 1 ile 10 arasında bir yoğunluk seç.
+log-error-pm25 = PM2.5, 0 ile 1000 arasında bir sayı olmalı.
+log-error-pm25-missing = Tek başına kaydetmek için bir PM2.5 değeri gir.
+log-error-time = Geçerli bir tarih ve saat gir.
+log-error-time-skipped = Bu saat yok: saatler ileri alındı.
+log-error-note = Not en fazla 2000 karakter olabilir.
+log-error-form = Formda geçersiz bir şey var. Kontrol edip tekrar dene.
+notice-dismiss = Kapat
+
+prompt-same-smell = Aynı koku hâlâ sürüyor mu?
+prompt-ongoing = Devam eden bir koku olayı var ({ $time } saatinde başladı). Bu aynı koku mu?
+prompt-yes-update = Evet, güncelle
+prompt-no-new-event = Hayır, kesilmişti: yeni olay
+prompt-which-event = Bu hangi olaydı?
+prompt-started-at = { $time } saatinde başladı
+prompt-ended-at = { $time } saatinde bitti
+prompt-new-event = Yeni olay
+prompt-auto-closed = { $when } tarihli olay otomatik olarak kapatıldı.
+prompt-continue = Hâlâ sürüyordu: devamı
+prompt-cancel = Vazgeç
+
+refused-stale = Bu arada olaylar değişti. Kontrol edip tekrar dene.
+refused-another-open = Açık başka bir olay var. Önce onu kapat.
+refused-outside-event = Bu saat olayın dışında: başlamadan önce ya da başka bir günde.
+refused-future = Saat gelecekte olamaz.
+refused-close-before-last-report = Bitiş, son bildirimden önce olamaz.
+refused-close-in-future = Bitiş gelecekte olamaz.
+
 summary-this-month = Bu ay:
 summary-events = { $count ->
     [one] 1 olay
@@ -76,6 +106,8 @@ error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.
 error-forbidden-title = İstek engellendi
 error-forbidden = Bu istek bu uygulamadan gelmediği için engellendi. Geri dönüp tekrar deneyin.
+error-not-allowed-title = İzin yok
+error-not-allowed = Hesabın bunu yapamaz.
 error-internal-title = Bir şeyler ters gitti
 error-internal = Bir şeyler ters gitti (ref: { $ref }).
 error-back-home = Başa dön

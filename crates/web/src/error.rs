@@ -19,7 +19,10 @@ use crate::request_id;
 #[derive(Debug)]
 pub(crate) enum AppError {
     NotFound,
+    /// A cross-site request (the Origin check).
     Forbidden,
+    /// The signed-in user's role does not allow this (spec §4).
+    NotAllowed,
     /// Anything unexpected. Logged with the request id; the user sees only the id.
     Internal(Box<dyn StdError + Send + Sync>),
 }
@@ -32,8 +35,18 @@ impl AppError {
     fn status(&self) -> StatusCode {
         match self {
             Self::NotFound => StatusCode::NOT_FOUND,
-            Self::Forbidden => StatusCode::FORBIDDEN,
+            Self::Forbidden | Self::NotAllowed => StatusCode::FORBIDDEN,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        }
+    }
+
+    /// The title and message keys of the page this error becomes.
+    fn keys(&self) -> (&'static str, &'static str) {
+        match self {
+            Self::NotFound => ("error-not-found-title", "error-not-found"),
+            Self::Forbidden => ("error-forbidden-title", "error-forbidden"),
+            Self::NotAllowed => ("error-not-allowed-title", "error-not-allowed"),
+            Self::Internal(_) => ("error-internal-title", "error-internal"),
         }
     }
 }
@@ -64,7 +77,10 @@ impl From<tokio::task::JoinError> for AppError {
 
 /// Marks a response whose body [`render_errors`] should replace with a translated page.
 #[derive(Debug, Clone, Copy)]
-struct ErrorPage(StatusCode);
+struct ErrorPage {
+    title_key: &'static str,
+    message_key: &'static str,
+}
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
@@ -72,8 +88,12 @@ impl IntoResponse for AppError {
         if let Self::Internal(error) = &self {
             tracing::error!(error = %chain(error.as_ref()), "request failed");
         }
+        let (title_key, message_key) = self.keys();
         let mut response = status.into_response();
-        response.extensions_mut().insert(ErrorPage(status));
+        response.extensions_mut().insert(ErrorPage {
+            title_key,
+            message_key,
+        });
         response
     }
 }
@@ -121,14 +141,14 @@ pub(crate) async fn render_errors(request: Request, next: Next) -> Response {
     ));
     let request_id = request_id::of(request.headers()).to_owned();
     let response = next.run(request).await;
-    let Some(ErrorPage(status)) = response.extensions().get::<ErrorPage>().copied() else {
+    let Some(ErrorPage {
+        title_key,
+        message_key,
+    }) = response.extensions().get::<ErrorPage>().copied()
+    else {
         return response;
     };
-    let (title_key, message_key) = match status {
-        StatusCode::NOT_FOUND => ("error-not-found-title", "error-not-found"),
-        StatusCode::FORBIDDEN => ("error-forbidden-title", "error-forbidden"),
-        _ => ("error-internal-title", "error-internal"),
-    };
+    let status = response.status();
     let page = ErrorTemplate {
         tr,
         signed_in: None,
@@ -160,11 +180,13 @@ pub(crate) fn page(status: StatusCode, template: &impl Template) -> Result<Respo
 
 /// Every message key the error pages use, for the translation tests.
 #[cfg(test)]
-pub(crate) const KEYS: [&str; 6] = [
+pub(crate) const KEYS: [&str; 8] = [
     "error-not-found-title",
     "error-not-found",
     "error-forbidden-title",
     "error-forbidden",
+    "error-not-allowed-title",
+    "error-not-allowed",
     "error-internal-title",
     "error-internal",
 ];

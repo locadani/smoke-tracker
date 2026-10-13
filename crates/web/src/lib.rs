@@ -7,6 +7,7 @@ mod auth;
 pub mod config;
 mod cookies;
 mod error;
+mod forms;
 mod i18n;
 mod labels;
 mod request_id;
@@ -43,6 +44,8 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     let signed_in = Router::new()
         .route("/", get(routes::log::show::<S>))
         .route("/guide/rating", get(routes::guide::rating))
+        .route("/log", post(routes::entries::submit::<S>))
+        .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
         .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
         .merge(signed_in)

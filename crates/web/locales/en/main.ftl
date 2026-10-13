@@ -31,6 +31,36 @@ log-update = Update: situation changed
 log-pm25-only = Log PM2.5 only
 log-read-only = You can look at the data but not log.
 
+log-saved-report = Report saved.
+log-saved-pm25 = PM2.5 reading saved.
+log-error-intensity = Pick an intensity from 1 to 10.
+log-error-pm25 = PM2.5 must be a number from 0 to 1000.
+log-error-pm25-missing = Enter a PM2.5 value to log it on its own.
+log-error-time = Enter a valid date and time.
+log-error-time-skipped = That time does not exist: the clocks moved forward.
+log-error-note = The note can be at most 2000 characters.
+log-error-form = Something in the form is not valid. Check it and try again.
+notice-dismiss = Dismiss
+
+prompt-same-smell = Same smell still going?
+prompt-ongoing = A smell event is ongoing (started { $time }). Is this the same smell?
+prompt-yes-update = Yes, update
+prompt-no-new-event = No, it had stopped: new event
+prompt-which-event = Which event was this?
+prompt-started-at = Started { $time }
+prompt-ended-at = ended { $time }
+prompt-new-event = New event
+prompt-auto-closed = The event from { $when } was auto-closed.
+prompt-continue = It was still going: continuation
+prompt-cancel = Cancel
+
+refused-stale = The events changed in the meantime. Check and try again.
+refused-another-open = Another event is open. Close it first.
+refused-outside-event = That time is outside the event: before it started, or on another day.
+refused-future = The time cannot be in the future.
+refused-close-before-last-report = The end cannot be before the last report.
+refused-close-in-future = The end cannot be in the future.
+
 summary-this-month = This month:
 summary-events = { $count ->
     [one] 1 event
@@ -76,6 +106,8 @@ error-not-found-title = Page not found
 error-not-found = This page does not exist.
 error-forbidden-title = Request blocked
 error-forbidden = This request did not come from this app, so it was blocked. Go back and try again.
+error-not-allowed-title = Not allowed
+error-not-allowed = Your account cannot do this.
 error-internal-title = Something went wrong
 error-internal = Something went wrong (ref: { $ref }).
 error-back-home = Back to the start

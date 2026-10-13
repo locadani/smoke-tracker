@@ -31,7 +31,7 @@ fn language(locale: Locale) -> &'static LanguageIdentifier {
     }
 }
 
-/// Translates for one language. Templates call `tr.t("key")`; a key missing from a language
+/// Translates for one language. Templates call `tr.t("app-name")`; a key missing from a language
 /// falls back to English.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Tr(pub Locale);
@@ -127,8 +127,8 @@ mod tests {
 
     use super::*;
     use crate::error;
-    use crate::routes::guide;
     use crate::routes::login::Notice;
+    use crate::routes::{self, entries, guide};
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -147,13 +147,27 @@ mod tests {
             .collect()
     }
 
-    /// Every literal key in `tr.t("…")`, `tr.t1("…", …)` and `tr.n("…", …)` calls in the
-    /// templates.
-    fn template_keys() -> BTreeSet<String> {
+    /// Every string literal passed as the key to `tr.t`, `tr.t1` or `tr.n` in the templates
+    /// and the Rust sources.
+    fn literal_keys() -> BTreeSet<String> {
+        fn files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    files(&path, out);
+                } else {
+                    out.push(path);
+                }
+            }
+        }
+        let mut paths = Vec::new();
+        for dir in ["templates", "src"] {
+            files(std::path::Path::new(&format!("{DIR}/{dir}")), &mut paths);
+        }
         let mut keys = BTreeSet::new();
-        for entry in fs::read_dir(format!("{DIR}/templates")).unwrap() {
-            let text = fs::read_to_string(entry.unwrap().path()).unwrap();
-            for call in ["t(\"", "t1(\"", "n(\""] {
+        for path in paths {
+            let text = fs::read_to_string(path).unwrap();
+            for call in ["tr.t(\"", "tr.t1(\"", "tr.n(\""] {
                 for (start, _) in text.match_indices(call) {
                     let rest = &text[start + call.len()..];
                     keys.insert(rest[..rest.find('"').unwrap()].to_owned());
@@ -191,11 +205,17 @@ mod tests {
 
     #[test]
     fn every_key_the_pages_use_is_translated() {
-        let mut used = template_keys();
+        let mut used = literal_keys();
         assert!(used.contains("app-name"), "the template scan found nothing");
+        assert!(
+            used.contains("prompt-same-smell"),
+            "the source scan found nothing"
+        );
         used.extend(error::KEYS.map(str::to_owned));
         used.extend(Notice::ALL.map(|notice| notice.key().to_owned()));
         used.extend(guide::keys());
+        used.extend(entries::FORM_ERRORS.map(str::to_owned));
+        used.extend(routes::REFUSALS.map(str::to_owned));
         let english = message_ids(Locale::En);
         let missing: Vec<_> = used.difference(&english).collect();
         assert!(

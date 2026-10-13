@@ -1,10 +1,11 @@
 //! The Log screen (spec §9, screen 1): the event status, the month's summary card and the form.
 
 use askama::Template;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
+use serde::Deserialize;
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::User;
 use smoke_domain::repos::Store;
@@ -15,8 +16,10 @@ use smoke_domain::types::{Intensity, RoomArea, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
+use crate::forms::Pairs;
 use crate::i18n::Tr;
 use crate::routes::guide::{Level, levels};
+use crate::routes::notices;
 use crate::state::AppState;
 use crate::{labels, time};
 
@@ -29,6 +32,31 @@ pub(crate) struct Draft {
     pub(crate) pm25: String,
     pub(crate) observed_at: String,
     pub(crate) note: String,
+}
+
+impl Draft {
+    /// The form as posted, to show it again after a validation error.
+    pub(crate) fn from_form(form: &Pairs) -> Self {
+        let text = |name| form.get(name).unwrap_or_default().to_owned();
+        Self {
+            intensity: form.get("intensity").and_then(|v| v.parse().ok()),
+            rooms: form
+                .ids("room")
+                .unwrap_or_default()
+                .into_iter()
+                .map(RoomId)
+                .collect(),
+            symptoms: form
+                .ids("symptom")
+                .unwrap_or_default()
+                .into_iter()
+                .map(SymptomId)
+                .collect(),
+            pm25: text("pm25"),
+            observed_at: text("observed_at"),
+            note: text("note"),
+        }
+    }
 }
 
 /// A radio button, chip or checkbox.
@@ -58,20 +86,35 @@ pub(crate) struct LogPage {
     tr: Tr,
     signed_in: Option<String>,
     open_since: Option<String>,
+    /// "The event from … was auto-closed", shown while another event is open (spec §7.4).
+    notice: Option<String>,
+    /// A translation key confirming what was just saved.
+    saved: Option<&'static str>,
     summary: MonthSummary,
     levels: Vec<Level>,
     /// `None` for people who may not log (viewers, expired guests).
     form: Option<FormView>,
 }
 
+#[derive(Deserialize)]
+pub(crate) struct ShowQuery {
+    saved: Option<String>,
+}
+
 pub(crate) async fn show<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
+    Query(query): Query<ShowQuery>,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     auto_close(&state.store, &state.config.schedule, now).await?;
-    let log_page = log_page(&state, &user, tr, now, None, None).await?;
+    let saved = match query.saved.as_deref() {
+        Some("report") => Some("log-saved-report"),
+        Some("pm25") => Some("log-saved-pm25"),
+        _ => None,
+    };
+    let log_page = log_page(&state, &user, tr, now, None, None, saved).await?;
     page(StatusCode::OK, &log_page)
 }
 
@@ -84,6 +127,7 @@ pub(crate) async fn log_page<S: Store>(
     now: DateTime<Utc>,
     draft: Option<Draft>,
     error: Option<&'static str>,
+    saved: Option<&'static str>,
 ) -> Result<LogPage, AppError> {
     let schedule = &state.config.schedule;
     let actor = user.actor();
@@ -103,6 +147,16 @@ pub(crate) async fn log_page<S: Store>(
         .find(|r| r.i18n_key.as_deref() == Some(BEDROOM_KEY))
         .map(|r| r.id);
     let summary = summarise(&visible, bedroom, schedule);
+    let notice = match &open {
+        Some(_) => notices::pending(state, user, now)
+            .await?
+            .pop()
+            .map(|closed| {
+                let when = time::date_time(tr.0, closed.opened_at, schedule.tz());
+                tr.t1("prompt-auto-closed", "when", &when)
+            }),
+        None => None,
+    };
 
     let form = if can(&actor, Action::LogEntry, now) {
         let draft = match draft {
@@ -166,6 +220,8 @@ pub(crate) async fn log_page<S: Store>(
         tr,
         signed_in: Some(user.username.to_string()),
         open_since: open.map(|e| time::since(tr.0, e.opened_at, now, schedule.tz())),
+        notice,
+        saved,
         summary,
         levels: levels(tr),
         form,

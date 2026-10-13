@@ -31,6 +31,36 @@ log-update = Aggiorna: la situazione è cambiata
 log-pm25-only = Registra solo PM2.5
 log-read-only = Puoi consultare i dati ma non registrare.
 
+log-saved-report = Segnalazione salvata.
+log-saved-pm25 = Lettura PM2.5 salvata.
+log-error-intensity = Scegli un'intensità da 1 a 10.
+log-error-pm25 = Il PM2.5 deve essere un numero da 0 a 1000.
+log-error-pm25-missing = Inserisci un valore di PM2.5 per registrarlo da solo.
+log-error-time = Inserisci una data e un'ora valide.
+log-error-time-skipped = Quell'ora non esiste: è scattata l'ora legale.
+log-error-note = La nota può avere al massimo 2000 caratteri.
+log-error-form = Qualcosa nel modulo non è valido. Controlla e riprova.
+notice-dismiss = Ignora
+
+prompt-same-smell = È ancora lo stesso odore?
+prompt-ongoing = C'è un evento in corso (iniziato alle { $time }). È lo stesso odore?
+prompt-yes-update = Sì, aggiorna
+prompt-no-new-event = No, era sparito: nuovo evento
+prompt-which-event = Di quale evento si trattava?
+prompt-started-at = Iniziato alle { $time }
+prompt-ended-at = finito alle { $time }
+prompt-new-event = Nuovo evento
+prompt-auto-closed = L'evento del { $when } è stato chiuso automaticamente.
+prompt-continue = Continuava ancora: è lo stesso evento
+prompt-cancel = Annulla
+
+refused-stale = Nel frattempo gli eventi sono cambiati. Controlla e riprova.
+refused-another-open = C'è un altro evento aperto. Chiudilo prima.
+refused-outside-event = Quell'ora è fuori dall'evento: prima che iniziasse o in un altro giorno.
+refused-future = L'ora non può essere nel futuro.
+refused-close-before-last-report = La fine non può essere prima dell'ultima segnalazione.
+refused-close-in-future = La fine non può essere nel futuro.
+
 summary-this-month = Questo mese:
 summary-events = { $count ->
     [one] 1 evento
@@ -76,6 +106,8 @@ error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.
 error-forbidden-title = Richiesta bloccata
 error-forbidden = Questa richiesta non proviene da questa app, quindi è stata bloccata. Torna indietro e riprova.
+error-not-allowed-title = Non consentito
+error-not-allowed = Il tuo account non può farlo.
 error-internal-title = Qualcosa è andato storto
 error-internal = Qualcosa è andato storto (rif: { $ref }).
 error-back-home = Torna all'inizio
