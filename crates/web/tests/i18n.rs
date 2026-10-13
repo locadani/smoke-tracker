@@ -5,6 +5,7 @@ mod common;
 use axum::body::Body;
 use axum::http::Request;
 use common::*;
+use smoke_domain::repos::UserRepo;
 use smoke_domain::types::{Locale, Role};
 
 async fn heading(app: &TestApp, request: Request<Body>) -> String {
@@ -48,4 +49,39 @@ async fn once_signed_in_the_account_language_wins_over_the_cookie() {
     let html = text(app.send(get_with("/", &cookies)).await).await;
     assert!(html.contains(r#"<html lang="it">"#), "{html}");
     assert!(html.contains("Accesso effettuato come partner."), "{html}");
+}
+
+#[tokio::test]
+async fn choosing_a_language_sets_the_cookie() {
+    let app = TestApp::new().await;
+    let response = app.send(post_form("/lang", "lang=tr", None)).await;
+    assert_eq!(location(&response), Some("/login"));
+    assert!(
+        set_cookies(&response)
+            .iter()
+            .any(|c| c.starts_with("lang=tr;") && c.contains("Max-Age=31536000")),
+        "{:?}",
+        set_cookies(&response)
+    );
+    let ignored = app.send(post_form("/lang", "lang=xx", None)).await;
+    assert_eq!(location(&ignored), Some("/login"));
+    assert!(
+        set_cookies(&ignored)
+            .iter()
+            .all(|c| !c.starts_with("lang="))
+    );
+}
+
+#[tokio::test]
+async fn choosing_a_language_while_signed_in_saves_it_to_the_account() {
+    let app = TestApp::new().await;
+    let user = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let session = app.sign_in("daniele").await;
+    let response = app
+        .send(post_form("/lang", "lang=tr", Some(&session)))
+        .await;
+    assert_eq!(location(&response), Some("/"));
+    let saved = app.store.user(user.id).await.unwrap().unwrap();
+    assert_eq!(saved.locale, Locale::Tr);
+    assert_eq!(heading(&app, get_with("/", &session)).await, "Ana sayfa");
 }

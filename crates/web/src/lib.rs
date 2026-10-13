@@ -47,6 +47,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::login::form).post(routes::login::submit::<S>),
         )
         .route("/logout", post(routes::login::logout))
+        .route("/lang", post(routes::lang::choose::<S>))
         .fallback(routes::not_found)
         .layer(CatchPanicLayer::custom(error::panic_response))
         .layer(middleware::from_fn_with_state(
