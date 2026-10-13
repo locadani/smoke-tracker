@@ -2,12 +2,13 @@
 //!
 //! - A username is locked for 15 minutes after 5 attempts within 15 minutes.
 //! - An address is blocked for 15 minutes after 20 attempts within 15 minutes, whatever the
-//!   usernames, so one client cannot try every account.
+//!   usernames, so one client cannot try every account. IPv6 clients are counted per /64,
+//!   since one home connection usually owns a whole /64 and could rotate through it.
 
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv6Addr};
 use std::sync::Mutex;
 
 use chrono::{DateTime, TimeDelta, Utc};
@@ -87,6 +88,15 @@ fn strike<K: Eq + Hash>(map: &mut HashMap<K, Strikes>, rule: Rule, key: K, now: 
     }
 }
 
+/// The key an address is counted under: an IPv4-mapped IPv6 address as its IPv4 address,
+/// any other IPv6 address as its /64 prefix.
+fn address_key(address: IpAddr) -> IpAddr {
+    match address.to_canonical() {
+        IpAddr::V6(v6) => IpAddr::V6(Ipv6Addr::from_bits(v6.to_bits() & (u128::MAX << 64))),
+        v4 => v4,
+    }
+}
+
 #[derive(Debug, Default)]
 struct Tables {
     usernames: HashMap<String, Strikes>,
@@ -110,10 +120,11 @@ impl LoginLimiter {
             .collect()
     }
 
-    /// Admits a sign-in attempt, or refuses it while the username or the address is locked.
-    /// An admitted attempt is counted as a failure at once, before any password work, so
+    /// Admits a sign-in attempt, or refuses it while the username or the address (keyed by
+    /// `address_key`) is locked. An admitted attempt is counted as a failure at once, before any password work, so
     /// parallel guesses cannot all slip past the check; `succeeded` takes the count back.
     pub(crate) fn begin(&self, key: &str, address: IpAddr, now: DateTime<Utc>) -> bool {
+        let address = address_key(address);
         let mut tables = self.lock();
         if is_locked(&tables.usernames, key, now) || is_locked(&tables.addresses, &address, now) {
             return false;
@@ -126,6 +137,7 @@ impl LoginLimiter {
     /// A correct password clears the username's failures and refunds the address's strike, so
     /// legitimate sign-ins do not use up the address budget. A lock already in force is kept.
     pub(crate) fn succeeded(&self, key: &str, address: IpAddr, now: DateTime<Utc>) {
+        let address = address_key(address);
         let mut tables = self.lock();
         tables.usernames.remove(key);
         if let Some(strikes) = tables.addresses.get_mut(&address)
@@ -252,5 +264,43 @@ mod tests {
         let tables = limiter.lock();
         assert_eq!(tables.usernames.len(), 1);
         assert_eq!(tables.addresses.len(), 1);
+    }
+
+    fn addr(text: &str) -> IpAddr {
+        text.parse().unwrap()
+    }
+
+    #[test]
+    fn ipv6_addresses_in_one_slash_64_share_a_budget() {
+        let limiter = LoginLimiter::default();
+        for n in 0..20 {
+            let address = addr(&format!("2001:db8:1:2::{:x}", n + 1));
+            assert!(limiter.begin(&format!("user{n}"), address, t0()));
+        }
+        assert!(!limiter.begin("anyone", addr("2001:db8:1:2:ffff:ffff:ffff:ffff"), t0()));
+        assert!(limiter.begin("anyone", addr("2001:db8:1:3::1"), t0()));
+    }
+
+    #[test]
+    fn an_ipv4_mapped_address_counts_as_its_ipv4_address() {
+        let limiter = LoginLimiter::default();
+        for n in 0..19 {
+            assert!(limiter.begin(&format!("user{n}"), addr("::ffff:203.0.113.1"), t0()));
+        }
+        assert!(limiter.begin("last", addr("203.0.113.1"), t0()));
+        assert!(!limiter.begin("anyone", addr("::ffff:203.0.113.1"), t0()));
+        assert!(!limiter.begin("anyone", addr("203.0.113.1"), t0()));
+    }
+
+    #[test]
+    fn a_success_refunds_the_strike_of_the_same_slash_64() {
+        let limiter = LoginLimiter::default();
+        for n in 0..19 {
+            assert!(limiter.begin(&format!("user{n}"), addr("2001:db8::1"), t0()));
+        }
+        limiter.succeeded("user0", addr("2001:db8::2"), t0());
+        assert!(limiter.begin("one", addr("2001:db8::3"), t0()));
+        assert!(limiter.begin("two", addr("2001:db8::4"), t0()));
+        assert!(!limiter.begin("three", addr("2001:db8::5"), t0()));
     }
 }
