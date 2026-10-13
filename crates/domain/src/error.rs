@@ -41,4 +41,7 @@ pub enum DomainError {
 
     #[error("a note can be at most 2000 characters, got {0}")]
     NoteTooLong(usize),
+
+    #[error("a password needs 10–128 characters, got {0}")]
+    InvalidPasswordLength(usize),
 }

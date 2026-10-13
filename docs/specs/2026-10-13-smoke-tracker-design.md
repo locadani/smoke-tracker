@@ -307,9 +307,11 @@ prompts for the password. There are no default credentials anywhere.
 QR code. There is no email.
 
 ### 8.4 Sessions
-- Server-side sessions stored in the database via **tower-sessions**, using the backend matching
-  `DATABASE_URL`.
-- Cookie: `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`.
+- Server-side sessions via **tower-sessions**, stored by our own session store in the database
+  matching `DATABASE_URL` (only a hash of the session id is stored).
+- Cookie: `__Host-` prefix, `HttpOnly`, `Secure`, `SameSite=Lax`. On `http://localhost`
+  (development only) the cookie is named `session` and is not `Secure`, because browsers refuse
+  `Secure` cookies there.
 - 30-day lifetime, renewed on activity. Deleted on logout, expiry, deactivation, or password change.
 - JWTs were rejected because they cannot be revoked immediately (see ADR).
 
@@ -437,7 +439,8 @@ The command has its own CI test: seed SQLite, migrate, verify.
 
 ### 10.5 Configuration (environment only; `.env.example` committed, `.env` ignored)
 `DATABASE_URL`, `APP_BASE_URL`, `APP_TIMEZONE` (default `Europe/Rome`), `AUTO_CLOSE_HOUR`
-(default `4`), `RUST_LOG`, `BIND_ADDR`.
+(default `4`), `RUST_LOG`, `BIND_ADDR`, and optionally `CLIENT_IP_HEADER` (the header a trusted
+reverse proxy writes the client address into).
 
 ---
 
@@ -450,7 +453,7 @@ The command has its own CI test: seed SQLite, migrate, verify.
   - Free hosts may sleep the app, so the result is identical whether the sweep runs at 04:00 or
     catches up later.
 - **Expiry** is checked on every request (`expires_at <= now`: an account is expired from that exact instant); no job is needed.
-- **Cleanup:** expired sessions are removed by tower-sessions; expired invites are removed daily.
+- **Cleanup:** expired sessions are removed hourly through tower-sessions' `ExpiredDeletion`; expired invites are removed daily.
 - **Time:** stored in UTC, with `chrono-tz` for local conversion. 04:00 exists exactly once a day
   in Europe/Rome (DST shifts happen at 02:00/03:00).
 - **Clock trait:** all "now" calls go through `Clock`, so tests use a fake clock.

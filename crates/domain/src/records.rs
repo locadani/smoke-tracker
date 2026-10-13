@@ -310,6 +310,19 @@ pub struct NewReading {
     pub value: Pm25,
 }
 
+/// A login session as stored (spec §8.4). Not audited: sessions are not evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredSession {
+    /// SHA-256 of the session id in the cookie, so a copy of the database cannot be used to
+    /// take over a session.
+    pub id_hash: String,
+    /// The signed-in user; lets a password change or expiry end all of that user's sessions.
+    pub user_id: Option<UserId>,
+    /// The session's key/value data as JSON.
+    pub data: String,
+    pub expires_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::TimeDelta;

@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t(title_key) }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t(title_key) }}</h1>
+{% if internal %}
+<p>{{ tr.t1(message_key, "ref", request_id) }}</p>
+{% else %}
+<p>{{ tr.t(message_key) }}</p>
+{% endif %}
+<p><a href="/">{{ tr.t("error-back-home") }}</a></p>
+{% endblock %}

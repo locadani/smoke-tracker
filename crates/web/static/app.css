@@ -1,0 +1,66 @@
+:root {
+  color-scheme: light dark;
+  --gap: 1rem;
+  --accent: #b4532a;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0 auto;
+  max-width: 32rem;
+  padding: 0 var(--gap);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--gap) 0;
+}
+
+.brand {
+  font-weight: 700;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+
+.stack label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+input,
+button {
+  font: inherit;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+button {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+}
+
+button.link {
+  background: none;
+  color: inherit;
+  padding: 0.25rem;
+  text-decoration: underline;
+}
+
+.notice {
+  padding: 0.75rem;
+  border-left: 0.25rem solid var(--accent);
+}
+
+footer {
+  margin-top: calc(var(--gap) * 3);
+  font-size: 0.875rem;
+}

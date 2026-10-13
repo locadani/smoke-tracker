@@ -1,0 +1,17 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "INSERT INTO sessions (id_hash, user_id, data, expires_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id_hash) DO UPDATE SET user_id = excluded.user_id, data = excluded.data, expires_at = excluded.expires_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Text",
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "b6693a903aa2b8f8f3b0dc749dac9b3336d097f6d5679dbde3315ae9fac92d35"
+}

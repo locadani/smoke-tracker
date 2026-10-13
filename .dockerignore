@@ -1,0 +1,15 @@
+# Only the sources the release build needs.
+target
+.git
+.github
+.githooks
+.superpowers
+docs
+data
+*.db
+*.db-*
+.env
+.env.*
+# The image's own stable toolchain builds the release; the file would download another one
+# with rustfmt and clippy for nothing.
+rust-toolchain.toml

@@ -12,6 +12,7 @@ mod jobs;
 mod lists;
 mod readings;
 mod reports;
+mod sessions;
 mod tx;
 mod users;
 
@@ -82,6 +83,11 @@ impl SqliteStore {
 
     async fn read(&self) -> StoreResult<PoolConnection<Sqlite>> {
         self.reader.acquire().await.db()
+    }
+
+    /// The writer connection, for the unaudited single-statement writes (sessions).
+    async fn write(&self) -> StoreResult<PoolConnection<Sqlite>> {
+        self.writer.acquire().await.db()
     }
 }
 

@@ -14,7 +14,7 @@ use crate::DomainError;
 use crate::audit::{AuditEntity, ChainedEntry};
 use crate::records::{
     Closure, Event, NewEvent, NewReading, NewReport, NewRoom, NewSymptom, NewUser, PasswordHash,
-    Pm25Reading, ReportValues, Room, SmellReport, Symptom, User,
+    Pm25Reading, ReportValues, Room, SmellReport, StoredSession, Symptom, User,
 };
 use crate::types::{
     EventId, Locale, Pm25, ReadingId, ReportId, RoomId, SymptomId, UserId, Username,
@@ -154,6 +154,7 @@ pub trait UserWrites: Send {
     /// ([`crate::permissions::check_expiry`]) and with [`Conflict::UsernameTaken`].
     fn create_user(&mut self, new: NewUser) -> impl Future<Output = StoreResult<User>> + Send;
     /// Always audited (as `password_change`), although the snapshot only shows `has_password`.
+    /// Ends every session of the user in the same transaction (spec §8.4).
     fn set_password(
         &mut self,
         id: UserId,
@@ -164,7 +165,7 @@ pub trait UserWrites: Send {
         id: UserId,
         locale: Locale,
     ) -> impl Future<Output = StoreResult<User>> + Send;
-    /// Sets `expires_at` to now. Residents cannot expire.
+    /// Sets `expires_at` to now and ends every session of the user. Residents cannot expire.
     fn expire_user(&mut self, id: UserId) -> impl Future<Output = StoreResult<User>> + Send;
     fn reactivate_user(
         &mut self,
@@ -295,6 +296,34 @@ pub trait SnapshotRepo: Send + Sync {
     fn audit_state(&self) -> impl Future<Output = StoreResult<AuditState>> + Send;
 }
 
+/// Login sessions, for the web layer's session store. Not audited (decision #50).
+///
+/// Each method is its own small write or read, outside any [`Transactional::begin`]
+/// transaction; on SQLite the writes share the single writer connection, so never call them
+/// while holding a transaction.
+pub trait SessionRepo: Send + Sync {
+    /// The session, unless it has expired by `now`.
+    fn session(
+        &self,
+        id_hash: &str,
+        now: DateTime<Utc>,
+    ) -> impl Future<Output = StoreResult<Option<StoredSession>>> + Send;
+    /// Fails with [`Conflict::Duplicate`] if a session with that `id_hash` exists.
+    fn create_session(
+        &self,
+        session: &StoredSession,
+    ) -> impl Future<Output = StoreResult<()>> + Send;
+    /// Inserts the session or replaces the stored one.
+    fn save_session(&self, session: &StoredSession)
+    -> impl Future<Output = StoreResult<()>> + Send;
+    fn delete_session(&self, id_hash: &str) -> impl Future<Output = StoreResult<()>> + Send;
+    /// Removes every session that has expired by `now` and returns how many there were.
+    fn delete_expired_sessions(
+        &self,
+        now: DateTime<Utc>,
+    ) -> impl Future<Output = StoreResult<u64>> + Send;
+}
+
 /// A complete storage backend.
 pub trait Store:
     Transactional<Tx: WriteTx>
@@ -306,6 +335,7 @@ pub trait Store:
     + JobRepo
     + AuditRepo
     + SnapshotRepo
+    + SessionRepo
 {
 }
 
@@ -319,6 +349,7 @@ impl<T> Store for T where
         + JobRepo
         + AuditRepo
         + SnapshotRepo
+        + SessionRepo
 {
 }
 
