@@ -431,6 +431,73 @@ mod tests {
     }
 
     #[test]
+    fn room_snapshot_has_exactly_the_audited_fields() {
+        let room = Room {
+            id: RoomId(3),
+            name: ListName::new("Kitchen").unwrap(),
+            i18n_key: Some("room-kitchen".to_owned()),
+            area: RoomArea::Inside,
+            hidden_at: Some(t("2026-01-15T20:00:00Z")),
+        };
+        assert_eq!(
+            room.snapshot(),
+            json!({
+                "id": 3,
+                "name": "Kitchen",
+                "i18n_key": "room-kitchen",
+                "area": "inside",
+                "hidden_at": "2026-01-15T20:00:00Z",
+            })
+        );
+    }
+
+    #[test]
+    fn symptom_snapshot_has_exactly_the_audited_fields() {
+        let symptom = Symptom {
+            id: SymptomId(5),
+            name: ListName::new("Headache").unwrap(),
+            i18n_key: None,
+            hidden_at: None,
+        };
+        assert_eq!(
+            symptom.snapshot(),
+            json!({
+                "id": 5,
+                "name": "Headache",
+                "i18n_key": null,
+                "hidden_at": null,
+            })
+        );
+    }
+
+    #[test]
+    fn reading_snapshot_has_exactly_the_audited_fields() {
+        let mut reading = Pm25Reading {
+            id: ReadingId(7),
+            user_id: UserId(1),
+            event_id: Some(EventId(4)),
+            observed_at: t("2026-01-15T19:00:00Z"),
+            recorded_at: t("2026-01-15T19:00:00.5Z"),
+            value: Pm25::new(12.5).unwrap(),
+            deleted_at: None,
+        };
+        assert_eq!(
+            reading.snapshot(),
+            json!({
+                "id": 7,
+                "user_id": 1,
+                "event_id": 4,
+                "observed_at": "2026-01-15T19:00:00Z",
+                "recorded_at": "2026-01-15T19:00:00.500Z",
+                "value": 12.5,
+                "deleted_at": null,
+            })
+        );
+        reading.event_id = None;
+        assert_eq!(reading.snapshot()["event_id"], json!(null));
+    }
+
+    #[test]
     fn an_event_is_open_until_it_has_a_closure() {
         let mut event = Event {
             id: EventId(4),

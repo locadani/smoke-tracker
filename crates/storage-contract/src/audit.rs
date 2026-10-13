@@ -131,11 +131,61 @@ pub async fn a_directly_deleted_record_is_detected<S: Store>(fx: &Fixture<S>) {
     );
 }
 
+pub async fn soft_deletes_still_verify<S: Store>(fx: &Fixture<S>) {
+    let p = populate(fx).await;
+    let mut tx = fx.store.begin(None).await.unwrap();
+    tx.delete_report(p.report.id).await.unwrap();
+    tx.delete_reading(p.reading.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let report = verify_store(&fx.store).await.unwrap();
+    assert!(report.is_ok(), "{report:?}");
+}
+
+pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let p = populate(fx).await;
+    let latest = fx
+        .store
+        .audit_history(AuditEntity::SmellReport, p.report.id.0)
+        .await
+        .unwrap()
+        .pop()
+        .unwrap();
+    let rooms = fx.store.rooms().await.unwrap();
+    assert!(!p.report.values.rooms().contains(&rooms[2].id));
+    // The only report is the one `populate` made, and the stairwell (the last room) is not in it.
+    fx.raw(
+        "INSERT INTO smell_report_rooms (smell_report_id, room_id) \
+         SELECT (SELECT MIN(id) FROM smell_reports), (SELECT MAX(id) FROM rooms)",
+    )
+    .await
+    .unwrap();
+    assert_eq!(rooms.last().unwrap().area, RoomArea::Common);
+
+    let report = verify_store(&fx.store).await.unwrap();
+    assert_eq!(report.chain, Ok(()));
+    assert_eq!(
+        report.problems,
+        [SnapshotProblem::Differs {
+            entity: AuditEntity::SmellReport,
+            entity_id: p.report.id.0,
+            audit_id: latest.record.id,
+        }]
+    );
+}
+
 pub async fn the_audit_log_refuses_updates_and_deletes<S: Store>(fx: &Fixture<S>) {
     populate(fx).await;
+    let before = fx.store.audit_log().await.unwrap();
     assert!(fx.raw("UPDATE audit_log SET hash = 'x'").await.is_err());
     assert!(fx.raw("DELETE FROM audit_log").await.is_err());
     assert!(fx.raw("TRUNCATE audit_log").await.is_err());
+    let after = fx.store.audit_log().await.unwrap();
+    assert_eq!(after.len(), before.len());
+    assert_eq!(
+        after.last().map(|e| &e.hash),
+        before.last().map(|e| &e.hash)
+    );
     assert!(verify_store(&fx.store).await.unwrap().is_ok());
 }
 
@@ -167,6 +217,8 @@ pub async fn concurrent_writers_never_fork_the_chain<S>(fx: &Fixture<S>)
 where
     S: Store + Clone + 'static,
 {
+    // On SQLite the single writer connection already serialises callers, so this mainly
+    // exercises Postgres's lock.
     let tasks: Vec<_> = (0..8)
         .map(|i| {
             let store = fx.store.clone();

@@ -209,4 +209,12 @@ mod tests {
             Err(DomainError::ExpiryNotInFuture)
         );
     }
+
+    #[test]
+    fn the_role_rule_wins_over_the_past_date_rule() {
+        assert_eq!(
+            check_expiry(Role::Resident, Some(now() - TimeDelta::seconds(1)), now()),
+            Err(DomainError::ResidentsNeverExpire)
+        );
+    }
 }

@@ -191,6 +191,84 @@ where
     );
 }
 
+pub async fn moving_an_event_end_is_audited_and_checked<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites> + AuditRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let opened = start() - TimeDelta::days(1);
+    let past = add_event(
+        fx,
+        owner.id,
+        opened,
+        closure(opened, CloseReason::Backdated),
+    )
+    .await;
+
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.move_event_end(past.id, opened + TimeDelta::hours(2))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+    let history = fx
+        .store
+        .audit_history(AuditEntity::Event, past.id.0)
+        .await
+        .unwrap();
+    let actions: Vec<_> = history.iter().map(|e| e.record.action).collect();
+    assert_eq!(actions, [AuditAction::Create, AuditAction::Update]);
+
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    let error = tx
+        .move_event_end(past.id, opened - TimeDelta::seconds(1))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::RuleViolated)),
+        "{error:?}"
+    );
+    drop(tx);
+
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    let error = tx.move_event_end(EventId(999), start()).await.unwrap_err();
+    assert!(
+        matches!(
+            error,
+            StoreError::NotFound {
+                entity: AuditEntity::Event,
+                id: 999
+            }
+        ),
+        "{error:?}"
+    );
+    drop(tx);
+
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    let error = tx
+        .close_event(
+            EventId(999),
+            Closure {
+                at: start(),
+                reason: CloseReason::Manual,
+            },
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error,
+            StoreError::NotFound {
+                entity: AuditEntity::Event,
+                id: 999
+            }
+        ),
+        "{error:?}"
+    );
+    drop(tx);
+
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), 3);
+}
+
 pub async fn the_auto_close_notice_is_marked_seen_once<S>(fx: &Fixture<S>)
 where
     S: Transactional<Tx: UserWrites + EventWrites> + AuditRepo,
@@ -247,6 +325,7 @@ where
         [first.id, second.id]
     );
     assert_eq!(between(at(1), at(2)).await, [first.id]);
+    assert_eq!(between(at(0), at(2)).await, [first.id]);
     assert!(between(at(4), at(5)).await.is_empty());
     assert_eq!(between(at(10), at(11)).await, [open.id]);
 }

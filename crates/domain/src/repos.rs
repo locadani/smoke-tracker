@@ -67,6 +67,10 @@ pub trait Transactional: Send + Sync {
     /// Starts a write transaction whose audit entries name `actor` (`None` for the system:
     /// the sweep, seeding, the CLI). Write transactions run one at a time, so do not call
     /// `begin` again while holding one on the same task: it waits for the first to finish.
+    ///
+    /// After any error from a write method, drop the transaction instead of committing it: a
+    /// failed write may have applied part of its statements, and on Postgres the transaction is
+    /// aborted.
     fn begin(&self, actor: Option<UserId>) -> impl Future<Output = StoreResult<Self::Tx>> + Send;
 }
 

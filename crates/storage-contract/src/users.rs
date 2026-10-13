@@ -85,6 +85,8 @@ where
     assert_eq!(entry.action, AuditAction::PasswordChange);
     assert_eq!(entry.actor_id, Some(user.id));
     assert_eq!(entry.before, entry.after);
+    let log = fx.store.audit_log().await.unwrap();
+    assert!(!format!("{log:?}").contains("another-hash"));
 }
 
 pub async fn a_locale_change_is_audited_but_a_no_op_is_not<S>(fx: &Fixture<S>)

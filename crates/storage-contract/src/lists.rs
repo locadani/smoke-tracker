@@ -2,7 +2,7 @@
 
 use chrono::TimeDelta;
 use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::records::NewRoom;
+use smoke_domain::records::{NewRoom, NewSymptom};
 use smoke_domain::repos::{AuditRepo, Commit, ListRepo, ListWrites, StoreError, Transactional};
 use smoke_domain::starter::{STARTER_ROOMS, STARTER_SYMPTOMS, seed_starter_lists};
 use smoke_domain::types::{ListName, RoomArea, SymptomId};
@@ -64,6 +64,7 @@ where
 {
     seed_starter_lists(&fx.store).await.unwrap();
     let kitchen = fx.store.rooms().await.unwrap()[1].clone();
+    assert_eq!(kitchen.i18n_key.as_deref(), Some("room-kitchen"));
 
     let mut tx = fx.store.begin(None).await.unwrap();
     let hidden = tx.set_room_hidden(kitchen.id, true).await.unwrap();
@@ -79,6 +80,40 @@ where
     let updates = fx
         .store
         .audit_history(AuditEntity::Room, kitchen.id.0)
+        .await
+        .unwrap()
+        .iter()
+        .filter(|e| e.record.action == AuditAction::Update)
+        .count();
+    assert_eq!(updates, 2);
+}
+
+pub async fn symptoms_can_be_created_and_hidden<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: ListWrites> + ListRepo + AuditRepo,
+{
+    let mut tx = fx.store.begin(None).await.unwrap();
+    let symptom = tx
+        .create_symptom(NewSymptom {
+            name: ListName::new("Dizziness").unwrap(),
+            i18n_key: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        (symptom.i18n_key.as_deref(), symptom.hidden_at),
+        (None, None)
+    );
+    let hidden = tx.set_symptom_hidden(symptom.id, true).await.unwrap();
+    assert_eq!(hidden.hidden_at, Some(start()));
+    let shown = tx.set_symptom_hidden(symptom.id, false).await.unwrap();
+    assert_eq!(shown.hidden_at, None);
+    tx.commit().await.unwrap();
+
+    assert_eq!(fx.store.symptoms().await.unwrap(), [shown]);
+    let updates = fx
+        .store
+        .audit_history(AuditEntity::Symptom, symptom.id.0)
         .await
         .unwrap()
         .iter()

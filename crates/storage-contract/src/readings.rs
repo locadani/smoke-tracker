@@ -9,7 +9,7 @@ use smoke_domain::repos::{
     AuditRepo, Commit, Conflict, EventWrites, JobRepo, JobWrites, ListRepo, ListWrites,
     ReadingRepo, ReadingWrites, SnapshotRepo, StoreError, Transactional, UserWrites,
 };
-use smoke_domain::types::Pm25;
+use smoke_domain::types::{EventId, Pm25};
 use smoke_domain::verify::verify_store;
 
 use crate::Fixture;
@@ -90,6 +90,11 @@ where
         matches!(error, StoreError::Conflict(Conflict::AlreadyDeleted)),
         "{error:?}"
     );
+    let error = tx.delete_reading(reading.id).await.unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::AlreadyDeleted)),
+        "{error:?}"
+    );
     tx.commit().await.unwrap();
 
     assert!(
@@ -116,6 +121,42 @@ where
             AuditAction::Delete
         ]
     );
+}
+
+pub async fn a_reading_for_an_unknown_event_is_rejected<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReadingWrites>
+        + ListRepo
+        + ReadingRepo
+        + AuditRepo,
+{
+    let scene = scene(fx).await;
+    let entries_before = fx.store.audit_log().await.unwrap().len();
+
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    let error = tx
+        .create_reading(NewReading {
+            user_id: scene.user.id,
+            event_id: Some(EventId(999)),
+            observed_at: start(),
+            value: pm25(10.0),
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::UnknownReference)),
+        "{error:?}"
+    );
+    drop(tx);
+
+    assert!(
+        fx.store
+            .readings_for_event(scene.event.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
 }
 
 pub async fn pm25_values_round_trip_exactly<S>(fx: &Fixture<S>)

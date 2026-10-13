@@ -23,7 +23,8 @@ pub async fn fresh_database() -> Option<String> {
         .expect("clock after 1970")
         .as_micros();
     let name = format!(
-        "smoke_test_{stamp}_{}",
+        "smoke_test_{}_{stamp}_{}",
+        std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     );
     let admin = PgPool::connect(&admin_url)

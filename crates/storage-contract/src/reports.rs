@@ -9,7 +9,7 @@ use smoke_domain::repos::{
     AuditRepo, Commit, Conflict, EventWrites, ListRepo, ListWrites, ReportRepo, ReportWrites,
     StoreError, Transactional, UserWrites,
 };
-use smoke_domain::types::{CloseReason, RoomId};
+use smoke_domain::types::{CloseReason, EventId, RoomId, SymptomId};
 
 use crate::Fixture;
 use crate::fixture::{add_event, add_report, last_entry, report_values, scene, start};
@@ -222,6 +222,127 @@ where
             user_id: scene.user.id,
             observed_at: start(),
             values: report_values(5, &[RoomId(999)], &[]),
+        })
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::UnknownReference)),
+        "{error:?}"
+    );
+    drop(tx);
+
+    assert!(
+        fx.store
+            .reports_for_event(scene.event.id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
+}
+
+pub async fn correcting_a_report_can_remove_rooms_and_symptoms<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReportWrites>
+        + ListRepo
+        + ReportRepo
+        + AuditRepo,
+{
+    let scene = scene(fx).await;
+    let (r0, r2) = (scene.rooms[0].id, scene.rooms[2].id);
+    let report = add_report(
+        fx,
+        &scene,
+        start(),
+        report_values(6, &[r0, r2], &[scene.symptoms[0].id]),
+    )
+    .await;
+
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    tx.correct_report(report.id, report.observed_at, report_values(6, &[r2], &[]))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let stored = fx.store.report(report.id).await.unwrap().unwrap();
+    assert_eq!(stored.values.rooms(), [r2]);
+    assert!(stored.values.symptoms().is_empty());
+    let after = last_entry(fx).await.record.after.unwrap();
+    assert_eq!(after["rooms"], json!([r2.0]));
+    assert_eq!(after["symptoms"], json!([]));
+}
+
+pub async fn an_unknown_room_on_correction_keeps_the_original_links<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReportWrites>
+        + ListRepo
+        + ReportRepo
+        + AuditRepo,
+{
+    let scene = scene(fx).await;
+    let (r0, r2) = (scene.rooms[0].id, scene.rooms[2].id);
+    let report = add_report(fx, &scene, start(), report_values(6, &[r0, r2], &[])).await;
+    let entries_before = fx.store.audit_log().await.unwrap().len();
+
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    let error = tx
+        .correct_report(
+            report.id,
+            report.observed_at,
+            report_values(8, &[r0, RoomId(999)], &[]),
+        )
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::UnknownReference)),
+        "{error:?}"
+    );
+    drop(tx);
+
+    assert_eq!(fx.store.report(report.id).await.unwrap(), Some(report));
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
+}
+
+pub async fn moving_a_report_to_an_unknown_event_is_rejected<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReportWrites>
+        + ListRepo
+        + ReportRepo
+        + AuditRepo,
+{
+    let scene = scene(fx).await;
+    let report = add_report(fx, &scene, start(), report_values(4, &[], &[])).await;
+    let entries_before = fx.store.audit_log().await.unwrap().len();
+
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    let error = tx.move_report(report.id, EventId(999)).await.unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::UnknownReference)),
+        "{error:?}"
+    );
+    drop(tx);
+
+    assert_eq!(fx.store.report(report.id).await.unwrap(), Some(report));
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
+}
+
+pub async fn an_unknown_symptom_rolls_back_the_report<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReportWrites>
+        + ListRepo
+        + ReportRepo
+        + AuditRepo,
+{
+    let scene = scene(fx).await;
+    let entries_before = fx.store.audit_log().await.unwrap().len();
+
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    let error = tx
+        .create_report(NewReport {
+            event_id: scene.event.id,
+            user_id: scene.user.id,
+            observed_at: start(),
+            values: report_values(5, &[], &[SymptomId(999)]),
         })
         .await
         .unwrap_err();
