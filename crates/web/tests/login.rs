@@ -217,3 +217,89 @@ async fn a_password_change_signs_the_user_out() {
         Some("/login")
     );
 }
+
+#[tokio::test]
+async fn five_failures_lock_the_username_for_fifteen_minutes() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    for _ in 0..5 {
+        app.attempt("daniele", "not the password").await;
+    }
+    let locked = app.attempt("daniele", PASSWORD).await;
+    assert_eq!(locked.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert!(text(locked).await.contains("Too many attempts."));
+
+    app.clock.advance(TimeDelta::minutes(15));
+    let after = app.attempt("daniele", PASSWORD).await;
+    assert_eq!(after.status(), StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn changing_the_case_of_the_username_does_not_bypass_the_lock() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    for name in ["daniele", "Daniele", "DANIELE", " daniele", "daniele "] {
+        app.attempt(name, "not the password").await;
+    }
+    for name in ["daniele", "DaNiElE", "  DANIELE  "] {
+        let response = app.attempt(name, PASSWORD).await;
+        assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS, "{name:?}");
+    }
+}
+
+#[tokio::test]
+async fn a_success_resets_the_username_failures() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    for _ in 0..4 {
+        app.attempt("daniele", "not the password").await;
+    }
+    app.sign_in("daniele").await;
+    for _ in 0..4 {
+        app.attempt("daniele", "not the password").await;
+    }
+    assert_eq!(
+        app.attempt("daniele", PASSWORD).await.status(),
+        StatusCode::SEE_OTHER
+    );
+}
+
+#[tokio::test]
+async fn one_address_cannot_try_many_usernames() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    for n in 0..20 {
+        app.attempt(&format!("guess{n}"), "not the password").await;
+    }
+    let blocked = app.attempt("daniele", PASSWORD).await;
+    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let mut elsewhere = login_request("daniele", PASSWORD);
+    from(&mut elsewhere, "198.51.100.1".parse().unwrap());
+    assert_eq!(app.send(elsewhere).await.status(), StatusCode::SEE_OTHER);
+}
+
+#[tokio::test]
+async fn behind_a_proxy_the_configured_header_names_the_client() {
+    let app = TestApp::with_config(BASE, Some("x-forwarded-for")).await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let attempt = |client: &'static str, username: &str, password: &str| {
+        let mut request = login_request(username, password);
+        request
+            .headers_mut()
+            .insert("x-forwarded-for", client.parse().unwrap());
+        request
+    };
+    for n in 0..20 {
+        app.send(attempt(
+            "203.0.113.1",
+            &format!("guess{n}"),
+            "not the password",
+        ))
+        .await;
+    }
+    let blocked = app.send(attempt("203.0.113.1", "daniele", PASSWORD)).await;
+    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+    let other_client = app.send(attempt("203.0.113.2", "daniele", PASSWORD)).await;
+    assert_eq!(other_client.status(), StatusCode::SEE_OTHER);
+}

@@ -1,5 +1,7 @@
 //! Who is signed in: the session's user, checked against expiry on every request.
 
+pub(crate) mod client_ip;
+pub(crate) mod limiter;
 pub mod password;
 
 use std::convert::Infallible;

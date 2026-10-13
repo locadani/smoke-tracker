@@ -11,6 +11,8 @@ use smoke_domain::repos::Store;
 use smoke_domain::types::Username;
 use tower_sessions::Session;
 
+use crate::auth::client_ip::ClientIp;
+use crate::auth::limiter::LoginLimiter;
 use crate::auth::{CurrentUser, password};
 use crate::cookies;
 use crate::error::{AppError, page};
@@ -23,17 +25,20 @@ use crate::state::AppState;
 pub(crate) enum Notice {
     /// Wrong password or unknown username: deliberately the same message.
     Failed,
+    /// Too many failures for this username or from this address.
+    Locked,
     /// Correct password, but a viewer account past its expiry.
     Expired,
 }
 
 impl Notice {
     #[cfg(test)]
-    pub(crate) const ALL: [Notice; 2] = [Notice::Failed, Notice::Expired];
+    pub(crate) const ALL: [Notice; 3] = [Notice::Failed, Notice::Locked, Notice::Expired];
 
     pub(crate) fn key(self) -> &'static str {
         match self {
             Notice::Failed => "login-failed",
+            Notice::Locked => "login-locked",
             Notice::Expired => "login-expired",
         }
     }
@@ -83,10 +88,20 @@ pub(crate) struct LoginForm {
 pub(crate) async fn submit<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     session: Session,
+    ClientIp(address): ClientIp,
     tr: Tr,
     Form(form): Form<LoginForm>,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
+    let key = LoginLimiter::key(&form.username);
+    if state.limiter.is_blocked(&key, address, now) {
+        return login_page(
+            StatusCode::TOO_MANY_REQUESTS,
+            tr,
+            form.username,
+            Some(Notice::Locked),
+        );
+    }
     let user = match Username::new(&form.username) {
         Ok(username) => state.store.user_by_username(&username).await?,
         Err(_) => None,
@@ -96,6 +111,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     let valid =
         tokio::task::spawn_blocking(move || password::verify(stored.as_ref(), &attempt)).await?;
     let Some(user) = user.filter(|_| valid) else {
+        state.limiter.record_failure(key, address, now);
         return login_page(
             StatusCode::UNAUTHORIZED,
             tr,
@@ -103,6 +119,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
             Some(Notice::Failed),
         );
     };
+    state.limiter.record_success(&key);
     if !user.actor().can_sign_in(now) {
         return login_page(
             StatusCode::FORBIDDEN,
