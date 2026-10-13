@@ -40,3 +40,36 @@ resource "google_secret_manager_secret" "database_url" {
     }
   }
 }
+
+resource "google_service_account" "runtime" {
+  project      = var.project_id
+  account_id   = "${var.name}-run"
+  display_name = "${var.name} on Cloud Run"
+}
+
+resource "google_service_account" "deploy" {
+  project      = var.project_id
+  account_id   = "${var.name}-deploy"
+  display_name = "${var.name} deploys from GitHub Actions"
+}
+
+resource "google_secret_manager_secret_iam_member" "runtime_reads_database_url" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.database_url.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.runtime.member
+}
+
+resource "google_artifact_registry_repository_iam_member" "deploy_pushes_images" {
+  project    = var.project_id
+  location   = var.region
+  repository = google_artifact_registry_repository.images.name
+  role       = "roles/artifactregistry.writer"
+  member     = google_service_account.deploy.member
+}
+
+resource "google_service_account_iam_member" "deploy_acts_as_runtime" {
+  service_account_id = google_service_account.runtime.name
+  role               = "roles/iam.serviceAccountUser"
+  member             = google_service_account.deploy.member
+}

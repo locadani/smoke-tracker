@@ -1,4 +1,13 @@
-mock_provider "google" {}
+mock_provider "google" {
+  # Computed attributes are random strings by default; the IAM resources validate their format.
+  mock_resource "google_service_account" {
+    defaults = {
+      name   = "projects/test-project/serviceAccounts/mock-account@test-project.iam.gserviceaccount.com"
+      email  = "mock-account@test-project.iam.gserviceaccount.com"
+      member = "serviceAccount:mock-account@test-project.iam.gserviceaccount.com"
+    }
+  }
+}
 
 variables {
   project_id           = "test-project"
@@ -50,4 +59,34 @@ run "name_must_fit_account_ids" {
   }
 
   expect_failures = [var.name]
+}
+
+run "runtime_account_can_only_read_its_secret" {
+  assert {
+    condition     = google_service_account.runtime.account_id == "smoke-tracker-run"
+    error_message = "The runtime account is named <name>-run."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_member.runtime_reads_database_url.role == "roles/secretmanager.secretAccessor" && google_secret_manager_secret_iam_member.runtime_reads_database_url.member == google_service_account.runtime.member
+    error_message = "The runtime account must be able to read the database secret."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_member.runtime_reads_database_url.secret_id == google_secret_manager_secret.database_url.secret_id
+    error_message = "The grant must be on the one secret, not the project."
+  }
+}
+
+run "deploy_account_can_push_images_and_act_as_runtime" {
+  assert {
+    condition     = google_service_account.deploy.account_id == "smoke-tracker-deploy"
+    error_message = "The deploy account is named <name>-deploy."
+  }
+  assert {
+    condition     = google_artifact_registry_repository_iam_member.deploy_pushes_images.role == "roles/artifactregistry.writer" && google_artifact_registry_repository_iam_member.deploy_pushes_images.member == google_service_account.deploy.member
+    error_message = "The deploy account must be able to push to the app's registry only."
+  }
+  assert {
+    condition     = google_service_account_iam_member.deploy_acts_as_runtime.role == "roles/iam.serviceAccountUser" && google_service_account_iam_member.deploy_acts_as_runtime.service_account_id == google_service_account.runtime.name
+    error_message = "The deploy account must be able to run revisions as the runtime account."
+  }
 }
