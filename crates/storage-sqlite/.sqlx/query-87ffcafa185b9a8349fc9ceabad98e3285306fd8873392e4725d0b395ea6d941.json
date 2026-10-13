@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM smell_report_symptoms WHERE smell_report_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "87ffcafa185b9a8349fc9ceabad98e3285306fd8873392e4725d0b395ea6d941"
+}

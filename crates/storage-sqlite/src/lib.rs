@@ -9,6 +9,7 @@ mod convert;
 mod error;
 mod events;
 mod lists;
+mod reports;
 mod tx;
 mod users;
 

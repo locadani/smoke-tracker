@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at FROM smell_reports WHERE event_id = $1 AND deleted_at IS NULL ORDER BY observed_at, id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "event_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "event_id"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "observed_at",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "observed_at"
+          }
+        }
+      },
+      {
+        "name": "recorded_at",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "recorded_at"
+          }
+        }
+      },
+      {
+        "name": "intensity",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "intensity"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "name": "deleted_at",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "d2b7984c4c93b15397ab792381749f439413fd2bab06169e60e9a50ddd7adab4"
+}

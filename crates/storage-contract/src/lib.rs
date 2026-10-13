@@ -11,6 +11,7 @@
 pub mod events;
 pub mod fixture;
 pub mod lists;
+pub mod reports;
 pub mod transactions;
 pub mod users;
 
@@ -44,6 +45,12 @@ macro_rules! contract_tests {
             events::the_end_of_a_closed_event_can_move,
             events::the_auto_close_notice_is_marked_seen_once,
             events::events_between_returns_overlapping_events,
+            reports::a_report_keeps_its_rooms_and_symptoms,
+            reports::correcting_a_report_records_before_and_after,
+            reports::moving_a_report_is_audited,
+            reports::deleting_a_report_is_soft,
+            reports::latest_report_time_ignores_deleted_reports,
+            reports::an_unknown_room_rolls_back_the_report,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

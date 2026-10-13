@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE smell_reports SET event_id = $1 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1ffdb82fb525c0f98612e9028bb40fa633fd225a3ca3e093bf62247eebed3ab5"
+}

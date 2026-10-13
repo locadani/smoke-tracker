@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT symptom_id FROM smell_report_symptoms WHERE smell_report_id = $1 ORDER BY symptom_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "symptom_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_report_symptoms",
+            "name": "symptom_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b4864707c92e91f20fa86ecb993da484b2654768203362601d687ea380f925d7"
+}

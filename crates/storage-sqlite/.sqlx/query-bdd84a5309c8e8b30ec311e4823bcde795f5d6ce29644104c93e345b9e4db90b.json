@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO smell_report_symptoms (smell_report_id, symptom_id) VALUES ($1, $2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "bdd84a5309c8e8b30ec311e4823bcde795f5d6ce29644104c93e345b9e4db90b"
+}

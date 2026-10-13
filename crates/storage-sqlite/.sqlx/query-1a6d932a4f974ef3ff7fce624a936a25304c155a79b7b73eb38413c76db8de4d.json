@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT room_id FROM smell_report_rooms WHERE smell_report_id = $1 ORDER BY room_id",
+  "describe": {
+    "columns": [
+      {
+        "name": "room_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_report_rooms",
+            "name": "room_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "1a6d932a4f974ef3ff7fce624a936a25304c155a79b7b73eb38413c76db8de4d"
+}
