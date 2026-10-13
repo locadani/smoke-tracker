@@ -7,9 +7,10 @@ use smoke_domain::clock::Clock;
 use smoke_domain::records::NewReading;
 use smoke_domain::repos::{
     AuditRepo, Commit, Conflict, EventWrites, JobRepo, JobWrites, ListRepo, ListWrites,
-    ReadingRepo, ReadingWrites, StoreError, Transactional, UserWrites,
+    ReadingRepo, ReadingWrites, SnapshotRepo, StoreError, Transactional, UserWrites,
 };
 use smoke_domain::types::Pm25;
+use smoke_domain::verify::verify_store;
 
 use crate::Fixture;
 use crate::fixture::{last_entry, scene, start};
@@ -122,10 +123,19 @@ where
     S: Transactional<Tx: UserWrites + ListWrites + EventWrites + ReadingWrites>
         + ListRepo
         + ReadingRepo
-        + AuditRepo,
+        + AuditRepo
+        + SnapshotRepo,
 {
     let scene = scene(fx).await;
-    for value in [0.0, 0.1, 12.3, 999.99, 1000.0] {
+    for value in [
+        0.0,
+        0.1,
+        12.3,
+        999.99,
+        1000.0,
+        985.690_694_632_869_5,
+        0.300_000_000_000_000_04,
+    ] {
         let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
         let reading = tx
             .create_reading(NewReading {
@@ -144,6 +154,7 @@ where
             json!(value)
         );
     }
+    assert!(verify_store(&fx.store).await.unwrap().is_ok());
 }
 
 pub async fn job_runs_are_remembered_but_not_audited<S>(fx: &Fixture<S>)
