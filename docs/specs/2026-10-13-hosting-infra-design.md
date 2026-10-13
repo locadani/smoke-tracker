@@ -44,7 +44,7 @@ infrastructure repository; running `create-resident` as a Cloud Run job (§8).
 | `DATABASE_URL` secret **value** | Manual, once | A value managed by Terraform is stored in its state in plain text |
 | GitHub secrets and variable | Manual, once, copied from Terraform outputs | Setting them from Terraform would need a GitHub admin token |
 | Project APIs | Terraform | The 5 enabled by hand are adopted (enabling is idempotent); the others it needs are added (§4.0) |
-| Artifact Registry repository + cleanup policies | Terraform | Already created by hand; adopted with an `import` block, and its incomplete cleanup policy is corrected (§4.3) |
+| Artifact Registry repository + cleanup policies | Terraform | Created by Terraform (§4.3) |
 | Secret Manager secret `DATABASE_URL` (the container, no value) | Terraform | |
 | Service accounts and their permissions | Terraform | |
 | Workload Identity Federation pool and provider | Terraform | |
@@ -76,7 +76,6 @@ infra/
 └─ prod/                   Smoke Tracker's production
    ├─ main.tf              uses the module
    ├─ project.tf           project APIs
-   ├─ imports.tf           adopts the hand-made Artifact Registry repository
    ├─ ci.tf                the read-only `terraform-plan` account
    ├─ backend.tf           GCS backend (bucket name supplied at init, see §3.1)
    ├─ variables.tf
@@ -156,8 +155,8 @@ Scanning API is **not** enabled (it is billed per image).
 
 ### 4.3 Artifact Registry
 
-Repository `smoke-tracker`, Docker, `europe-west3`, adopted from the hand-made repository with an
-`import` block. Cleanup needs **two** policies, because a keep policy alone deletes nothing:
+Repository `smoke-tracker`, Docker, `europe-west3`, created by Terraform. (An `import` block was
+planned to adopt a hand-made one; it was never created, so the block was removed.) Cleanup needs **two** policies, because a keep policy alone deletes nothing:
 
 - **delete:** any image older than 1 day;
 - **keep:** the 3 most recent versions (protected from the delete policy).
@@ -263,7 +262,7 @@ Set by hand from the Terraform outputs.
    the bucket is checked to hold it. It also creates the €1 budget alert.
 3. In Cloud Shell:
    1. create `terraform.tfvars` and `backend.hcl` in `infra/prod` from the examples;
-   2. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),
+   2. `terraform init`, `terraform plan`,
       `terraform apply`.
 4. Add the Neon connection string as the first version of the `smoke-tracker-database-url`
    secret (console).
@@ -331,7 +330,6 @@ Built after the first apply, in the go-live plan (`docs/plans/infra-go-live.md`)
   as `***`.
 - After the first-time setup: `terraform plan` reports **no changes**; the service URL shows the
   sample page; after go-live, the app's sign-in page, where the first resident can sign in.
-- The `import` adopts the existing Artifact Registry repository without replacing it.
 - The Artifact Registry repository shows both cleanup policies, dry run off.
 
 ---
