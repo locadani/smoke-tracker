@@ -27,6 +27,31 @@ scripts/sqlx-prepare.sh        # after changing a query or a migration; commit t
 
 Building needs no database: queries are checked against the committed `.sqlx/` metadata.
 
+## Running it
+
+Configuration comes from environment variables only; [`.env.example`](.env.example) lists
+every one.
+
+```sh
+cp .env.example .env && mkdir -p data
+set -a; . ./.env; set +a
+cargo run -p smoke-tracker -- create-resident <username>   # prompts for the password
+cargo run -p smoke-tracker -- serve                        # http://localhost:8080
+cargo run -p smoke-tracker -- verify-audit                 # exits with 1 if the history was altered
+```
+
+### Container
+
+Every push to `main` publishes `ghcr.io/locadani/smoke-tracker`: one static binary on a
+distroless base, with the database in the `/data` volume.
+
+```sh
+docker build -t smoke-tracker .
+docker volume create smoke-data
+docker run --rm -it -v smoke-data:/data smoke-tracker create-resident <username>
+docker run -d -p 8080:8080 -v smoke-data:/data -e APP_BASE_URL=http://localhost:8080 smoke-tracker
+```
+
 ## Documentation
 
 - [Design spec](docs/specs/2026-10-13-smoke-tracker-design.md)

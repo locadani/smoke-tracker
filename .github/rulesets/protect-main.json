@@ -32,7 +32,8 @@
           { "context": "fmt · clippy · test", "integration_id": 15368 },
           { "context": "sqlx offline data", "integration_id": 15368 },
           { "context": "cargo-deny", "integration_id": 15368 },
-          { "context": "gitleaks", "integration_id": 15368 }
+          { "context": "gitleaks", "integration_id": 15368 },
+          { "context": "trivy", "integration_id": 15368 }
         ]
       }
     }
