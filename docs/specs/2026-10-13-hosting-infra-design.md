@@ -61,14 +61,17 @@ infra/
 ├─ README.md               manual vs Terraform, first-time setup, routine
 ├─ modules/
 │  └─ cloud-run-app/       one app on Cloud Run (reusable)
-│     ├─ main.tf           Cloud Run service, Artifact Registry, secret, service accounts
+│     ├─ main.tf           Artifact Registry, secret, service accounts and their grants
+│     ├─ service.tf        Cloud Run service
 │     ├─ github-login.tf   Workload Identity Federation, limited to one repository
 │     ├─ variables.tf
-│     └─ outputs.tf
+│     ├─ outputs.tf
+│     └─ tests/            `terraform test` with a mocked provider (no Google account needed)
 └─ prod/                   Smoke Tracker's production
    ├─ main.tf              uses the module
    ├─ project.tf           project APIs
    ├─ imports.tf           adopts the hand-made Artifact Registry repository
+   ├─ ci.tf                the read-only `terraform-plan` account
    ├─ backend.tf           GCS backend (bucket name supplied at init, see §3.1)
    ├─ variables.tf
    ├─ versions.tf          pinned Terraform and provider versions
@@ -83,7 +86,9 @@ infra/
   is downloaded once into `~/bin`, which persists between Cloud Shell sessions.
 - Exact Terraform and `hashicorp/google` versions are pinned in `versions.tf`. The plan chooses
   them from current releases, and checks that Dependabot supports the chosen Terraform version.
-- `.terraform.lock.hcl` is committed.
+- `.terraform.lock.hcl` is committed for `prod/`.
+- Resource names come from the app name, so a second app in the same project doesn't clash:
+  `smoke-tracker-run`, `smoke-tracker-deploy`, secret `smoke-tracker-database-url`.
 
 ### 3.1 Values kept out of the repository
 
@@ -93,8 +98,7 @@ like the GitHub variables (§6):
 - `prod/terraform.tfvars` and `prod/backend.hcl` are **gitignored**; `.example` files are
   committed.
 - In Cloud Shell, the user creates them once from the examples.
-- In CI they are passed from GitHub variables (`-var`, `-backend-config`), and masked in logs
-  (§5.1).
+- In CI they come from GitHub **secrets** (§6), which GitHub masks in logs automatically.
 
 This is tidiness, not protection: the project number also appears in the service's default URL,
 and access is controlled by permissions (§4). The GitHub repository ID (`1416787003`) is public
@@ -116,9 +120,9 @@ Scanning API is **not** enabled (it is billed per image).
 
 | Account | Used by | Permissions (narrowest scope available) |
 |---|---|---|
-| `smoke-run` | the app on Cloud Run | `secretmanager.secretAccessor` on the `DATABASE_URL` secret only |
-| `github-deploy` | the deploy workflow only (§4.2) | `artifactregistry.writer` on the app's repository; `run.developer` on the app's service; `iam.serviceAccountUser` on `smoke-run` |
-| `terraform-plan` | the infra workflow only (§4.2) | `roles/viewer` and `roles/iam.securityReviewer` on the project; `storage.objectViewer` on the state bucket. Cannot change resources or read secret values |
+| `smoke-tracker-run` | the app on Cloud Run | `secretmanager.secretAccessor` on the `smoke-tracker-database-url` secret only |
+| `smoke-tracker-deploy` | the deploy workflow only (§4.2) | `artifactregistry.writer` on the app's repository; `run.developer` on the app's service; `iam.serviceAccountUser` on `smoke-tracker-run` |
+| `terraform-plan` | workflows of this repository (§4.2) | `roles/viewer` and `roles/iam.securityReviewer` on the project; `storage.objectViewer` on the state bucket. Cannot change resources or read secret values |
 
 - `run.developer` cannot change who may call the service, so the deploy workflow must never pass
   `--allow-unauthenticated`; public access is set by Terraform (§4.5).
@@ -136,10 +140,11 @@ Scanning API is **not** enabled (it is billed per image).
   `assertion.job_workflow_ref`.
 - Provider condition: `assertion.repository_id == '1416787003'`. The ID is used rather than the
   name because a name can be re-registered by someone else.
-- `github-deploy` can be impersonated only by `.github/workflows/deploy.yml` running on `main`.
-- `terraform-plan` can be impersonated only by `.github/workflows/infra.yml`, on any branch.
-- The exact mapping expressions are chosen in the plan and checked against the GitHub OIDC claim
-  format.
+- `smoke-tracker-deploy` can be impersonated only by `.github/workflows/deploy.yml` running on
+  `main` (binding on `attribute.job_workflow_ref`).
+- `terraform-plan` can be impersonated by any workflow of the repository. A binding can match only
+  one exact attribute value, so "`infra.yml` on any branch" can't be expressed; the account is
+  read-only, so this is acceptable.
 - If a second app later shares this Google project, the pool moves out of the module into
   `prod/`. Until then it stays in the module.
 
@@ -155,8 +160,9 @@ Dry run off. The keep-only policy set by hand is replaced.
 
 ### 4.4 Secret Manager
 
-Secret `DATABASE_URL`, user-managed replication in `europe-west3`, **no version** in Terraform.
-`lifecycle { prevent_destroy = true }`. When the password changes, the old version is
+Secret `smoke-tracker-database-url` (the app still reads it as the `DATABASE_URL` environment
+variable), user-managed replication in `europe-west3`, **no version** in Terraform,
+`deletion_protection = true`. When the password changes, the old version is
 **destroyed**, not just disabled: disabled versions still count towards the 6 free active
 versions.
 
@@ -165,13 +171,15 @@ versions.
 - Name `smoke-tracker`, region `europe-west3`.
 - Public through `invoker_iam_disabled = true` (Google's recommended way), not an `allUsers`
   grant.
-- Scaling 0 to 1 instances; CPU allocated only during requests; 256 MiB memory.
-- Runs as `smoke-run`.
+- Scaling 0 to 1 instances; CPU allocated only during requests; 1 vCPU, 512 MiB memory (less
+  than 512 MiB would force the first-generation runtime).
+- Runs as `smoke-tracker-run`.
 - Initial image: Google's sample `us-docker.pkg.dev/cloudrun/container/hello`.
 - **`DATABASE_URL` is attached only when the secret has a value.** Cloud Run refuses to start an
   instance whose secret can't be read, so a module input (`attach_database_url`, default
-  `false`) controls it. The first `apply` runs the sample image without it; after the value is
-  added, it is set to `true` (§7). The service `depends_on` the `smoke-run` secret grant.
+  `false`) controls it. It is set in `prod/main.tf` (committed), so CI and Cloud Shell plan the
+  same thing. The first `apply` runs the sample image without it; after the value is added, a
+  small PR sets it to `true` (§7). The service `depends_on` the runtime account's secret grant.
 - `lifecycle { ignore_changes = [template[0].containers[0].image, client, client_version] }`:
   the deploy workflow changes the image, and Terraform must not roll it back. The deploy
   workflow skips its default labels (§8), so deploys don't show up as drift.
@@ -180,8 +188,8 @@ versions.
 
 ### 4.6 Outputs
 
-Service URL, project ID, region, Workload Identity provider name, `github-deploy` email,
-`terraform-plan` email. These are copied into GitHub variables (§6).
+Service URL, project number, Workload Identity provider name, deploy and plan account emails,
+image repository URL. These are copied into GitHub (§6).
 
 ---
 
@@ -191,14 +199,15 @@ Trigger: pull requests and pushes to `main` that change `infra/**` or `infra.yml
 
 | Job | Steps |
 |---|---|
-| `check` | `terraform fmt -check -recursive`; `terraform init -backend=false` and `terraform validate` for `prod/` and the module; Trivy config scan of `infra/` |
+| `check` | `terraform fmt -check -recursive`; `terraform init -backend=false`, `terraform validate` and `terraform test` for the module; `validate` for `prod/`; the redaction script's test; Trivy config scan of `infra/` |
 | `plan` | Pull requests from this repository only (`head.repo.full_name == github.repository`). Logs in as `terraform-plan` through Workload Identity Federation; `terraform init` with the backend config from variables; `terraform plan -lock=false`; posts the plan as a PR comment, updating the previous one |
 
 - `plan` uses `-lock=false` because taking the lock writes to the bucket, and the plan account
   is read-only.
 - Workflow permissions: `contents: read`, `id-token: write` (plan only),
   `pull-requests: write` (plan only).
-- `plan` is skipped when `GCP_PROJECT_ID` is empty (before the first `apply`). Right after the
+- `plan` is skipped when the `GCP_PROJECT_ID` secret is empty (before the first `apply`, and on
+  Dependabot PRs, which don't get repository secrets). Right after the
   first `apply`, permissions can take a few minutes to spread, so the first plan may fail with
   "permission denied"; re-running it fixes that.
 - Third-party actions that aren't from GitHub or Google (Trivy) are pinned to a commit SHA, not a
@@ -214,20 +223,23 @@ Applying stays manual (§7).
 The repository is public, so CI logs and PR comments are public. Terraform's plan prints the
 project ID and number on most lines.
 
-- The workflow registers the project ID and project number with `::add-mask::`, so GitHub
-  replaces them with `***` in logs.
-- Masking covers logs only. Before the plan is posted as a PR comment, the same values are
-  replaced with `***` in the comment text.
+- The IDs are stored as GitHub **secrets**, not variables: GitHub masks secrets in logs
+  automatically, while variable values are printed in each step's header.
+- Masking covers logs only. Before the plan is posted as a PR comment, a small tested script
+  (`infra/scripts/redact-plan.sh`) replaces the project ID and number with `***`.
 - Nothing else is published: no job summary, and the binary plan file is never uploaded as an
   artifact.
 
 ---
 
-## 6. GitHub repository variables
+## 6. GitHub settings
 
-`GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `GCP_REGION`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`,
-`GCP_PLAN_SA`, `TF_STATE_BUCKET`. None is a secret. They are set by hand from the Terraform
-outputs and the project dashboard.
+- **Secrets** (identifiers, not credentials; stored as secrets only so GitHub masks them):
+  `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA`, `GCP_PLAN_SA`,
+  `TF_STATE_BUCKET`.
+- **Variable:** `GCP_REGION`.
+
+Set by hand from the Terraform outputs.
 
 ---
 
@@ -243,9 +255,11 @@ outputs and the project dashboard.
    3. clone the repository; create `terraform.tfvars` and `backend.hcl` from the examples;
    4. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),
       `terraform apply`.
-3. Add the Neon connection string as the first version of the `DATABASE_URL` secret (console).
-4. Set `attach_database_url = true` in `terraform.tfvars`; `terraform apply`.
-5. Set the GitHub variables (§6).
+3. Add the Neon connection string as the first version of the `smoke-tracker-database-url`
+   secret (console).
+4. Set the GitHub secrets and variable (§6).
+5. A small PR sets `attach_database_url = true` in `prod/main.tf`; after merging,
+   `terraform apply`.
 6. Open the service URL: Google's sample page appears.
 
 **Routine:** PR → read the plan comment → merge → in Cloud Shell `git pull`, `terraform plan`
@@ -261,7 +275,7 @@ redeploy (instances read the secret at startup).
 Separate PRs, not part of this spec's implementation:
 
 - `deploy.yml`: on push to `main`, build the `linux/amd64` image, push it to Artifact Registry and
-  deploy it to Cloud Run as `github-deploy`, with the action's default labels skipped
+  deploy it to Cloud Run as `smoke-tracker-deploy`, with the action's default labels skipped
   (`skip_default_labels: true`). This replaces the GHCR push in the original spec's
   `release.yml` (§13.1); that spec gets a short "superseded" note, with the user's approval.
 - The app's settings as Cloud Run environment variables in `prod/`.
