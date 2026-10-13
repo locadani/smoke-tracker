@@ -271,7 +271,7 @@ only as a dismissable banner.
 
 ### 7.7 Corrections and moves
 - **Correct a mistake:** edits a report's values. Audited (before/after).
-- **Move to another event** (residents): moves a report to an existing event or a new one. Audited.
+- **Move to another event** (residents; guests for their own reports): moves a report to an existing event or a new one. Audited.
 - The event page shows a **large-gap warning** when consecutive reports are more than 3 hours apart.
   This makes it easy to spot a guest report that joined a forgotten event.
 
