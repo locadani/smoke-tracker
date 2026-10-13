@@ -91,7 +91,6 @@ impl Transactional for SqliteStore {
     /// Write transactions start with `BEGIN IMMEDIATE`, taking the write lock up front: another
     /// process (e.g. the CLI) writing at the same time makes this wait out the busy timeout
     /// instead of failing later with `SQLITE_BUSY_SNAPSHOT`.
-
     async fn begin(&self, actor: Option<UserId>) -> StoreResult<SqliteTx> {
         let tx = self.writer.begin_with("BEGIN IMMEDIATE").await.db()?;
         Ok(SqliteTx::new(tx, actor, self.clock.clone()))
