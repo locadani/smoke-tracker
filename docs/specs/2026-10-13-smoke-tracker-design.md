@@ -1,7 +1,7 @@
 # Smoke Tracker — Design Spec
 
 - **Date:** 2026-10-13
-- **Status:** Draft, awaiting review
+- **Status:** Approved (2026-10-13)
 - **Source requirements:** `description.md`, `claude.md` (not modified)
 
 ---
