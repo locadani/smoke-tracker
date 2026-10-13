@@ -14,6 +14,7 @@ pub mod fixture;
 pub mod lists;
 pub mod readings;
 pub mod reports;
+pub mod sessions;
 pub mod transactions;
 pub mod users;
 
@@ -78,6 +79,16 @@ macro_rules! contract_tests {
             audit::a_directly_edited_list_name_is_corrupt_not_normalised,
             audit::a_directly_edited_note_is_corrupt_not_normalised,
             audit::concurrent_writers_never_fork_the_chain,
+            sessions::a_session_round_trips_until_it_expires,
+            sessions::creating_a_session_twice_is_a_duplicate,
+            sessions::a_session_for_an_unknown_user_is_refused,
+            sessions::saving_a_session_inserts_or_replaces_it,
+            sessions::deleting_a_session_removes_only_that_one,
+            sessions::expired_sessions_are_swept,
+            sessions::a_password_change_ends_the_users_sessions,
+            sessions::expiring_a_user_ends_their_sessions,
+            sessions::a_rolled_back_password_change_keeps_the_sessions,
+            sessions::sessions_are_not_audited,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

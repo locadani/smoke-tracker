@@ -62,6 +62,7 @@ async fn migrations_create_every_table_and_can_run_again() {
             "jobs",
             "pm25_readings",
             "rooms",
+            "sessions",
             "smell_report_rooms",
             "smell_report_symptoms",
             "smell_reports",
