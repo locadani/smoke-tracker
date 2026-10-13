@@ -305,12 +305,20 @@ run "nightly_backup_when_attached" {
     error_message = "The job runs as the backup account."
   }
   assert {
-    condition     = google_cloud_run_v2_job.backup[0].template[0].template[0].containers[0].args[0] == "pg_dump \"$DATABASE_URL\" --format=custom --no-owner --file=/backups/smoke-tracker-$(date -u +%Y%m%dT%H%M%SZ).dump"
+    condition     = google_cloud_run_v2_job.backup[0].template[0].template[0].containers[0].args[0] == "f=/backups/smoke-tracker-$(date -u +%Y%m%dT%H%M%SZ).dump; pg_dump \"$DATABASE_URL\" --format=custom --file=\"$f.partial\" && mv \"$f.partial\" \"$f\""
     error_message = "The shell expansions must reach the container untouched."
   }
   assert {
     condition     = tolist(google_cloud_scheduler_job.backup[0].http_target)[0].uri == "https://run.googleapis.com/v2/projects/test-project/locations/europe-west3/jobs/smoke-tracker-backup:run"
     error_message = "The scheduler calls the job's :run endpoint."
+  }
+  assert {
+    condition     = tolist(tolist(google_cloud_scheduler_job.backup[0].http_target)[0].oauth_token)[0].service_account_email == google_service_account.backup.email
+    error_message = "The scheduler calls the job as the backup account."
+  }
+  assert {
+    condition     = google_cloud_run_v2_job_iam_member.backup_runs_job[0].role == "roles/run.invoker" && google_cloud_run_v2_job_iam_member.backup_runs_job[0].member == google_service_account.backup.member
+    error_message = "The backup account may run the job, and nothing broader."
   }
 }
 
@@ -319,5 +327,9 @@ run "backup_account_grants_are_narrow" {
   assert {
     condition     = google_secret_manager_secret_iam_member.backup_reads_database_url.secret_id == google_secret_manager_secret.database_url.secret_id && google_storage_bucket_iam_member.backup_writes_dumps.bucket == google_storage_bucket.backups.name
     error_message = "The backup account reads one secret and writes one bucket."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_member.backup_reads_database_url.role == "roles/secretmanager.secretAccessor" && google_storage_bucket_iam_member.backup_writes_dumps.role == "roles/storage.objectUser"
+    error_message = "The backup account holds only the secret accessor and bucket object roles."
   }
 }

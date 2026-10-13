@@ -56,7 +56,7 @@ resource "google_cloud_run_v2_job" "backup" {
       containers {
         image   = var.backup_image
         command = ["/bin/sh", "-c"]
-        args    = ["pg_dump \"$DATABASE_URL\" --format=custom --no-owner --file=/backups/${var.name}-$(date -u +%Y%m%dT%H%M%SZ).dump"]
+        args    = ["f=/backups/${var.name}-$(date -u +%Y%m%dT%H%M%SZ).dump; pg_dump \"$DATABASE_URL\" --format=custom --file=\"$f.partial\" && mv \"$f.partial\" \"$f\""]
 
         env {
           name = "DATABASE_URL"

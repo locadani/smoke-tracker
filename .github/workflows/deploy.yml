@@ -84,8 +84,11 @@ jobs:
 
       # Without DATABASE_URL the image falls back to a SQLite file on Cloud Run's temporary disk.
       - name: Refuse to deploy before the database is connected
+        shell: bash
         run: |
-          gcloud run services describe "$SERVICE" --region "$REGION" --format=json \
+          service_json=$(gcloud run services describe "$SERVICE" --region "$REGION" --format=json) \
+            || { echo "Could not describe the service; refusing to deploy."; exit 1; }
+          echo "$service_json" \
             | jq -e '.spec.template.spec.containers[0].env[]? | select(.name == "DATABASE_URL")' > /dev/null \
             || { echo "DATABASE_URL is not attached yet (infra/README.md, first-time setup)."; exit 1; }
 
@@ -96,7 +99,8 @@ jobs:
           docker push "$REGION-docker.pkg.dev/$PROJECT_ID/smoke-tracker/smoke-tracker:$GITHUB_SHA"
 
       # Only the image changes; every other setting is owned by Terraform.
+      # --format=none: the service URL contains the project number and this log is public.
       - name: Deploy
         run: |
-          gcloud run services update "$SERVICE" --region "$REGION" \
+          gcloud run services update "$SERVICE" --region "$REGION" --quiet --format=none \
             --image "$REGION-docker.pkg.dev/$PROJECT_ID/smoke-tracker/smoke-tracker:$GITHUB_SHA"
