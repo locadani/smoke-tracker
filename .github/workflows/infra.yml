@@ -48,6 +48,13 @@ jobs:
           terraform init -backend=false -input=false
           terraform validate
 
+      - name: Bootstrap — validate and test
+        working-directory: infra/bootstrap
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+          terraform test
+
       - name: Redaction script test
         run: infra/scripts/redact-plan.test.sh
 
