@@ -150,3 +150,17 @@ impl ReadingWrites for SqliteTx {
         audited(self, AuditAction::Delete, before).await
     }
 }
+
+pub(crate) async fn fetch_all(conn: &mut SqliteConnection) -> StoreResult<Vec<Pm25Reading>> {
+    sqlx::query_as!(
+        ReadingRow,
+        "SELECT id, user_id, event_id, observed_at, recorded_at, value_ugm3, deleted_at \
+         FROM pm25_readings ORDER BY id"
+    )
+    .fetch_all(conn)
+    .await
+    .db()?
+    .into_iter()
+    .map(ReadingRow::into_reading)
+    .collect()
+}

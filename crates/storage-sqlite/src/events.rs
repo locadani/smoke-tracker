@@ -226,3 +226,17 @@ impl EventWrites for SqliteTx {
         audited(self, AuditAction::Update, before).await
     }
 }
+
+pub(crate) async fn fetch_all(conn: &mut SqliteConnection) -> StoreResult<Vec<Event>> {
+    sqlx::query_as!(
+        EventRow,
+        "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
+         FROM events ORDER BY id"
+    )
+    .fetch_all(conn)
+    .await
+    .db()?
+    .into_iter()
+    .map(EventRow::into_event)
+    .collect()
+}

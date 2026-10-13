@@ -85,3 +85,9 @@ async fn the_database_uses_write_ahead_logging() {
         .unwrap();
     assert_eq!(mode, "wal");
 }
+
+#[test]
+fn the_sqlite_store_is_a_complete_store() {
+    fn assert_store<S: smoke_domain::repos::Store>() {}
+    assert_store::<SqliteStore>();
+}

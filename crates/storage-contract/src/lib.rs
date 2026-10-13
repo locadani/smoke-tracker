@@ -8,6 +8,7 @@
 //! where `fixture` is an `async fn() -> Option<Fixture<MyStore>>` that gives each test a fresh,
 //! migrated database, or `None` to skip.
 
+pub mod audit;
 pub mod events;
 pub mod fixture;
 pub mod lists;
@@ -56,6 +57,14 @@ macro_rules! contract_tests {
             readings::correcting_and_deleting_a_reading_are_audited,
             readings::pm25_values_round_trip_exactly,
             readings::job_runs_are_remembered_but_not_audited,
+            audit::every_write_extends_one_unbroken_chain,
+            audit::the_history_of_a_record_lists_its_entries,
+            audit::a_direct_record_edit_is_detected,
+            audit::a_directly_inserted_record_is_detected,
+            audit::a_directly_deleted_record_is_detected,
+            audit::the_audit_log_refuses_updates_and_deletes,
+            audit::an_edited_audit_entry_breaks_the_chain,
+            audit::concurrent_writers_never_fork_the_chain,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

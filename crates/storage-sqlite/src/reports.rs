@@ -257,3 +257,15 @@ impl ReportWrites for SqliteTx {
         audited(self, AuditAction::Delete, before).await
     }
 }
+
+pub(crate) async fn fetch_all(conn: &mut SqliteConnection) -> StoreResult<Vec<SmellReport>> {
+    let rows = sqlx::query_as!(
+        ReportRow,
+        "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+         FROM smell_reports ORDER BY id"
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .db()?;
+    load_all(conn, rows).await
+}

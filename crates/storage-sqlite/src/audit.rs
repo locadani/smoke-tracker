@@ -2,13 +2,14 @@
 
 use serde_json::Value;
 use smoke_domain::audit::{AuditEntity, AuditRecord, ChainedEntry};
-use smoke_domain::repos::{AuditRepo, StoreResult};
+use smoke_domain::repos::{AuditRepo, SnapshotRepo, StoreResult};
 use smoke_domain::types::UserId;
+use smoke_domain::verify::{AuditState, Snapshot};
 use sqlx::SqliteConnection;
 
-use crate::SqliteStore;
 use crate::convert::{corrupt, parse};
 use crate::error::IntoStore;
+use crate::{SqliteStore, events, lists, readings, reports, users};
 
 struct AuditRow {
     id: i64,
@@ -84,5 +85,27 @@ impl AuditRepo for SqliteStore {
         .into_iter()
         .map(AuditRow::into_entry)
         .collect()
+    }
+}
+
+impl SnapshotRepo for SqliteStore {
+    /// One read transaction, so the log and the records come from the same moment even while
+    /// the app keeps writing.
+    async fn audit_state(&self) -> StoreResult<AuditState> {
+        let mut tx = self.reader.begin().await.db()?;
+        let entries = fetch_entries(&mut tx).await?;
+        let mut snapshots = Vec::new();
+        snapshots.extend(users::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
+        snapshots.extend(lists::fetch_rooms(&mut tx).await?.iter().map(Snapshot::of));
+        snapshots.extend(
+            lists::fetch_symptoms(&mut tx)
+                .await?
+                .iter()
+                .map(Snapshot::of),
+        );
+        snapshots.extend(events::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
+        snapshots.extend(reports::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
+        snapshots.extend(readings::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
+        Ok(AuditState { entries, snapshots })
     }
 }
