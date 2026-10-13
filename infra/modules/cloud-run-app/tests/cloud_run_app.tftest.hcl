@@ -1,0 +1,233 @@
+mock_provider "google" {}
+
+# Computed attributes are random strings by default and the IAM resources validate their format;
+# each account gets its own identity so a swapped grant cannot pass the equality assertions.
+override_resource {
+  target = google_service_account.runtime
+  values = {
+    name   = "projects/test-project/serviceAccounts/smoke-tracker-runtime@test-project.iam.gserviceaccount.com"
+    email  = "smoke-tracker-runtime@test-project.iam.gserviceaccount.com"
+    member = "serviceAccount:smoke-tracker-runtime@test-project.iam.gserviceaccount.com"
+  }
+}
+
+override_resource {
+  target = google_service_account.deploy
+  values = {
+    name   = "projects/test-project/serviceAccounts/smoke-tracker-deploy@test-project.iam.gserviceaccount.com"
+    email  = "smoke-tracker-deploy@test-project.iam.gserviceaccount.com"
+    member = "serviceAccount:smoke-tracker-deploy@test-project.iam.gserviceaccount.com"
+  }
+}
+
+variables {
+  project_id           = "test-project"
+  region               = "europe-west3"
+  name                 = "smoke-tracker"
+  github_repository    = "locadani/smoke-tracker"
+  github_repository_id = "1416787003"
+}
+
+run "registry_deletes_old_images_but_keeps_three" {
+  assert {
+    condition     = google_artifact_registry_repository.images.format == "DOCKER" && google_artifact_registry_repository.images.location == "europe-west3"
+    error_message = "The registry must be a Docker repository in the app's region."
+  }
+  assert {
+    condition     = google_artifact_registry_repository.images.cleanup_policy_dry_run == false
+    error_message = "Cleanup must actually delete (dry run off)."
+  }
+  assert {
+    condition     = anytrue([for p in google_artifact_registry_repository.images.cleanup_policies : p.action == "DELETE" && try(p.condition[0].older_than, "") == "1d"])
+    error_message = "A delete policy is required: a keep policy alone deletes nothing."
+  }
+  assert {
+    condition     = anytrue([for p in google_artifact_registry_repository.images.cleanup_policies : p.action == "KEEP" && try(p.most_recent_versions[0].keep_count, 0) == 3])
+    error_message = "The 3 most recent images must be kept for rollbacks."
+  }
+}
+
+run "secret_is_regional_protected_and_has_no_value" {
+  assert {
+    condition     = google_secret_manager_secret.database_url.secret_id == "smoke-tracker-database-url"
+    error_message = "The secret is named after the app."
+  }
+  assert {
+    condition     = google_secret_manager_secret.database_url.replication[0].user_managed[0].replicas[0].location == "europe-west3"
+    error_message = "The secret must be stored only in the app's region."
+  }
+  assert {
+    condition     = google_secret_manager_secret.database_url.deletion_protection == true
+    error_message = "The secret must be protected against deletion."
+  }
+}
+
+run "name_must_fit_account_ids" {
+  command = plan
+
+  variables {
+    name = "a-very-long-application-name"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "name_of_23_characters_is_accepted" {
+  command = plan
+
+  variables {
+    name = "abcdefghij-klmnopqrstuv"
+  }
+}
+
+run "name_of_5_characters_is_accepted" {
+  command = plan
+
+  variables {
+    name = "abcde"
+  }
+}
+
+run "name_ending_in_hyphen_is_rejected" {
+  command = plan
+
+  variables {
+    name = "smoke-tracker-"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "name_of_4_characters_is_rejected" {
+  command = plan
+
+  variables {
+    name = "abcd"
+  }
+
+  expect_failures = [var.name]
+}
+
+run "runtime_account_can_only_read_its_secret" {
+  assert {
+    condition     = google_service_account.runtime.account_id == "smoke-tracker-run"
+    error_message = "The runtime account is named <name>-run."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_member.runtime_reads_database_url.role == "roles/secretmanager.secretAccessor" && google_secret_manager_secret_iam_member.runtime_reads_database_url.member == google_service_account.runtime.member
+    error_message = "The runtime account must be able to read the database secret."
+  }
+  assert {
+    condition     = google_secret_manager_secret_iam_member.runtime_reads_database_url.secret_id == google_secret_manager_secret.database_url.secret_id
+    error_message = "The grant must be on the one secret, not the project."
+  }
+}
+
+run "deploy_account_can_push_images_and_act_as_runtime" {
+  assert {
+    condition     = google_service_account.deploy.account_id == "smoke-tracker-deploy"
+    error_message = "The deploy account is named <name>-deploy."
+  }
+  assert {
+    condition     = google_artifact_registry_repository_iam_member.deploy_pushes_images.role == "roles/artifactregistry.writer" && google_artifact_registry_repository_iam_member.deploy_pushes_images.member == google_service_account.deploy.member
+    error_message = "The deploy account must be able to push to the app's registry only."
+  }
+  assert {
+    condition     = google_service_account_iam_member.deploy_acts_as_runtime.role == "roles/iam.serviceAccountUser" && google_service_account_iam_member.deploy_acts_as_runtime.service_account_id == google_service_account.runtime.name
+    error_message = "The deploy account must be able to run revisions as the runtime account."
+  }
+}
+
+run "service_is_public_capped_and_protected" {
+  assert {
+    condition     = google_cloud_run_v2_service.app.invoker_iam_disabled == true
+    error_message = "The service is public through invoker_iam_disabled, not an allUsers grant."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].scaling[0].min_instance_count == 0 && google_cloud_run_v2_service.app.template[0].scaling[0].max_instance_count == 1
+    error_message = "The service scales to zero and to at most one instance."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].containers[0].resources[0].cpu_idle == true
+    error_message = "CPU must be allocated only during requests (free tier)."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].containers[0].resources[0].limits["memory"] == "512Mi"
+    error_message = "Memory defaults to 512Mi."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.template[0].service_account == google_service_account.runtime.email
+    error_message = "The service runs as the runtime account."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service.app.deletion_protection == true
+    error_message = "The service must be protected against deletion."
+  }
+  assert {
+    condition     = google_cloud_run_v2_service_iam_member.deploy_updates_service.role == "roles/run.developer" && google_cloud_run_v2_service_iam_member.deploy_updates_service.member == google_service_account.deploy.member
+    error_message = "The deploy account may deploy this one service, and nothing more."
+  }
+}
+
+run "database_url_not_attached_by_default" {
+  assert {
+    condition     = length(google_cloud_run_v2_service.app.template[0].containers[0].env) == 0
+    error_message = "Before the secret has a value, the service must not reference it, or instances won't start."
+  }
+}
+
+run "database_url_attached_from_secret_when_enabled" {
+  variables {
+    attach_database_url = true
+  }
+
+  assert {
+    condition     = tolist(google_cloud_run_v2_service.app.template[0].containers[0].env)[0].name == "DATABASE_URL"
+    error_message = "The app reads its connection string as DATABASE_URL."
+  }
+  assert {
+    condition     = tolist(google_cloud_run_v2_service.app.template[0].containers[0].env)[0].value_source[0].secret_key_ref[0].secret == google_secret_manager_secret.database_url.secret_id && tolist(google_cloud_run_v2_service.app.template[0].containers[0].env)[0].value_source[0].secret_key_ref[0].version == "latest"
+    error_message = "DATABASE_URL comes from the latest version of the app's secret."
+  }
+}
+
+run "only_this_repository_can_log_in" {
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.github.attribute_condition == "assertion.repository_id == '1416787003'"
+    error_message = "Only tokens from this repository (by ID, not name) may be exchanged."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.github.oidc[0].issuer_uri == "https://token.actions.githubusercontent.com"
+    error_message = "The provider trusts GitHub's OIDC issuer."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.github.attribute_mapping["attribute.repository_id"] == "assertion.repository_id" && google_iam_workload_identity_pool_provider.github.attribute_mapping["attribute.job_workflow_ref"] == "assertion.job_workflow_ref"
+    error_message = "repository_id and job_workflow_ref must be mapped so bindings can use them."
+  }
+}
+
+run "only_the_deploy_workflow_on_main_can_deploy" {
+  assert {
+    condition     = google_service_account_iam_member.github_deploys.role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.github_deploys.service_account_id == google_service_account.deploy.name
+    error_message = "GitHub may impersonate the deploy account only."
+  }
+  assert {
+    condition     = endswith(google_service_account_iam_member.github_deploys.member, "/attribute.job_workflow_ref/locadani/smoke-tracker/.github/workflows/deploy.yml@refs/heads/main")
+    error_message = "Only deploy.yml running on main may impersonate the deploy account."
+  }
+  assert {
+    condition     = startswith(google_service_account_iam_member.github_deploys.member, "principalSet://iam.googleapis.com/")
+    error_message = "The binding is a principalSet on the pool."
+  }
+}
+
+run "outputs_for_github_settings" {
+  assert {
+    condition     = output.repository_url == "europe-west3-docker.pkg.dev/test-project/smoke-tracker"
+    error_message = "The image repository URL is <region>-docker.pkg.dev/<project>/<name>."
+  }
+  assert {
+    condition     = output.database_url_secret_id == "smoke-tracker-database-url"
+    error_message = "The secret ID is exposed for the setup instructions."
+  }
+}
