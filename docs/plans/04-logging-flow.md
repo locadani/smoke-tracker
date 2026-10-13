@@ -27,7 +27,7 @@ sweep on a timer.
 0.9, tokio. No new crates.
 
 **Spec:** `docs/specs/2026-10-13-smoke-tracker-design.md` (§5, §7.1–§7.7, §9 screens 1–4, §11;
-also §4, §8.1, §9.2, §12). Decisions: `docs/DECISIONS.md` (rows #76–#91 are added by Task 12).
+also §4, §8.1, §9.2, §12). Decisions: `docs/DECISIONS.md` (rows #82–#97 are added by Task 12).
 Previous plan: `docs/plans/03-web-and-auth.md`.
 
 **Provenance:** every code block in this plan was compiled and tested before the plan was written,
@@ -44,27 +44,27 @@ Defaults were chosen so nothing blocks; each is a decision row and easy to chang
 
 1. **One milestone** (12 tasks + an optional spec-wording task), not split.
 2. **"Full guide →"** in the popup opens a new page, `/guide/rating`, with the whole intensity
-   table and the tip (decision #87). It moves under Settings → Guides in milestone 6.
+   table and the tip (decision #93). It moves under Settings → Guides in milestone 6.
 3. **Italian and Turkish strings** (about 120 new keys in Tasks 8–11) were drafted by Claude and
    need a native speaker's review, like the milestone 3 ones (spec §9.2).
 4. **Report notes stay at most 2000 characters.** The 500 suggested while planning conflicts
    with decision #51 and `ReportValues::NOTE_MAX_CHARS`, already enforced by the domain since
    milestone 1, so it was kept. Lowering it is a one-line change plus a decision row that
    supersedes #51.
-5. **Summary card** (decision #84): "This month: N events · N reports · N days with bedroom
+5. **Summary card** (decision #90): "This month: N events · N reports · N days with bedroom
    smoke", where *bedroom* is the starter room `room-bedroom` (a custom room is never guessed at;
    the third part disappears if that room is gone), *events* are events with a visible report this
    local month, and guests count only their own reports.
-6. **Plain forms, not htmx partials** (decision #86): validation errors render the same page again
+6. **Plain forms, not htmx partials** (decision #92): validation errors render the same page again
    with status 422. Spec §12 says "(htmx partial)"; Task 13 proposes the wording change and
    **needs your approval** before anyone runs it.
-7. **Corrections may change the observed time** within the report's event (decision #80). A wrong
+7. **Corrections may change the observed time** within the report's event (decision #86). A wrong
    start time of an event's *first* report cannot be moved earlier; "Move to another event → New
    event" is the way out.
 8. **Guests may answer "No, it had stopped: new event"** even when the open event is a resident's,
-   which closes it at its last report (spec §7.2; decision #82). Closing by hand stays limited to
+   which closes it at its last report (spec §7.2; decision #88). Closing by hand stays limited to
    their own events.
-9. **Sweep timer: every 5 minutes** (decision #78), plus startup, the Log screen and every logging
+9. **Sweep timer: every 5 minutes** (decision #84), plus startup, the Log screen and every logging
    request.
 
 ## Global Constraints
@@ -143,7 +143,7 @@ Defaults were chosen so nothing blocks; each is a decision row and easy to chang
 ```
 smoke-tracker/
 ├─ Cargo.toml                          axum + "query" feature
-├─ docs/DECISIONS.md, plans/ROADMAP.md + rows #76–#91, M4 plan link
+├─ docs/DECISIONS.md, plans/ROADMAP.md + rows #82–#97, M4 plan link
 └─ crates/
    ├─ domain/src/
    │  ├─ repos.rs                      + reports_between, readings_between, event_at,
@@ -191,7 +191,7 @@ smoke-tracker/
 transaction (close the open event, open a new one, the report, its reading) and decisions made on
 data read inside that transaction. As generic functions over the write traits they stay free of
 I/O details, the storage contract exercises them on both backends, and the web layer cannot
-forget a rule or a permission check (decision #76).
+forget a rule or a permission check (decision #82).
 
 ---
 
@@ -1598,7 +1598,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 Pure helpers the use cases and pages share: the local calendar day and month of an instant (23-
 and 25-hour DST days included), which events a report in the past may belong to (spec §7.5:
-"the events on that day", decision #79), who gets an auto-close notice (spec §7.4), and the
+"the events on that day", decision #85), who gets an auto-close notice (spec §7.4), and the
 guests' "own data only" rule (spec §4).
 
 **Files:**
@@ -3488,7 +3488,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 7: Domain — the month summary and a report's history
 
-Two pure modules. `summary` counts what the summary card shows (decision #84). `history` turns a
+Two pure modules. `summary` counts what the summary card shows (decision #90). `history` turns a
 report's audit entries into History lines: each correction's changed values ("intensity 6 → 7,
 added bedroom", spec §6.1), moves, and whether the report was ever corrected (its "edited"
 badge).
@@ -3969,7 +3969,7 @@ from the user's last report in the open event, symptoms as checkboxes, PM2.5, th
 a *change* disclosure) and a note; the main button reads "Update: situation changed" while an event
 is open. Viewers and expired guests get no form. ⓘ *How to rate* is a link to the new
 `/guide/rating` page that `static/app.js` turns into `showModal()` on a native `<dialog>`
-(decision #87). The form posts to `/log`, which Task 9 adds. The header now shows who is signed
+(decision #93). The form posts to `/log`, which Task 9 adds. The header now shows who is signed
 in.
 
 **Files:**
@@ -5478,7 +5478,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 the question `log_prompt` picks: "Same smell still going?", "Which event was this?" (that day's
 joinable events; guests see start times only) or "The event from … was auto-closed". The question
 page re-posts the form as hidden fields plus `asked`, naming the question; an answer to a question
-that no longer applies gets the current one (decision #77). Then `log_smell`/`log_reading` run in
+that no longer applies gets the current one (decision #83). Then `log_smell`/`log_reading` run in
 one transaction and the browser is redirected to `/?saved=…`. Validation errors show the form again
 as typed with a 422. While an event is open, a pending auto-close notice is a banner with
 *Dismiss*. A role refusal now renders "Not allowed" (403) instead of the cross-site page.
@@ -7318,7 +7318,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 10: Web — the Events list and an event's timeline, close and reopen
 
 `/events?month=YYYY-MM` lists a local month's events grouped by the day they opened, newest first,
-with standalone PM2.5 readings (decision #90); every report of the month comes from one
+with standalone PM2.5 readings (decision #96); every report of the month comes from one
 `reports_between` window. `/events/{id}` merges reports and readings by time, flags gaps over
 three hours (§7.7), names who logged what for people who see everything, and offers Close (end
 time defaulting to now) and Reopen per the permission table. The Log screen gets a *Close event*
@@ -10128,7 +10128,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 12: Decisions and roadmap
 
 **Files:**
-- Modify: `docs/DECISIONS.md` (append rows #76–#91; the file is append-only)
+- Modify: `docs/DECISIONS.md` (append rows #82–#97; the file is append-only)
 - Modify: `docs/plans/ROADMAP.md`
 
 **Interfaces:** none (documentation).
@@ -10143,7 +10143,7 @@ add ✅ once it is merged (row 3 gets its ✅ now: milestone 3 is merged).
 
 ```bash
 git add docs/DECISIONS.md docs/plans/ROADMAP.md
-git commit -m "docs: decisions #76–#91 for the logging flow; roadmap links the milestone 4 plan
+git commit -m "docs: decisions #82–#97 for the logging flow; roadmap links the milestone 4 plan
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -10152,7 +10152,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 
 ### Task 13: Spec wording — needs the user's approval; skip unless approved
 
-Two clarifications so the spec matches decisions #79 and #86. **Executors: do not start this task
+Two clarifications so the spec matches decisions #85 and #92. **Executors: do not start this task
 until the user has approved these exact edits.** Nothing in the code depends on them.
 
 **Files:**
