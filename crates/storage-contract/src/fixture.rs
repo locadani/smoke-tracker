@@ -8,9 +8,9 @@ use std::sync::Arc;
 use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::FakeClock;
-use smoke_domain::records::{NewUser, PasswordHash, User};
-use smoke_domain::repos::{AuditRepo, Commit, Transactional, UserWrites};
-use smoke_domain::types::{Locale, Role, Username};
+use smoke_domain::records::{Closure, Event, NewEvent, NewUser, PasswordHash, User};
+use smoke_domain::repos::{AuditRepo, Commit, EventWrites, Transactional, UserWrites};
+use smoke_domain::types::{Locale, Role, UserId, Username};
 
 /// Runs SQL directly against the test database, bypassing the store: how tests tamper.
 pub type RawSql = Box<
@@ -104,4 +104,26 @@ pub async fn last_entry<S: AuditRepo>(fx: &Fixture<S>) -> ChainedEntry {
         .expect("audit log")
         .pop()
         .expect("at least one audit entry")
+}
+
+pub async fn add_event<S>(
+    fx: &Fixture<S>,
+    owner: UserId,
+    opened_at: DateTime<Utc>,
+    closed: Option<Closure>,
+) -> Event
+where
+    S: Transactional<Tx: EventWrites>,
+{
+    let mut tx = fx.store.begin(Some(owner)).await.expect("begin");
+    let event = tx
+        .create_event(NewEvent {
+            owner_id: owner,
+            opened_at,
+            closed,
+        })
+        .await
+        .expect("create event");
+    tx.commit().await.expect("commit");
+    event
 }

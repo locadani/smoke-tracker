@@ -8,6 +8,7 @@
 //! where `fixture` is an `async fn() -> Option<Fixture<MyStore>>` that gives each test a fresh,
 //! migrated database, or `None` to skip.
 
+pub mod events;
 pub mod fixture;
 pub mod lists;
 pub mod transactions;
@@ -36,6 +37,13 @@ macro_rules! contract_tests {
             lists::a_custom_room_has_no_translation_key,
             lists::hiding_a_room_is_audited_once,
             lists::hiding_an_unknown_symptom_is_not_found,
+            events::a_new_event_can_be_the_open_event,
+            events::only_one_event_can_be_open,
+            events::closing_and_reopening_are_audited,
+            events::reopening_is_refused_while_another_event_is_open,
+            events::the_end_of_a_closed_event_can_move,
+            events::the_auto_close_notice_is_marked_seen_once,
+            events::events_between_returns_overlapping_events,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

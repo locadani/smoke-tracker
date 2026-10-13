@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT MAX(observed_at) FROM smell_reports WHERE event_id = $1 AND deleted_at IS NULL",
+  "describe": {
+    "columns": [
+      {
+        "name": "MAX(observed_at)",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "26ed5a081f09b0fde48c4eaeb62c990db4f1559dd1fd573f1a79c3e700845e64"
+}
