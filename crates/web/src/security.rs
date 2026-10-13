@@ -63,7 +63,14 @@ pub(crate) async fn check_origin(
     if safe || is_same_origin(request.headers(), config.base_url.origin()) {
         next.run(request).await
     } else {
-        tracing::warn!("refused a cross-site request");
+        let headers = request.headers();
+        tracing::warn!(
+            method = %request.method(),
+            path = ?request.uri().path(),
+            sec_fetch_site = ?headers.get("sec-fetch-site"),
+            origin = ?headers.get(ORIGIN),
+            "refused a cross-site request"
+        );
         AppError::Forbidden.into_response()
     }
 }

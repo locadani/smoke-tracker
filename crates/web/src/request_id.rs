@@ -1,4 +1,5 @@
-//! Request ids: generated for every request, logged in its span, returned as `x-request-id`,
+//! Request ids: a random one is generated unless the request already carries an
+//! `x-request-id`, which is kept; logged in its span, returned as `x-request-id`,
 //! and shown on error pages so a user can quote one.
 
 use axum::http::{HeaderMap, HeaderValue, Request};
@@ -6,7 +7,8 @@ use tower_http::request_id::{MakeRequestId, RequestId};
 
 pub(crate) const HEADER: &str = "x-request-id";
 
-/// 16 hex characters from the operating system's random source.
+/// 16 hex characters from the operating system's random source, used only when the request
+/// has no `x-request-id` of its own.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct RandomRequestId;
 

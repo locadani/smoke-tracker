@@ -37,6 +37,7 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
 
 /// The whole application. Static assets and the health check skip sessions and the database.
 pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
+    auth::password::prepare_dummy_hash();
     let signed_in = Router::new()
         .route("/", get(routes::home::show))
         .route_layer(middleware::from_fn(auth::require_user));

@@ -33,6 +33,12 @@ static DUMMY_HASH: LazyLock<String> = LazyLock::new(|| {
         .to_string()
 });
 
+/// Computes the dummy hash now, at startup, so the first unknown-user sign-in does not pay a
+/// second Argon2 run (a timing signal after every cold start).
+pub(crate) fn prepare_dummy_hash() {
+    LazyLock::force(&DUMMY_HASH);
+}
+
 /// How many Argon2 runs may happen at once. Each one allocates about 19 MiB, and the server
 /// runs on a 512 MiB Cloud Run instance: a burst of parallel sign-ins (or a guessing script)
 /// must queue rather than run out of memory. Two keep a real user's wait short.
