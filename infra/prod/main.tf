@@ -21,7 +21,7 @@ module "app" {
   }
 
   # Set to true in a PR once the secret has its first version (infra/README.md, first-time setup).
-  attach_database_url = false
+  attach_database_url = true
 
   depends_on = [google_project_service.apis]
 }
