@@ -25,7 +25,8 @@ async fn fixture() -> Option<Fixture<PostgresStore>> {
                 .map_err(|e| e.to_string())
         }
     });
-    let drop_guard = "DROP TRIGGER audit_log_append_only ON audit_log";
+    let drop_guard = "DROP TRIGGER audit_log_append_only ON audit_log; \
+         DROP TRIGGER audit_log_no_truncate ON audit_log;";
     Some(Fixture::new(store, clock, raw, drop_guard, ()))
 }
 

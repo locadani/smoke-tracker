@@ -135,6 +135,7 @@ pub async fn the_audit_log_refuses_updates_and_deletes<S: Store>(fx: &Fixture<S>
     populate(fx).await;
     assert!(fx.raw("UPDATE audit_log SET hash = 'x'").await.is_err());
     assert!(fx.raw("DELETE FROM audit_log").await.is_err());
+    assert!(fx.raw("TRUNCATE audit_log").await.is_err());
     assert!(verify_store(&fx.store).await.unwrap().is_ok());
 }
 

@@ -37,8 +37,17 @@ pub struct SqliteStore {
 }
 
 impl SqliteStore {
-    /// Opens (and creates if missing) the database at `url`, e.g. `sqlite://data/smoke.db`.
+    /// Opens (and creates if missing) the database file at `url`, e.g. `sqlite://data/smoke.db`.
+    ///
+    /// File URLs only: the writer and the readers are separate connections that must share one
+    /// file, so in-memory databases are rejected.
     pub async fn connect(url: &str, clock: Arc<dyn Clock>) -> StoreResult<Self> {
+        if url.contains(":memory:") || url.contains("mode=memory") {
+            return Err(StoreError::Backend(
+                "in-memory SQLite is not supported: the writer and the readers must share one file"
+                    .into(),
+            ));
+        }
         let base = SqliteConnectOptions::from_str(url)
             .db()?
             .foreign_keys(true)
@@ -79,8 +88,12 @@ impl SqliteStore {
 impl Transactional for SqliteStore {
     type Tx = SqliteTx;
 
+    /// Write transactions start with `BEGIN IMMEDIATE`, taking the write lock up front: another
+    /// process (e.g. the CLI) writing at the same time makes this wait out the busy timeout
+    /// instead of failing later with `SQLITE_BUSY_SNAPSHOT`.
+
     async fn begin(&self, actor: Option<UserId>) -> StoreResult<SqliteTx> {
-        let tx = self.writer.begin().await.db()?;
+        let tx = self.writer.begin_with("BEGIN IMMEDIATE").await.db()?;
         Ok(SqliteTx::new(tx, actor, self.clock.clone()))
     }
 }

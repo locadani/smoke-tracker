@@ -91,3 +91,49 @@ fn the_sqlite_store_is_a_complete_store() {
     fn assert_store<S: smoke_domain::repos::Store>() {}
     assert_store::<SqliteStore>();
 }
+
+#[tokio::test]
+async fn in_memory_databases_are_rejected() {
+    for url in [
+        "sqlite::memory:",
+        "sqlite://file:smoke?mode=memory&cache=shared",
+    ] {
+        let error = SqliteStore::connect(url, Arc::new(SystemClock))
+            .await
+            .err()
+            .unwrap_or_else(|| panic!("{url} was accepted"));
+        assert!(
+            error.to_string().contains("database error"),
+            "{url}: {error:?}"
+        );
+        assert!(
+            format!("{error:?}").contains("in-memory SQLite is not supported"),
+            "{url}: {error:?}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn a_second_writer_waits_at_begin_instead_of_failing_at_commit() {
+    use smoke_domain::repos::Transactional;
+
+    let (_dir, url) = database();
+    let first = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    first.migrate().await.unwrap();
+    let second = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+
+    let held = first.begin(None).await.unwrap();
+    assert!(
+        second.begin(None).await.is_err(),
+        "the write lock is taken when the transaction starts"
+    );
+    drop(held);
+    second
+        .begin(None)
+        .await
+        .expect("the lock is free again once the first transaction ends");
+}

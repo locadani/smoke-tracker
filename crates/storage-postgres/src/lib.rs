@@ -60,8 +60,15 @@ impl PostgresStore {
 impl Transactional for PostgresStore {
     type Tx = PostgresTx;
 
+    /// Waiting for the writer lock is capped at ten seconds (`lock_timeout`), so a stuck writer
+    /// fails the next one instead of hanging it.
+
     async fn begin(&self, actor: Option<UserId>) -> StoreResult<PostgresTx> {
         let mut tx = self.pool.begin().await.db()?;
+        sqlx::query!("SET LOCAL lock_timeout = '10s'")
+            .execute(&mut *tx)
+            .await
+            .db()?;
         sqlx::query!("LOCK TABLE audit_log IN EXCLUSIVE MODE")
             .execute(&mut *tx)
             .await

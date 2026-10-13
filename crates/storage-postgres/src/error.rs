@@ -30,7 +30,9 @@ fn unique_conflict(constraint: Option<&str>) -> Conflict {
     match constraint {
         Some("users_username_unique") => Conflict::UsernameTaken,
         Some("events_one_open") => Conflict::AnotherEventOpen,
-        Some("audit_log_prev_hash_unique" | "audit_log_hash_unique") => Conflict::ChainForked,
+        Some("audit_log_pkey" | "audit_log_prev_hash_unique" | "audit_log_hash_unique") => {
+            Conflict::ChainForked
+        }
         _ => Conflict::Duplicate,
     }
 }
@@ -51,6 +53,10 @@ mod tests {
         );
         assert_eq!(
             unique_conflict(Some("audit_log_prev_hash_unique")),
+            Conflict::ChainForked
+        );
+        assert_eq!(
+            unique_conflict(Some("audit_log_pkey")),
             Conflict::ChainForked
         );
         assert_eq!(
