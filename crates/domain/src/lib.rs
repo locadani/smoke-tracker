@@ -9,6 +9,7 @@ pub mod error;
 pub mod events;
 pub mod permissions;
 pub mod records;
+pub mod repos;
 pub mod schedule;
 pub mod types;
 
