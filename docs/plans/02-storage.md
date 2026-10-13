@@ -6404,6 +6404,8 @@ some, apply only those. If they decline, skip the task entirely.
 6. §10.1, add a bullet: `- Instants are stored as integer microseconds since the Unix epoch in both backends (decision #46).`
 7. §13.3, the storage row's "How" cell `contract tests vs SQLite (in-memory) and Postgres` becomes
    `contract tests vs SQLite (temporary file) and Postgres`.
+8. §10.1, the schema-parity bullet's phrase `` `migrations/sqlite` and `migrations/postgres` `` becomes
+   `` `crates/storage-sqlite/migrations` and `crates/storage-postgres/migrations` `` (the layout the code uses).
 
 - [ ] **Step 2: Commit**
 
