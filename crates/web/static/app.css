@@ -64,3 +64,134 @@ footer {
   margin-top: calc(var(--gap) * 3);
   font-size: 0.875rem;
 }
+
+.who {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.status,
+.summary {
+  margin: 0.5rem 0;
+}
+
+.summary {
+  font-size: 0.875rem;
+}
+
+fieldset {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+legend {
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.levels {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.5rem;
+}
+
+.levels legend {
+  grid-column: 1 / -1;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.chips legend,
+.chips .group {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.chip {
+  position: relative;
+}
+
+.chip input {
+  position: absolute;
+  opacity: 0;
+}
+
+.chip span {
+  display: block;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  text-align: center;
+}
+
+.chip input:checked + span {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.chip input:focus-visible + span {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.checks label {
+  display: block;
+  padding: 0.25rem 0;
+}
+
+.info {
+  font-weight: 400;
+  margin-left: 0.5rem;
+}
+
+textarea {
+  font: inherit;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+}
+
+button.secondary {
+  background: none;
+  color: inherit;
+  border: 1px solid currentColor;
+}
+
+dialog {
+  padding: 0;
+  border: none;
+  border-radius: 0.75rem;
+  max-width: 28rem;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 50%);
+}
+
+.dialog-body {
+  padding: var(--gap);
+}
+
+.dialog-close {
+  float: right;
+}
+
+table.guide {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+table.guide th,
+table.guide td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.35rem 0.5rem;
+  border-bottom: 1px solid rgb(128 128 128 / 30%);
+}

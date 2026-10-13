@@ -1,4 +1,5 @@
 app-name = Smoke Tracker
+close = Kapat
 language = Dil
 
 login-title = Giriş yap
@@ -8,11 +9,68 @@ login-submit = Giriş yap
 login-failed = Kullanıcı adı veya şifre geçersiz.
 login-locked = Çok fazla deneme. 15 dakika sonra tekrar deneyin.
 login-expired = Bu hesabın süresi doldu. Yeniden etkinleştirmesi için bir ev sakinine başvurun.
+signed-in-as = { $username } olarak giriş yapıldı.
 logout = Çıkış yap
 
-home-title = Ana sayfa
-home-signed-in = { $username } olarak giriş yapıldı.
-home-coming-soon = Koku kaydı bir sonraki sürümde geliyor.
+log-title = Koku kaydet
+event-none = Devam eden bir koku olayı yok.
+event-open-since = { $time } saatinden beri süren bir koku olayı var.
+log-intensity = Yoğunluk
+log-how-to-rate = Nasıl puanlanır
+log-rooms = Odalar
+log-inside = Ev içi
+log-common = Ortak alanlar
+log-symptoms = Belirtiler
+log-pm25 = PM2.5 (µg/m³, isteğe bağlı)
+log-time = Saat
+log-time-now = şimdi
+log-time-change = değiştir
+log-note = Not (isteğe bağlı)
+log-submit = Kokuyu kaydet
+log-update = Güncelle: durum değişti
+log-pm25-only = Yalnızca PM2.5 kaydet
+log-read-only = Verilere bakabilirsin ama kayıt yapamazsın.
+
+summary-this-month = Bu ay:
+summary-events = { $count ->
+    [one] 1 olay
+   *[other] { $count } olay
+}
+summary-reports = { $count ->
+    [one] 1 bildirim
+   *[other] { $count } bildirim
+}
+summary-bedroom-days = { $count ->
+    [one] yatak odasında duman olan 1 gün
+   *[other] yatak odasında duman olan { $count } gün
+}
+
+rating-title = Nasıl puanlanır
+rating-level = Seviye
+rating-description = Nasıl bir şey
+rating-tip = Şu an aldığın kokuyu puanla, ne kadar rahatsız olduğunu değil. İki sayı arasında kalırsan küçük olanı seç.
+rating-full-guide = Tüm rehber →
+
+intensity-1-name = Zar zor
+intensity-1-desc = Ancak dikkat edersen. Duman olduğundan emin değilsin.
+intensity-2-name = Hafif
+intensity-2-desc = Odaya girerken fark edilir, sonra kaybolur.
+intensity-3-name = Az
+intensity-3-desc = Açıkça duman, ama zayıf. Görmezden gelmek kolay.
+intensity-4-name = Belirgin
+intensity-4-desc = Sürekli var, biraz rahatsız edici.
+intensity-5-name = Orta
+intensity-5-desc = Her an belli. Birine söylerdin.
+intensity-6-name = Güçlü
+intensity-6-desc = Görmezden gelmek zor; pencereyi açmak ya da odadan çıkmak istersin.
+intensity-7-name = Çok güçlü
+intensity-7-desc = Rahat duramazsın; koku birikir.
+intensity-8-name = Ağır
+intensity-8-desc = Giysilere ve yatak takımına siner; çıktıktan sonra da kalır.
+intensity-9-name = Çok ağır
+intensity-9-desc = Sigara içen birinin yanında durmak gibi.
+intensity-10-name = Dayanılmaz
+intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

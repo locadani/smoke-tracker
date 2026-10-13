@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("rating-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("rating-title") }}</h1>
+<table class="guide">
+  <thead>
+    <tr><th scope="col">{{ tr.t("rating-level") }}</th><th scope="col">{{ tr.t("rating-description") }}</th></tr>
+  </thead>
+  <tbody>
+    {% for level in levels %}
+    <tr><th scope="row">{{ level.value }} · {{ level.name }}</th><td>{{ level.description }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p>{{ tr.t("rating-tip") }}</p>
+<p><a href="/">{{ tr.t("error-back-home") }}</a></p>
+{% endblock %}

@@ -1,7 +1,8 @@
 //! One module per feature.
 
-pub(crate) mod home;
+pub(crate) mod guide;
 pub(crate) mod lang;
+pub(crate) mod log;
 pub(crate) mod login;
 
 use crate::error::AppError;

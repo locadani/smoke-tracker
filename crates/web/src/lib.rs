@@ -8,11 +8,13 @@ pub mod config;
 mod cookies;
 mod error;
 mod i18n;
+mod labels;
 mod request_id;
 mod routes;
 mod security;
 mod sessions;
 mod state;
+mod time;
 
 use std::future::Future;
 use std::net::SocketAddr;
@@ -39,7 +41,8 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
 pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     auth::password::prepare_dummy_hash();
     let signed_in = Router::new()
-        .route("/", get(routes::home::show))
+        .route("/", get(routes::log::show::<S>))
+        .route("/guide/rating", get(routes::guide::rating))
         .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
         .merge(signed_in)

@@ -142,6 +142,42 @@ async fn the_origin_check_uses_the_configured_url_not_the_host_header() {
     assert_eq!(app.send(request).await.status(), StatusCode::SEE_OTHER);
 }
 
+/// The first event-handler attribute (whitespace, `on`, lowercase letters, `=`) in `html`.
+fn event_handler_attribute(html: &str) -> Option<&str> {
+    let bytes = html.as_bytes();
+    (0..bytes.len()).find_map(|start| {
+        if !bytes[start].is_ascii_whitespace() || !bytes[start + 1..].starts_with(b"on") {
+            return None;
+        }
+        let letters = bytes[start + 3..]
+            .iter()
+            .take_while(|b| b.is_ascii_lowercase())
+            .count();
+        let equals = start + 3 + letters;
+        (letters > 0 && bytes.get(equals) == Some(&b'=')).then(|| &html[start + 1..=equals])
+    })
+}
+
+#[test]
+fn the_event_handler_scan_finds_attributes_and_not_words() {
+    assert_eq!(
+        event_handler_attribute(r#"<input onfocus="x">"#),
+        Some("onfocus=")
+    );
+    assert_eq!(
+        event_handler_attribute("<form\nonsubmit=\"x\">"),
+        Some("onsubmit=")
+    );
+    assert_eq!(
+        event_handler_attribute("<p>once upon a time, on=1</p>"),
+        None
+    );
+    assert_eq!(
+        event_handler_attribute(r#"<a data-on="1" href="/on">"#),
+        None
+    );
+}
+
 #[tokio::test]
 async fn no_page_needs_inline_scripts_styles_or_eval() {
     let app = TestApp::new().await;
@@ -150,6 +186,7 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
     let pages = [
         text(app.send(get("/login")).await).await,
         text(app.send(get_with("/", &cookie)).await).await,
+        text(app.send(get_with("/guide/rating", &cookie)).await).await,
         text(app.send(get("/missing")).await).await,
         text(app.attempt("daniele", "not the password").await).await,
     ];
@@ -169,6 +206,7 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         ] {
             assert!(!html.contains(forbidden), "{forbidden} in {html}");
         }
+        assert_eq!(event_handler_attribute(&html), None, "{html}");
         for script in html.match_indices("<script").map(|(i, _)| &html[i..]) {
             assert!(script.starts_with("<script src=\"/static/"), "{script}");
         }

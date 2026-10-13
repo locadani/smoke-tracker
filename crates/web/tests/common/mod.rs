@@ -10,12 +10,16 @@ use axum::body::Body;
 use axum::extract::ConnectInfo;
 use axum::http::header::{CONTENT_TYPE, COOKIE, LOCATION, SET_COOKIE};
 use axum::http::{HeaderName, Request, Response, StatusCode};
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
+use smoke_domain::logbook::{EventChoice, Logged, SmellEntry, log_smell};
+use smoke_domain::records::ReportValues;
 use smoke_domain::records::{NewUser, User};
-use smoke_domain::repos::{Commit, Transactional, UserWrites};
+use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
+use smoke_domain::starter::seed_starter_lists;
+use smoke_domain::types::{Intensity, RoomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -48,10 +52,11 @@ impl TestApp {
         let clock = Arc::new(FakeClock::new(SystemClock.now()));
         let store = SqliteStore::connect(&db_url, clock.clone()).await.unwrap();
         store.migrate().await.unwrap();
+        seed_starter_lists(&store).await.unwrap();
         let config = WebConfig {
             base_url: BaseUrl::parse(base_url).unwrap(),
             client_ip_header: client_ip_header.map(HeaderName::from_static),
-            schedule: DailySchedule::new(chrono_tz::Europe::Rome, 4).unwrap(),
+            schedule: schedule(),
         };
         let router = smoke_web::router(AppState::new(store.clone(), clock.clone(), config));
         Self {
@@ -81,6 +86,57 @@ impl TestApp {
         user
     }
 
+    /// Sets the fake clock. Sessions still work: `tower-sessions` stamps their expiry with the
+    /// real time, which is later than any instant the tests use.
+    pub fn at(&self, instant: &str) {
+        self.clock.set(t(instant));
+    }
+
+    /// The id of a starter room, e.g. `room("room-bedroom")`.
+    pub async fn room(&self, key: &str) -> RoomId {
+        let rooms = self.store.rooms().await.unwrap();
+        rooms
+            .iter()
+            .find(|r| r.i18n_key.as_deref() == Some(key))
+            .unwrap()
+            .id
+    }
+
+    /// Logs a report through the domain, as the Log form would, at `at` (RFC 3339).
+    pub async fn log(
+        &self,
+        user: &User,
+        at: &str,
+        intensity: u8,
+        rooms: &[RoomId],
+        choice: EventChoice,
+    ) -> Logged {
+        let entry = SmellEntry {
+            observed_at: t(at),
+            values: ReportValues::new(
+                Intensity::new(intensity).unwrap(),
+                rooms.to_vec(),
+                vec![],
+                None,
+            )
+            .unwrap(),
+            pm25: None,
+        };
+        let mut tx = self.store.begin(Some(user.id)).await.unwrap();
+        let logged = log_smell(
+            &mut tx,
+            &user.actor(),
+            entry,
+            choice,
+            &schedule(),
+            self.clock.now(),
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        logged
+    }
+
     pub async fn send(&self, request: Request<Body>) -> Response<Body> {
         self.router.clone().oneshot(request).await.unwrap()
     }
@@ -95,6 +151,15 @@ impl TestApp {
         assert_eq!(response.status(), StatusCode::SEE_OTHER, "sign-in failed");
         session_cookie(&response).expect("a session cookie")
     }
+}
+
+pub fn t(instant: &str) -> DateTime<Utc> {
+    instant.parse().unwrap()
+}
+
+/// Rome, auto-close at 04:00: what the test app is configured with.
+pub fn schedule() -> DailySchedule {
+    DailySchedule::new(chrono_tz::Europe::Rome, 4).unwrap()
 }
 
 pub fn get(path: &str) -> Request<Body> {

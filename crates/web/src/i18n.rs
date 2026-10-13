@@ -45,12 +45,20 @@ impl Tr {
         LOCALES.lookup(language(self.0), key)
     }
 
-    /// A message with one argument, e.g. `tr.t1("home-signed-in", "username", name)`.
+    /// A message with one argument, e.g. `tr.t1("signed-in-as", "username", name)`.
     pub(crate) fn t1(&self, key: &str, name: &str, value: &str) -> String {
         let args: HashMap<Cow<'static, str>, FluentValue> = HashMap::from([(
             Cow::Owned(name.to_owned()),
             FluentValue::from(value.to_owned()),
         )]);
+        LOCALES.lookup_with_args(language(self.0), key, &args)
+    }
+
+    /// A message that depends on a number, e.g. `tr.n("summary-events", &3)`: Fluent picks the
+    /// language's plural form from `$count`. Takes a reference because templates pass one.
+    pub(crate) fn n(&self, key: &str, count: &usize) -> String {
+        let args: HashMap<Cow<'static, str>, FluentValue> =
+            HashMap::from([(Cow::Borrowed("count"), FluentValue::from(*count))]);
         LOCALES.lookup_with_args(language(self.0), key, &args)
     }
 }
@@ -119,6 +127,7 @@ mod tests {
 
     use super::*;
     use crate::error;
+    use crate::routes::guide;
     use crate::routes::login::Notice;
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -138,12 +147,13 @@ mod tests {
             .collect()
     }
 
-    /// Every literal key in `tr.t("…")` and `tr.t1("…", …)` calls in the templates.
+    /// Every literal key in `tr.t("…")`, `tr.t1("…", …)` and `tr.n("…", …)` calls in the
+    /// templates.
     fn template_keys() -> BTreeSet<String> {
         let mut keys = BTreeSet::new();
         for entry in fs::read_dir(format!("{DIR}/templates")).unwrap() {
             let text = fs::read_to_string(entry.unwrap().path()).unwrap();
-            for call in ["t(\"", "t1(\""] {
+            for call in ["t(\"", "t1(\"", "n(\""] {
                 for (start, _) in text.match_indices(call) {
                     let rest = &text[start + call.len()..];
                     keys.insert(rest[..rest.find('"').unwrap()].to_owned());
@@ -185,6 +195,7 @@ mod tests {
         assert!(used.contains("app-name"), "the template scan found nothing");
         used.extend(error::KEYS.map(str::to_owned));
         used.extend(Notice::ALL.map(|notice| notice.key().to_owned()));
+        used.extend(guide::keys());
         let english = message_ids(Locale::En);
         let missing: Vec<_> = used.difference(&english).collect();
         assert!(
@@ -250,8 +261,17 @@ mod tests {
         assert_eq!(Tr(Locale::It).t("login-title"), "Accedi");
         assert_eq!(Tr(Locale::Tr).t("login-title"), "Giriş yap");
         assert_eq!(
-            Tr(Locale::En).t1("home-signed-in", "username", "daniele"),
+            Tr(Locale::En).t1("signed-in-as", "username", "daniele"),
             "Signed in as daniele."
         );
+    }
+
+    #[test]
+    fn counts_pick_the_plural_form_of_each_language() {
+        assert_eq!(Tr(Locale::En).n("summary-events", &1), "1 event");
+        assert_eq!(Tr(Locale::En).n("summary-events", &14), "14 events");
+        assert_eq!(Tr(Locale::It).n("summary-reports", &1), "1 segnalazione");
+        assert_eq!(Tr(Locale::It).n("summary-reports", &41), "41 segnalazioni");
+        assert_eq!(Tr(Locale::Tr).n("summary-events", &14), "14 olay");
     }
 }
