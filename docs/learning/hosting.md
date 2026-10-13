@@ -48,6 +48,10 @@ same Docker image runs on both.
 - A new project has every service (API) switched off. Enable only what you use. In the API
   Library, pick the result whose name ends in **API**; the other result is the product overview.
 - Set a **budget alert** (€1) as soon as billing is linked.
+- Give the image registry a **cleanup policy** (keep the 3 most recent versions, mode "delete",
+  not "dry run"). Every deploy adds a ~20 MB image and nothing is deleted by default, so the free
+  0.5 GB fills up in a few weeks. Keeping 3 still allows a one-click rollback to an earlier
+  version. The policy runs about once a day.
 - Error messages usually say what is missing, with a link to fix it, for example
   "Cloud Run Admin API has not been used in project … enable it by visiting …".
 
