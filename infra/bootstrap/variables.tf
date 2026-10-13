@@ -19,3 +19,14 @@ variable "state_versions_kept" {
   type        = number
   default     = 10
 }
+
+variable "billing_account_id" {
+  description = "Billing account ID, XXXXXX-XXXXXX-XXXXXX (kept out of the repository)."
+  type        = string
+}
+
+variable "budget_amount_eur" {
+  description = "Monthly budget in euros; alerts go out at 50%, 90% and 100% of it."
+  type        = number
+  default     = 1
+}

@@ -22,7 +22,7 @@ Google Cloud side as **Terraform** code in this repository.
 
 - **Cost ≈ €0.** Everything runs inside free tiers except outgoing traffic from Frankfurt (the
   free allowance covers North America only) and the few-KB state bucket (the free storage tier is
-  US-only). Expected bill: €0.00–0.01 a month. A €1 budget alert warns; it does not cap.
+  US-only). Expected bill: €0.00–0.01 a month. A €1 budget alert (created by `infra/bootstrap`) warns; it does not cap.
 - No secret in the repository, in Terraform state, in a Docker image, or in GitHub.
 - CI/CD tracked and triggered by GitHub.
 - The development machine is a work PC: nothing is installed locally. Terraform runs in
@@ -38,7 +38,8 @@ production (all follow milestone 3, §8).
 
 | Piece | How | Why |
 |---|---|---|
-| Google project, billing account, €1 budget alert | Manual (done) | Terraform needs a project with billing before it can run |
+| Google project, billing account | Manual (done) | Terraform needs a project with billing before it can run |
+| €1 budget alert | Terraform (`bootstrap/`), applied by hand | Billing permissions stay out of CI; a hand-made budget is deleted so alerts don't arrive twice |
 | State bucket | Terraform (`bootstrap/`), first run with a local state | Terraform needs somewhere to keep its state, so this small configuration creates the bucket, then moves its own state into it |
 | Neon project (Frankfurt, `aws-eu-central-1`) | Manual (done) | Neon has no official Terraform provider; the community one warns that upgrades can replace resources, which for a database means losing data |
 | `DATABASE_URL` secret **value** | Manual, once | A value managed by Terraform is stored in its state in plain text |
@@ -59,7 +60,7 @@ production (all follow milestone 3, §8).
 ```
 infra/
 ├─ README.md               manual vs Terraform, first-time setup, routine
-├─ bootstrap/              the state bucket (local state first, then migrated into it)
+├─ bootstrap/              the state bucket and the €1 budget alert (local state first, then migrated)
 ├─ modules/
 │  └─ cloud-run-app/       one app on Cloud Run (reusable)
 │     ├─ main.tf           Artifact Registry, secret, service accounts and their grants
@@ -252,7 +253,7 @@ Set by hand from the Terraform outputs.
    Cloud Resource Manager and Cloud Storage APIs are enabled, and clone the repository.
 2. Run `infra/bootstrap` in Cloud Shell: it creates the state bucket (`europe-west3`, standard
    class, uniform access, public access prevention, object versioning, the current state plus 9 older versions kept) with a local state, then moves its own state into the bucket; the local copy is deleted only after
-   the bucket is checked to hold it.
+   the bucket is checked to hold it. It also creates the €1 budget alert.
 3. In Cloud Shell:
    1. create `terraform.tfvars` and `backend.hcl` in `infra/prod` from the examples;
    2. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),

@@ -7,7 +7,8 @@ Smoke Tracker's Google Cloud setup, as Terraform. Design:
 
 | Piece | How | Why |
 |---|---|---|
-| Google project, billing account, €1 budget alert | Manual | Terraform needs a project with billing before it can run |
+| Google project, billing account | Manual | Terraform needs a project with billing before it can run |
+| €1 budget alert | Terraform (`bootstrap/`) | Applied by hand with the bootstrap, not by CI: billing permissions stay out of the pipeline |
 | State bucket | Terraform (`bootstrap/`), first run with a local state | Terraform needs somewhere to keep its state, so this small configuration creates the bucket, then moves its own state into it |
 | Neon project (Frankfurt) | Manual | No official Terraform provider; the community one can replace resources on upgrade, which for a database means losing data |
 | Database connection string (the secret's value) | Manual, once | A value managed by Terraform is stored in its state in plain text |
@@ -71,6 +72,8 @@ Done once, in the Google Cloud console and Cloud Shell.
    gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com storage.googleapis.com
    ```
 
+   The bootstrap enables the Billing Budgets API itself.
+
 3. **Clone the repository:**
 
    ```bash
@@ -80,8 +83,8 @@ Done once, in the Google Cloud console and Cloud Shell.
 4. **State bucket (bootstrap).** Until the check in (iii) passes, the local state file is the only
    record of the bucket, so do (ii) and (iii) in one sitting.
 
-   (i) Copy the two example files and **edit them** (project ID, and a bucket name such as
-   `<project-id>-tfstate`; the same name in both), then stop and check them:
+   (i) Copy the two example files and **edit them** (project ID, billing account ID from Billing → Account
+   management, and a bucket name such as `<project-id>-tfstate`; the bucket name is the same in both), then stop and check them:
 
    ```bash
    cd ~/smoke-tracker/infra/bootstrap
@@ -103,6 +106,9 @@ Done once, in the Google Cloud console and Cloud Shell.
    `gcloud storage ls gs://YOUR_BUCKET/smoke-tracker/bootstrap/` lists `default.tfstate`.
 
    (iv) Only then, as a separate command: `rm terraform.tfstate terraform.tfstate.backup`.
+
+   The bootstrap also creates the €1 budget alert. If you created a budget by hand earlier, delete it
+   (Billing → Budgets & alerts) so alerts don't arrive twice.
 
    If the local state is lost before (iii), run `terraform import google_storage_bucket.state YOUR_BUCKET`.
 

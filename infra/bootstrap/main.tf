@@ -1,3 +1,15 @@
+data "google_project" "this" {}
+
+resource "google_project_service" "apis" {
+  for_each = toset([
+    "billingbudgets.googleapis.com",
+    "storage.googleapis.com",
+  ])
+
+  service            = each.key
+  disable_on_destroy = false
+}
+
 resource "google_storage_bucket" "state" {
   name                        = var.bucket_name
   location                    = upper(var.region)
@@ -19,6 +31,8 @@ resource "google_storage_bucket" "state" {
       type = "Delete"
     }
   }
+
+  depends_on = [google_project_service.apis]
 
   # Every other configuration keeps its state here; losing the bucket loses track of everything.
   lifecycle {
