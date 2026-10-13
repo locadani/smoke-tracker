@@ -234,3 +234,32 @@ table.guide td {
 .by {
   opacity: 0.7;
 }
+
+.badge {
+  font-size: 0.75rem;
+  font-weight: 400;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem var(--gap);
+}
+
+.facts dt {
+  font-weight: 600;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+select {
+  font: inherit;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+}

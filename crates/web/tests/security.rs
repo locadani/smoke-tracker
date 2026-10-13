@@ -192,6 +192,8 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         text(question).await,
         text(app.send(get_with("/events", &cookie)).await).await,
         text(app.send(get_with("/events/1", &cookie)).await).await,
+        text(app.send(get_with("/reports/1", &cookie)).await).await,
+        text(app.send(get_with("/reports/1/correct", &cookie)).await).await,
         text(app.send(get("/login")).await).await,
         text(app.send(get_with("/", &cookie)).await).await,
         text(app.send(get_with("/guide/rating", &cookie)).await).await,

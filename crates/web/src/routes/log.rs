@@ -7,7 +7,7 @@ use axum::response::Response;
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::User;
+use smoke_domain::records::{Room, Symptom, User};
 use smoke_domain::repos::Store;
 use smoke_domain::starter::BEDROOM_KEY;
 use smoke_domain::summary::{MonthSummary, summarise};
@@ -61,16 +61,64 @@ impl Draft {
 
 /// A radio button, chip or checkbox.
 pub(crate) struct Choice {
-    value: i64,
-    label: String,
-    checked: bool,
+    pub(crate) value: i64,
+    pub(crate) label: String,
+    pub(crate) checked: bool,
+}
+
+/// The intensity, room and symptom fields shared by the Log form and the correction form
+/// (`templates/report_fields.html`).
+pub(crate) struct Fields {
+    pub(crate) intensities: Vec<Choice>,
+    pub(crate) inside: Vec<Choice>,
+    pub(crate) common: Vec<Choice>,
+    pub(crate) symptoms: Vec<Choice>,
+}
+
+/// The choices for `draft`. Hidden rooms and symptoms are offered only if listed in `keep`
+/// (a correction keeps those its report already names).
+pub(crate) fn fields(
+    tr: Tr,
+    rooms: &[Room],
+    symptoms: &[Symptom],
+    draft: &Draft,
+    keep: (&[RoomId], &[SymptomId]),
+) -> Fields {
+    let room_choices = |area: RoomArea| {
+        rooms
+            .iter()
+            .filter(|r| r.area == area && (r.hidden_at.is_none() || keep.0.contains(&r.id)))
+            .map(|r| Choice {
+                value: r.id.0,
+                label: labels::room(tr, r),
+                checked: draft.rooms.contains(&r.id),
+            })
+            .collect()
+    };
+    Fields {
+        intensities: (Intensity::MIN..=Intensity::MAX)
+            .map(|value| Choice {
+                value: value.into(),
+                label: value.to_string(),
+                checked: draft.intensity == Some(value),
+            })
+            .collect(),
+        inside: room_choices(RoomArea::Inside),
+        common: room_choices(RoomArea::Common),
+        symptoms: symptoms
+            .iter()
+            .filter(|s| s.hidden_at.is_none() || keep.1.contains(&s.id))
+            .map(|s| Choice {
+                value: s.id.0,
+                label: labels::symptom(tr, s),
+                checked: draft.symptoms.contains(&s.id),
+            })
+            .collect(),
+    }
 }
 
 pub(crate) struct FormView {
-    intensities: Vec<Choice>,
-    inside: Vec<Choice>,
-    common: Vec<Choice>,
-    symptoms: Vec<Choice>,
+    fields: Fields,
     pm25: String,
     observed_at: String,
     note: String,
@@ -174,40 +222,9 @@ pub(crate) async fn log_page<S: Store>(
                 blank
             }
         };
-        let room_choices = |area: RoomArea| {
-            rooms
-                .iter()
-                .filter(|r| r.area == area && r.hidden_at.is_none())
-                .map(|r| Choice {
-                    value: r.id.0,
-                    label: labels::room(tr, r),
-                    checked: draft.rooms.contains(&r.id),
-                })
-                .collect()
-        };
-        let symptoms = state
-            .store
-            .symptoms()
-            .await?
-            .iter()
-            .filter(|s| s.hidden_at.is_none())
-            .map(|s| Choice {
-                value: s.id.0,
-                label: labels::symptom(tr, s),
-                checked: draft.symptoms.contains(&s.id),
-            })
-            .collect();
+        let symptoms = state.store.symptoms().await?;
         Some(FormView {
-            intensities: (Intensity::MIN..=Intensity::MAX)
-                .map(|value| Choice {
-                    value: value.into(),
-                    label: value.to_string(),
-                    checked: draft.intensity == Some(value),
-                })
-                .collect(),
-            inside: room_choices(RoomArea::Inside),
-            common: room_choices(RoomArea::Common),
-            symptoms,
+            fields: fields(tr, &rooms, &symptoms, &draft, (&[], &[])),
             pm25: draft.pm25,
             observed_at: draft.observed_at,
             note: draft.note,

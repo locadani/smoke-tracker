@@ -47,8 +47,56 @@ enum Entry {
     },
 }
 
-/// Reads and validates the form. `Err` is the translation key of what to fix. Only rooms and
-/// symptoms the form offers (not hidden) are accepted.
+/// Reads an optional `datetime-local` field; `None` when left blank.
+pub(crate) fn read_time(
+    form: &Pairs,
+    name: &str,
+    tz: Tz,
+) -> Result<Option<DateTime<Utc>>, &'static str> {
+    form.get(name)
+        .map(|value| {
+            time::parse_input(value, tz).map_err(|error| match error {
+                TimeInputError::Malformed => "log-error-time",
+                TimeInputError::Skipped => "log-error-time-skipped",
+            })
+        })
+        .transpose()
+}
+
+/// Reads intensity, rooms, symptoms and note. Only the offered rooms and symptoms are accepted.
+pub(crate) fn read_values(
+    form: &Pairs,
+    rooms: &[RoomId],
+    symptoms: &[SymptomId],
+) -> Result<ReportValues, &'static str> {
+    let intensity = form
+        .get("intensity")
+        .and_then(|value| value.parse().ok())
+        .and_then(|value| Intensity::new(value).ok())
+        .ok_or("log-error-intensity")?;
+    let room_ids: Vec<RoomId> = form
+        .ids("room")
+        .ok_or("log-error-form")?
+        .into_iter()
+        .map(RoomId)
+        .collect();
+    let symptom_ids: Vec<SymptomId> = form
+        .ids("symptom")
+        .ok_or("log-error-form")?
+        .into_iter()
+        .map(SymptomId)
+        .collect();
+    if !room_ids.iter().all(|id| rooms.contains(id))
+        || !symptom_ids.iter().all(|id| symptoms.contains(id))
+    {
+        return Err("log-error-form");
+    }
+    ReportValues::new(intensity, room_ids, symptom_ids, form.get("note"))
+        .map_err(|_| "log-error-note")
+}
+
+/// Reads and validates the Log form. `Err` is the translation key of what to fix. Only rooms
+/// and symptoms the form offers (not hidden) are accepted.
 fn read(
     form: &Pairs,
     rooms: &[Room],
@@ -56,13 +104,7 @@ fn read(
     tz: Tz,
     now: DateTime<Utc>,
 ) -> Result<Entry, &'static str> {
-    let observed_at = match form.get("observed_at") {
-        None => now,
-        Some(value) => time::parse_input(value, tz).map_err(|error| match error {
-            TimeInputError::Malformed => "log-error-time",
-            TimeInputError::Skipped => "log-error-time-skipped",
-        })?,
-    };
+    let observed_at = read_time(form, "observed_at", tz)?.unwrap_or(now);
     if classify_observed(observed_at, now).is_err() {
         return Err("refused-future");
     }
@@ -81,11 +123,6 @@ fn read(
         let value = pm25.ok_or("log-error-pm25-missing")?;
         return Ok(Entry::Pm25Only { observed_at, value });
     }
-    let intensity = form
-        .get("intensity")
-        .and_then(|value| value.parse().ok())
-        .and_then(|value| Intensity::new(value).ok())
-        .ok_or("log-error-intensity")?;
     let offered_rooms: Vec<RoomId> = rooms
         .iter()
         .filter(|r| r.hidden_at.is_none())
@@ -96,25 +133,7 @@ fn read(
         .filter(|s| s.hidden_at.is_none())
         .map(|s| s.id)
         .collect();
-    let room_ids: Vec<RoomId> = form
-        .ids("room")
-        .ok_or("log-error-form")?
-        .into_iter()
-        .map(RoomId)
-        .collect();
-    let symptom_ids: Vec<SymptomId> = form
-        .ids("symptom")
-        .ok_or("log-error-form")?
-        .into_iter()
-        .map(SymptomId)
-        .collect();
-    if !room_ids.iter().all(|id| offered_rooms.contains(id))
-        || !symptom_ids.iter().all(|id| offered_symptoms.contains(id))
-    {
-        return Err("log-error-form");
-    }
-    let values = ReportValues::new(intensity, room_ids, symptom_ids, form.get("note"))
-        .map_err(|_| "log-error-note")?;
+    let values = read_values(form, &offered_rooms, &offered_symptoms)?;
     Ok(Entry::Smell(SmellEntry {
         observed_at,
         values,

@@ -1,0 +1,28 @@
+{# The intensity, room and symptom fields of the Log and correction forms. #}
+<fieldset class="levels">
+  <legend>{{ tr.t("log-intensity") }}
+    <a href="/guide/rating" data-dialog="rating-guide" class="info">ⓘ {{ tr.t("log-how-to-rate") }}</a>
+  </legend>
+  {% for level in form.fields.intensities %}
+  <label class="chip"><input type="radio" name="intensity" value="{{ level.value }}" required{% if level.checked %} checked{% endif %}><span>{{ level.label }}</span></label>
+  {% endfor %}
+</fieldset>
+<fieldset class="chips">
+  <legend>{{ tr.t("log-rooms") }}</legend>
+  <p class="group">{{ tr.t("log-inside") }}</p>
+  {% for room in form.fields.inside %}
+  <label class="chip"><input type="checkbox" name="room" value="{{ room.value }}"{% if room.checked %} checked{% endif %}><span>{{ room.label }}</span></label>
+  {% endfor %}
+  {% if !form.fields.common.is_empty() %}
+  <p class="group">{{ tr.t("log-common") }}</p>
+  {% for room in form.fields.common %}
+  <label class="chip"><input type="checkbox" name="room" value="{{ room.value }}"{% if room.checked %} checked{% endif %}><span>{{ room.label }}</span></label>
+  {% endfor %}
+  {% endif %}
+</fieldset>
+<fieldset class="checks">
+  <legend>{{ tr.t("log-symptoms") }}</legend>
+  {% for symptom in form.fields.symptoms %}
+  <label><input type="checkbox" name="symptom" value="{{ symptom.value }}"{% if symptom.checked %} checked{% endif %}> {{ symptom.label }}</label>
+  {% endfor %}
+</fieldset>

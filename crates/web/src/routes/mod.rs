@@ -7,6 +7,7 @@ pub(crate) mod lang;
 pub(crate) mod log;
 pub(crate) mod login;
 pub(crate) mod notices;
+pub(crate) mod reports;
 
 use smoke_domain::DomainError;
 use smoke_domain::logbook::LogError;

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("report-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("report-title") }}{% if edited %} <span class="badge">{{ tr.t("report-edited") }}</span>{% endif %}{% if deleted %} <span class="badge">{{ tr.t("report-deleted") }}</span>{% endif %}</h1>
+{% if let Some(error) = error %}
+<p class="notice" role="alert">{{ tr.t(error) }}</p>
+{% endif %}
+<dl class="facts">
+  <dt>{{ tr.t("report-event") }}</dt>
+  <dd><a href="/events/{{ event_id }}">{{ tr.t1("event-title", "date", event_date) }}</a></dd>
+  <dt>{{ tr.t("report-observed") }}</dt>
+  <dd>{{ observed }}</dd>
+  <dt>{{ tr.t("report-recorded") }}</dt>
+  <dd>{{ recorded }}</dd>
+  <dt>{{ tr.t("log-intensity") }}</dt>
+  <dd>{{ intensity }}</dd>
+  <dt>{{ tr.t("log-rooms") }}</dt>
+  <dd>{{ rooms }}</dd>
+  <dt>{{ tr.t("log-symptoms") }}</dt>
+  <dd>{{ symptoms }}</dd>
+  {% if let Some(note) = note %}
+  <dt>{{ tr.t("report-note") }}</dt>
+  <dd>{{ note }}</dd>
+  {% endif %}
+  {% if let Some(by) = by %}
+  <dt>{{ tr.t("report-by") }}</dt>
+  <dd>{{ by }}</dd>
+  {% endif %}
+</dl>
+{% if editable %}
+<p><a href="/reports/{{ id }}/correct">{{ tr.t("report-correct") }}</a></p>
+<form method="post" action="/reports/{{ id }}/move" class="stack">
+  <label>{{ tr.t("report-move") }}
+    <select name="target">
+      {% for option in move_options %}
+      <option value="{{ option.value }}">{{ option.label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <button type="submit" class="secondary">{{ tr.t("report-move-submit") }}</button>
+</form>
+{% endif %}
+<h2>{{ tr.t("report-history") }}</h2>
+<ol class="history">
+  {% for line in history %}
+  <li>{{ line.at }}{% if let Some(by) = line.by %} · {{ by }}{% endif %} · {{ tr.t(line.action) }}{% if !line.changes.is_empty() %}: {{ line.changes.join(", ") }}{% endif %}</li>
+  {% endfor %}
+</ol>
+{% endblock %}
