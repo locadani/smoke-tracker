@@ -118,6 +118,14 @@ Tip: *Rate what you smell right now, not how annoyed you are. Between two number
 
 The guide text lives in its own template/translation entries so it can be edited easily.
 
+**How the guide opens:**
+1. Tapping ⓘ *How to rate* on the Log screen opens a **popup** over the form, so you don't lose
+   what you've entered. It contains the compact 1–10 table and the tip.
+2. A **"Full guide →"** link in the popup opens the **full guide page** (Settings → Guides).
+
+The popup is a native `<dialog>` element with no extra JavaScript library. It closes with ✕,
+by tapping outside it, or with the back gesture.
+
 **Different sensitivities:** each person rates on their own 1–10 scale. Overlapping reports with
 different values are kept as-is. Graphs show one line per person; the PM2.5 reading is the
 objective reference.
@@ -311,7 +319,7 @@ QR code. There is no email.
 
 1. **Log (home screen; the icon opens here)**
    - Event status bar
-   - Intensity 1–10 button grid + ⓘ *How to rate*
+   - Intensity 1–10 button grid + ⓘ *How to rate* (popup, then a link to the full page; see §5)
    - **Rooms as toggle chips**, grouped *Inside / Common*, pre-selected from your last report in
      the open event
    - **Symptoms as checkboxes**

@@ -48,3 +48,4 @@ the old one; rows are never rewritten. Larger technical decisions also get an AD
 | 39 | 2026-10-13 | Hosting | **Deferred**; must be free with a persistent disk (Oracle Always Free / GCP e2-micro candidates); Litestream → Cloudflare R2 backups | Home server (none available) | No always-on machine at home |
 | 40 | 2026-10-13 | Database | **Neon-ready**: repository traits, SQLite + Postgres backends, contract tests on both in CI, `migrate-to-postgres` command | SQLite only; ORM (SeaORM) | Moving to Neon is one command; keeps compile-time-checked SQL |
 | 41 | 2026-10-13 | Process | Personal project: commits authored by the personal GitHub account; personal email never in tracked files | — | Keep personal and work identities separate |
+| 42 | 2026-10-13 | UI | ⓘ *How to rate* opens a **popup** first (compact table + tip), with a link to the **full guide page** | Straight to a page | Quick reference without losing the half-filled form |
