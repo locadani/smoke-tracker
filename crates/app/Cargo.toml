@@ -11,6 +11,10 @@ repository.workspace = true
 [lib]
 name = "smoke_app"
 
+[[bin]]
+name = "smoke-tracker"
+path = "src/main.rs"
+
 [dependencies]
 anyhow.workspace = true
 chrono-tz.workspace = true
@@ -22,6 +26,7 @@ smoke-storage-sqlite.workspace = true
 smoke-web.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["net", "signal", "time"] }
+tower-sessions.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 
