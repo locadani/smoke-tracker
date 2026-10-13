@@ -154,3 +154,44 @@ run "database_url_attached_from_secret_when_enabled" {
     error_message = "DATABASE_URL comes from the latest version of the app's secret."
   }
 }
+
+run "only_this_repository_can_log_in" {
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.github.attribute_condition == "assertion.repository_id == '1416787003'"
+    error_message = "Only tokens from this repository (by ID, not name) may be exchanged."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.github.oidc[0].issuer_uri == "https://token.actions.githubusercontent.com"
+    error_message = "The provider trusts GitHub's OIDC issuer."
+  }
+  assert {
+    condition     = google_iam_workload_identity_pool_provider.github.attribute_mapping["attribute.repository_id"] == "assertion.repository_id" && google_iam_workload_identity_pool_provider.github.attribute_mapping["attribute.job_workflow_ref"] == "assertion.job_workflow_ref"
+    error_message = "repository_id and job_workflow_ref must be mapped so bindings can use them."
+  }
+}
+
+run "only_the_deploy_workflow_on_main_can_deploy" {
+  assert {
+    condition     = google_service_account_iam_member.github_deploys.role == "roles/iam.workloadIdentityUser" && google_service_account_iam_member.github_deploys.service_account_id == google_service_account.deploy.name
+    error_message = "GitHub may impersonate the deploy account only."
+  }
+  assert {
+    condition     = endswith(google_service_account_iam_member.github_deploys.member, "/attribute.job_workflow_ref/locadani/smoke-tracker/.github/workflows/deploy.yml@refs/heads/main")
+    error_message = "Only deploy.yml running on main may impersonate the deploy account."
+  }
+  assert {
+    condition     = startswith(google_service_account_iam_member.github_deploys.member, "principalSet://iam.googleapis.com/")
+    error_message = "The binding is a principalSet on the pool."
+  }
+}
+
+run "outputs_for_github_settings" {
+  assert {
+    condition     = output.repository_url == "europe-west3-docker.pkg.dev/test-project/smoke-tracker"
+    error_message = "The image repository URL is <region>-docker.pkg.dev/<project>/<name>."
+  }
+  assert {
+    condition     = output.database_url_secret_id == "smoke-tracker-database-url"
+    error_message = "The secret ID is exposed for the setup instructions."
+  }
+}
