@@ -166,7 +166,8 @@ pub struct RoomLevel {
 }
 
 /// What a smell report says: the rooms checked, each with its level, sorted by room; the
-/// symptoms, sorted and unique; a note, where a blank note is no note.
+/// symptoms, sorted and unique; a note, where a blank note is no note. No rooms at all means
+/// "no smell anywhere in the home" (spec §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReportValues {
     rooms: Vec<RoomLevel>,
@@ -182,9 +183,6 @@ impl ReportValues {
         mut symptoms: Vec<SymptomId>,
         note: Option<&str>,
     ) -> Result<Self, DomainError> {
-        if rooms.is_empty() {
-            return Err(DomainError::NoRooms);
-        }
         rooms.sort_unstable_by_key(|r| r.room);
         if let Some(pair) = rooms.windows(2).find(|pair| pair[0].room == pair[1].room) {
             return Err(DomainError::RoomListedTwice(pair[0].room.0));
@@ -218,7 +216,13 @@ impl ReportValues {
         self.rooms.iter().find(|r| r.room == room).map(|r| r.level)
     }
 
-    /// The report's intensity: its highest room level (spec §6).
+    /// Whether this is a no-smell report: every room listed is at 0, or none is listed (spec
+    /// §7.1). Such a report never opens an event.
+    pub fn is_no_smell(&self) -> bool {
+        self.intensity().is_clean()
+    }
+
+    /// The report's intensity: its highest room level (spec §6); 0 without rooms.
     pub fn intensity(&self) -> Level {
         self.rooms
             .iter()
@@ -239,7 +243,8 @@ impl ReportValues {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SmellReport {
     pub id: ReportId,
-    pub event_id: EventId,
+    /// `None` for a no-smell check made while no event was running (spec §7.1).
+    pub event_id: Option<EventId>,
     pub user_id: UserId,
     pub observed_at: DateTime<Utc>,
     pub recorded_at: DateTime<Utc>,
@@ -342,7 +347,8 @@ pub struct NewEvent {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NewReport {
-    pub event_id: EventId,
+    /// `None` for a no-smell check outside any event.
+    pub event_id: Option<EventId>,
     pub user_id: UserId,
     pub observed_at: DateTime<Utc>,
     pub values: ReportValues,
@@ -449,11 +455,7 @@ mod tests {
     }
 
     #[test]
-    fn a_report_needs_a_room_and_lists_each_room_once() {
-        assert_eq!(
-            ReportValues::new(vec![], vec![], None),
-            Err(DomainError::NoRooms)
-        );
+    fn a_report_lists_each_room_once() {
         assert_eq!(
             ReportValues::new(vec![at(3, 2), at(1, 1), at(3, 2)], vec![], None),
             Err(DomainError::RoomListedTwice(3))
@@ -467,6 +469,13 @@ mod tests {
         assert_eq!(v.level_in(RoomId(3)), Some(Level::CLEAN));
         assert_eq!(v.level_in(RoomId(4)), None);
         assert_eq!(values(&[(1, 0)], None).intensity(), Level::CLEAN);
+    }
+
+    #[test]
+    fn only_clean_rooms_or_no_rooms_make_a_no_smell_report() {
+        assert!(values(&[(1, 0), (2, 0)], None).is_no_smell());
+        assert!(values(&[], None).is_no_smell(), "no rooms: the whole home");
+        assert!(!values(&[(1, 0), (2, 1)], None).is_no_smell());
     }
 
     #[test]
@@ -490,7 +499,7 @@ mod tests {
     fn report_snapshot_is_flat() {
         let report = SmellReport {
             id: ReportId(9),
-            event_id: EventId(4),
+            event_id: Some(EventId(4)),
             user_id: UserId(1),
             observed_at: t("2026-01-15T19:00:00Z"),
             recorded_at: t("2026-01-15T19:00:00.123456Z"),
@@ -512,6 +521,13 @@ mod tests {
             })
         );
         assert_eq!(report.audit_id(), 9);
+        let check = SmellReport {
+            event_id: None,
+            values: values(&[], None),
+            ..report
+        };
+        assert_eq!(check.snapshot()["event_id"], json!(null));
+        assert_eq!(check.snapshot()["rooms"], json!([]));
     }
 
     #[test]

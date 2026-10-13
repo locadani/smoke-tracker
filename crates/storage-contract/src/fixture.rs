@@ -182,7 +182,7 @@ where
     let mut tx = fx.store.begin(Some(scene.user.id)).await.expect("begin");
     let report = tx
         .create_report(NewReport {
-            event_id: scene.event.id,
+            event_id: Some(scene.event.id),
             user_id: scene.user.id,
             observed_at,
             values,

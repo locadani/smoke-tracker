@@ -31,7 +31,7 @@ where
 {
     let mut tx = fx.store.begin(Some(user)).await.unwrap();
     tx.create_report(NewReport {
-        event_id: event.id,
+        event_id: Some(event.id),
         user_id: user,
         observed_at: at,
         values: report_values(5, &[FIRST_ROOM], &[]),

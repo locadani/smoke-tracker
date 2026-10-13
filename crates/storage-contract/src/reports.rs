@@ -40,7 +40,7 @@ where
             report.event_id,
             report.user_id
         ),
-        (observed_at, start(), scene.event.id, scene.user.id)
+        (observed_at, start(), Some(scene.event.id), scene.user.id)
     );
     assert_eq!(
         fx.store.report(report.id).await.unwrap(),
@@ -111,7 +111,7 @@ where
 
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
     let moved = tx.move_report(report.id, other.id).await.unwrap();
-    assert_eq!(moved.event_id, other.id);
+    assert_eq!(moved.event_id, Some(other.id));
     tx.move_report(report.id, other.id).await.unwrap();
     tx.commit().await.unwrap();
 
@@ -220,7 +220,7 @@ where
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
     let error = tx
         .create_report(NewReport {
-            event_id: scene.event.id,
+            event_id: Some(scene.event.id),
             user_id: scene.user.id,
             observed_at: start(),
             values: report_values(5, &[RoomId(999)], &[]),
@@ -341,7 +341,7 @@ where
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
     let error = tx
         .create_report(NewReport {
-            event_id: scene.event.id,
+            event_id: Some(scene.event.id),
             user_id: scene.user.id,
             observed_at: start(),
             values: report_values(5, &[FIRST_ROOM], &[SymptomId(999)]),

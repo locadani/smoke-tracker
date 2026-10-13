@@ -167,7 +167,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
             5,
             &[],
             EventChoice::New {
-                replacing: Some(morning.report.event_id),
+                replacing: morning.report.event_id,
             },
         )
         .await;
@@ -177,7 +177,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
             "2026-01-15T11:00:00Z",
             5,
             &[],
-            EventChoice::Join(morning.report.event_id),
+            EventChoice::Join(morning.report.event_id.unwrap()),
         )
         .await;
     let stray = app
@@ -186,7 +186,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
             "2026-01-15T20:00:00Z",
             3,
             &[],
-            EventChoice::Join(evening.report.event_id),
+            EventChoice::Join(evening.report.event_id.unwrap()),
         )
         .await;
     let cookie = app.sign_in("daniele").await;
@@ -203,7 +203,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
 
     let path = format!("/reports/{}", stray.report.id);
     let html = text(app.send(get_with(&path, &cookie)).await).await;
-    let morning_id = morning.report.event_id;
+    let morning_id = morning.report.event_id.unwrap();
     assert!(
         html.contains(&format!(
             r#"<option value="event-{morning_id}">Started 11:00, ended 12:00</option>"#
@@ -219,14 +219,14 @@ async fn moving_offers_that_days_events_and_a_new_one() {
         .await;
     assert_eq!(location(&response), Some(&*path));
     let moved = app.store.report(stray.report.id).await.unwrap().unwrap();
-    assert_eq!(moved.event_id, morning_id);
+    assert_eq!(moved.event_id, Some(morning_id));
     let event = app.store.event(morning_id).await.unwrap().unwrap();
     assert_eq!(event.closed.map(|c| c.at), Some(t("2026-01-15T20:00:00Z")));
     let html = text(app.send(get_with(&path, &cookie)).await).await;
     assert!(
         html.contains(&format!(
             "moved: event #{} → #{morning_id}",
-            evening.report.event_id
+            evening.report.event_id.unwrap()
         )),
         "{html}"
     );
@@ -253,7 +253,7 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
             "2026-01-15T19:30:00Z",
             4,
             &[],
-            EventChoice::Join(mine.report.event_id),
+            EventChoice::Join(mine.report.event_id.unwrap()),
         )
         .await;
     let cookie = app.sign_in("guest").await;
@@ -350,7 +350,7 @@ async fn guests_see_other_events_in_the_move_options_without_their_end() {
             3,
             &[],
             EventChoice::New {
-                replacing: Some(morning.report.event_id),
+                replacing: morning.report.event_id,
             },
         )
         .await;
@@ -358,7 +358,7 @@ async fn guests_see_other_events_in_the_move_options_without_their_end() {
     app.sweep().await;
     let morning_event = app
         .store
-        .event(morning.report.event_id)
+        .event(morning.report.event_id.unwrap())
         .await
         .unwrap()
         .unwrap();
@@ -373,7 +373,7 @@ async fn guests_see_other_events_in_the_move_options_without_their_end() {
     assert!(
         html.contains(&format!(
             r#"<option value="event-{}">Started 11:00</option>"#,
-            morning.report.event_id
+            morning.report.event_id.unwrap()
         )),
         "{html}"
     );

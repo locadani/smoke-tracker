@@ -41,6 +41,8 @@ pub(crate) fn refusal(error: LogError) -> Result<&'static str, AppError> {
         LogError::Stale => Ok("refused-stale"),
         LogError::AnotherEventOpen => Ok("refused-another-open"),
         LogError::OutsideEvent => Ok("refused-outside-event"),
+        LogError::NoSmellCannotOpen => Ok("refused-no-smell-new-event"),
+        LogError::CheckCannotSmell => Ok("refused-check-smell"),
         LogError::Invalid(DomainError::ObservedInFuture) => Ok("refused-future"),
         LogError::Invalid(DomainError::CloseBeforeLastReport) => {
             Ok("refused-close-before-last-report")
@@ -53,10 +55,12 @@ pub(crate) fn refusal(error: LogError) -> Result<&'static str, AppError> {
 
 /// Every key [`refusal`] can return, for the translation tests.
 #[cfg(test)]
-pub(crate) const REFUSALS: [&str; 6] = [
+pub(crate) const REFUSALS: [&str; 8] = [
     "refused-stale",
     "refused-another-open",
     "refused-outside-event",
+    "refused-no-smell-new-event",
+    "refused-check-smell",
     "refused-future",
     "refused-close-before-last-report",
     "refused-close-in-future",

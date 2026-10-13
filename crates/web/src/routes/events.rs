@@ -116,7 +116,9 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         .reports_between(window_start, window_end + TimeDelta::microseconds(1))
         .await?
     {
-        by_event.entry(report.event_id).or_default().push(report);
+        if let Some(event) = report.event_id {
+            by_event.entry(event).or_default().push(report);
+        }
     }
 
     let mut days: BTreeMap<NaiveDate, Day> = BTreeMap::new();

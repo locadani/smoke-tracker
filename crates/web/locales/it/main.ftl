@@ -59,6 +59,8 @@ prompt-cancel = Annulla
 refused-stale = Nel frattempo gli eventi sono cambiati. Controlla e riprova.
 refused-another-open = C'è un altro evento aperto. Chiudilo prima.
 refused-outside-event = Quell'ora è fuori dall'evento: prima che iniziasse o in un altro giorno.
+refused-no-smell-new-event = Un rapporto senza odore non può iniziare un evento.
+refused-check-smell = Questo è un controllo senza odore: i livelli restano a 0. Per registrare un odore, registra un nuovo rapporto.
 refused-future = L'ora non può essere nel futuro.
 refused-close-before-last-report = La fine non può essere prima dell'ultima segnalazione.
 refused-close-in-future = La fine non può essere nel futuro.
@@ -126,6 +128,7 @@ event-reopen = Riapri
 
 report-title = Segnalazione
 report-event = Evento
+report-no-event = Nessuno: un controllo senza odore
 report-observed = Osservata
 report-recorded = Registrata
 report-note = Nota

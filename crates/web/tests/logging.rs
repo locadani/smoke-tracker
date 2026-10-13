@@ -68,7 +68,7 @@ async fn with_an_event_open_the_same_smell_question_comes_first() {
     assert!(html.contains("<h1>Same smell still going?</h1>"), "{html}");
     assert!(html.contains("(started 19:05)"), "{html}");
     assert!(html.contains(r#"<input type="hidden" name="level-1" value="7">"#));
-    let id = first.report.event_id;
+    let id = first.report.event_id.unwrap();
     assert!(html.contains(&format!(r#"value="join-{id}">Yes, update</button>"#)));
     assert!(html.contains(r#"value="new" class="secondary">No, it had stopped: new event"#));
 
@@ -98,13 +98,13 @@ async fn answering_no_closes_the_open_event_at_its_last_report() {
     let cookie = app.sign_in("daniele").await;
     let body = format!(
         "room=1&level-1=3&action=smell&asked=same-smell-{}&choice=new",
-        first.report.event_id
+        first.report.event_id.unwrap()
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(location(&response), Some("/?saved=report"));
     let old = app
         .store
-        .event(first.report.event_id)
+        .event(first.report.event_id.unwrap())
         .await
         .unwrap()
         .unwrap();
@@ -114,7 +114,7 @@ async fn answering_no_closes_the_open_event_at_its_last_report() {
     );
     assert_ne!(
         app.store.open_event().await.unwrap().unwrap().id,
-        first.report.event_id
+        first.report.event_id.unwrap()
     );
 }
 
@@ -141,7 +141,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
             8,
             &[kitchen],
             EventChoice::New {
-                replacing: Some(first.report.event_id),
+                replacing: first.report.event_id,
             },
         )
         .await;
@@ -174,7 +174,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
     )
     .await;
     assert!(past.contains("<h1>Which event was this?</h1>"), "{past}");
-    let earlier = closed_earlier.report.event_id;
+    let earlier = closed_earlier.report.event_id.unwrap();
     assert!(
         past.contains(&format!(
             r#"value="join-{earlier}" class="secondary">Started 11:00</button>"#
@@ -182,7 +182,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
         "{past}"
     );
     assert!(
-        !past.contains(&format!("join-{}", first.report.event_id)),
+        !past.contains(&format!("join-{}", first.report.event_id.unwrap())),
         "not started yet"
     );
     for private in ["daniele", "Kitchen", "ended"] {
@@ -223,7 +223,7 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
             5,
             &[],
             EventChoice::New {
-                replacing: Some(first.report.event_id),
+                replacing: first.report.event_id,
             },
         )
         .await;
@@ -231,19 +231,19 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
     let body = format!(
         "room=1&level-1=7&action=smell&asked={}&choice=join-{}",
         asked(&question),
-        first.report.event_id
+        first.report.event_id.unwrap()
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(response.status(), StatusCode::OK);
     let html = text(response).await;
     assert_eq!(
         asked(&html),
-        format!("same-smell-{}", second.report.event_id)
+        format!("same-smell-{}", second.report.event_id.unwrap())
     );
     assert!(html.contains("(started 20:58)"), "{html}");
     assert_eq!(
         app.store
-            .reports_for_event(first.report.event_id)
+            .reports_for_event(first.report.event_id.unwrap())
             .await
             .unwrap()
             .len(),
@@ -266,7 +266,7 @@ async fn a_past_report_after_the_end_of_the_chosen_event_moves_its_end() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = past.report.event_id;
+    let id = past.report.event_id.unwrap();
     app.log(
         &me,
         "2026-01-15T20:00:00Z",
@@ -318,7 +318,7 @@ async fn after_an_auto_close_the_next_log_offers_a_continuation() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = evening.report.event_id;
+    let id = evening.report.event_id.unwrap();
     let cookie = app.sign_in("daniele").await;
     app.at("2026-01-16T06:00:00Z");
 
@@ -411,7 +411,7 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
     assert_eq!(location(&response), Some("/?saved=pm25"));
     let readings = app
         .store
-        .readings_for_event(open.report.event_id)
+        .readings_for_event(open.report.event_id.unwrap())
         .await
         .unwrap();
     assert_eq!(readings.len(), 1);
@@ -419,13 +419,13 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
 
     let with_smell = format!(
         "room=1&level-1=6&pm25=40&action=smell&asked=same-smell-{0}&choice=join-{0}",
-        open.report.event_id
+        open.report.event_id.unwrap()
     );
     app.send(post_form("/log", &with_smell, Some(&cookie)))
         .await;
     assert_eq!(
         app.store
-            .readings_for_event(open.report.event_id)
+            .readings_for_event(open.report.event_id.unwrap())
             .await
             .unwrap()
             .len(),

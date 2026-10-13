@@ -7,7 +7,7 @@
 {% endif %}
 <dl class="facts">
   <dt>{{ tr.t("report-event") }}</dt>
-  <dd><a href="/events/{{ event_id }}">{{ tr.t1("event-title", "date", event_date) }}</a></dd>
+  <dd>{% if let Some(event) = event %}<a href="/events/{{ event.id }}">{{ tr.t1("event-title", "date", event.date) }}</a>{% else %}{{ tr.t("report-no-event") }}{% endif %}</dd>
   <dt>{{ tr.t("report-observed") }}</dt>
   <dd>{{ observed }}</dd>
   <dt>{{ tr.t("report-recorded") }}</dt>

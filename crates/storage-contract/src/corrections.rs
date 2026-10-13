@@ -6,7 +6,7 @@ use smoke_domain::clock::Clock;
 use smoke_domain::logbook::{
     EventChoice, LogError, MoveTarget, close_event, correct_report, move_report, reopen_event,
 };
-use smoke_domain::records::{Closure, Event, SmellReport, User};
+use smoke_domain::records::{Closure, Event, ReportValues, SmellReport, User};
 use smoke_domain::repos::{
     AuditRepo, Commit, EventRepo, ListRepo, ReportWrites, Transactional, WriteTx,
 };
@@ -14,7 +14,7 @@ use smoke_domain::types::{CloseReason, EventId, ReportId};
 
 use crate::Fixture;
 use crate::fixture::{FIRST_ROOM, add_event, report_values, start};
-use crate::logbook::{log, people, rome, smell};
+use crate::logbook::{log, no_smell, people, rome, smell};
 
 async fn close<S>(
     fx: &Fixture<S>,
@@ -46,13 +46,26 @@ async fn correct<S>(
     who: &User,
     id: ReportId,
     at: chrono::DateTime<chrono::Utc>,
-    intensity: u8,
+    level: u8,
+) -> Result<SmellReport, LogError>
+where
+    S: Transactional<Tx: WriteTx>,
+{
+    let values = report_values(level, &[FIRST_ROOM], &[]);
+    correct_values(fx, who, id, at, values).await
+}
+
+async fn correct_values<S>(
+    fx: &Fixture<S>,
+    who: &User,
+    id: ReportId,
+    at: chrono::DateTime<chrono::Utc>,
+    values: ReportValues,
 ) -> Result<SmellReport, LogError>
 where
     S: Transactional<Tx: WriteTx>,
 {
     let mut tx = fx.store.begin(Some(who.id)).await.unwrap();
-    let values = report_values(intensity, &[FIRST_ROOM], &[]);
     let now = fx.clock.now();
     let report = correct_report(&mut tx, &who.actor(), id, at, values, &rome(), now).await?;
     tx.commit().await.unwrap();
@@ -91,7 +104,7 @@ where
     )
     .await
     .unwrap();
-    let id = logged.report.event_id;
+    let id = logged.report.event_id.unwrap();
     fx.clock.advance(TimeDelta::hours(1));
 
     let early = close(fx, &p.resident, id, start() - TimeDelta::minutes(1)).await;
@@ -134,7 +147,8 @@ where
     .await
     .unwrap()
     .report
-    .event_id;
+    .event_id
+    .unwrap();
     for who in [&p.guest, &p.viewer] {
         let refused = close(fx, who, residents, start()).await;
         assert!(matches!(refused, Err(LogError::Forbidden)), "{refused:?}");
@@ -153,7 +167,8 @@ where
     .await
     .unwrap()
     .report
-    .event_id;
+    .event_id
+    .unwrap();
     close(fx, &p.guest, guests, fx.clock.now()).await.unwrap();
     reopen(fx, &p.guest, guests).await.unwrap();
     assert!(event(fx, guests).await.is_open());
@@ -210,7 +225,7 @@ pub async fn correcting_after_the_end_moves_the_end_and_before_the_start_is_refu
     )
     .await
     .unwrap();
-    let id = logged.report.event_id;
+    let id = logged.report.event_id.unwrap();
     close(fx, &p.resident, id, opened + TimeDelta::minutes(30))
         .await
         .unwrap();
@@ -251,7 +266,7 @@ where
     )
     .await
     .unwrap();
-    let event_id = residents.report.event_id;
+    let event_id = residents.report.event_id.unwrap();
     let guests = log(fx, &p.guest, smell(start(), 5), EventChoice::Join(event_id))
         .await
         .unwrap();
@@ -293,7 +308,7 @@ where
         fx,
         &p.guest,
         smell(start(), 5),
-        EventChoice::Join(first.report.event_id),
+        EventChoice::Join(first.report.event_id.unwrap()),
     )
     .await
     .unwrap();
@@ -302,7 +317,7 @@ where
         .await
         .unwrap();
     assert_ne!(moved.event_id, first.report.event_id);
-    let new = event(fx, moved.event_id).await;
+    let new = event(fx, moved.event_id.unwrap()).await;
     assert_eq!((new.owner_id, new.opened_at), (p.guest.id, start()));
     assert_eq!(
         new.closed,
@@ -316,7 +331,7 @@ where
         fx,
         &p.partner,
         joined.report.id,
-        MoveTarget::Event(moved.event_id),
+        MoveTarget::Event(moved.event_id.unwrap()),
     )
     .await
     .unwrap();
@@ -357,7 +372,7 @@ where
     )
     .await
     .unwrap();
-    assert_eq!(moved.event_id, earlier.id);
+    assert_eq!(moved.event_id, Some(earlier.id));
     assert_eq!(
         event(fx, earlier.id).await.closed.map(|c| c.at),
         Some(later_at)
@@ -368,7 +383,7 @@ where
         &p.resident,
         smell(opened - TimeDelta::hours(1), 4),
         EventChoice::New {
-            replacing: Some(later.report.event_id),
+            replacing: later.report.event_id,
         },
     )
     .await
@@ -451,4 +466,69 @@ where
     tx.commit().await.unwrap();
     let deleted = relocate(fx, &p.resident, logged.report.id, MoveTarget::New).await;
     assert!(matches!(deleted, Err(LogError::NotFound)), "{deleted:?}");
+}
+
+pub async fn a_check_can_be_corrected_but_never_to_a_smell<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let check = log(
+        fx,
+        &p.guest,
+        no_smell(start()),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap()
+    .report;
+    let earlier = start() - TimeDelta::hours(5);
+    let corrected = correct_values(
+        fx,
+        &p.guest,
+        check.id,
+        earlier,
+        report_values(0, &[FIRST_ROOM], &[]),
+    )
+    .await
+    .unwrap();
+    assert_eq!((corrected.event_id, corrected.observed_at), (None, earlier));
+    let refused = correct_values(
+        fx,
+        &p.guest,
+        check.id,
+        earlier,
+        report_values(3, &[FIRST_ROOM], &[]),
+    )
+    .await;
+    assert!(
+        matches!(refused, Err(LogError::CheckCannotSmell)),
+        "{refused:?}"
+    );
+}
+
+pub async fn a_check_can_move_into_an_event_but_never_opens_one<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let check = log(
+        fx,
+        &p.resident,
+        no_smell(start()),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap()
+    .report;
+    let refused = relocate(fx, &p.resident, check.id, MoveTarget::New).await;
+    assert!(
+        matches!(refused, Err(LogError::NoSmellCannotOpen)),
+        "{refused:?}"
+    );
+    let earlier = add_event(fx, p.resident.id, start() - TimeDelta::hours(1), None).await;
+    let moved = relocate(fx, &p.resident, check.id, MoveTarget::Event(earlier.id))
+        .await
+        .unwrap();
+    assert_eq!(moved.event_id, Some(earlier.id));
 }

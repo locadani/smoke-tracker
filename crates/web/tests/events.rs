@@ -24,7 +24,7 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let join = EventChoice::Join(first.report.event_id);
+    let join = EventChoice::Join(first.report.event_id.unwrap());
     app.log(&me, "2026-01-10T19:00:00Z", 7, &[], join).await;
     let second = app
         .log(
@@ -49,14 +49,14 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
     assert!(
         html.contains(&format!(
             r#"<a href="/events/{}">19:00–20:00</a> · 2 reports · max 7"#,
-            first.report.event_id
+            first.report.event_id.unwrap()
         )),
         "{html}"
     );
     assert!(
         html.contains(&format!(
             r#"<a href="/events/{}">08:30–"#,
-            second.report.event_id
+            second.report.event_id.unwrap()
         )),
         "{html}"
     );
@@ -97,19 +97,19 @@ async fn guests_list_only_events_they_own_or_reported_in() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let join = EventChoice::Join(shared.report.event_id);
+    let join = EventChoice::Join(shared.report.event_id.unwrap());
     app.log(&guest, "2026-01-11T18:30:00Z", 4, &[], join).await;
     let cookie = app.sign_in("guest").await;
 
     let html = text(app.send(get_with("/events?month=2026-01", &cookie)).await).await;
     assert!(
-        !html.contains(&format!("/events/{}", private.report.event_id)),
+        !html.contains(&format!("/events/{}", private.report.event_id.unwrap())),
         "{html}"
     );
     assert!(
         html.contains(&format!(
             r#"<a href="/events/{}">19:00–19:30</a> · 1 report · max 4"#,
-            shared.report.event_id
+            shared.report.event_id.unwrap()
         )),
         "only the guest's own report counts: {html}"
     );
@@ -131,7 +131,7 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = first.report.event_id;
+    let id = first.report.event_id.unwrap();
     app.log(
         &guest,
         "2026-01-15T10:00:00Z",
@@ -184,7 +184,7 @@ async fn guests_see_only_their_own_entries_and_not_other_peoples_events() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = shared.report.event_id;
+    let id = shared.report.event_id.unwrap();
     app.log(
         &guest,
         "2026-01-15T09:30:00Z",
@@ -213,7 +213,7 @@ async fn guests_see_only_their_own_entries_and_not_other_peoples_events() {
     }
     let other = app
         .send(get_with(
-            &format!("/events/{}", private.report.event_id),
+            &format!("/events/{}", private.report.event_id.unwrap()),
             &cookie,
         ))
         .await;
@@ -236,7 +236,7 @@ async fn closing_by_hand_needs_an_end_between_the_last_report_and_now() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = open.report.event_id;
+    let id = open.report.event_id.unwrap();
     let cookie = app.sign_in("daniele").await;
     let html = text(app.send(get_with(&format!("/events/{id}"), &cookie)).await).await;
     assert!(
@@ -303,7 +303,7 @@ async fn the_log_screen_closes_the_open_event_now() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = open.report.event_id;
+    let id = open.report.event_id.unwrap();
     let cookie = app.sign_in("daniele").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
     assert!(
@@ -339,7 +339,7 @@ async fn only_residents_and_owning_guests_can_close_or_reopen() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = open.report.event_id;
+    let id = open.report.event_id.unwrap();
     app.log(
         &guest,
         "2026-01-15T19:30:00Z",
@@ -375,7 +375,7 @@ async fn reopening_is_offered_only_while_no_other_event_is_open() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = earlier.report.event_id;
+    let id = earlier.report.event_id.unwrap();
     let current = app
         .log(
             &me,
@@ -404,7 +404,7 @@ async fn reopening_is_offered_only_while_no_other_event_is_open() {
             .contains("Another event is open. Close it first.")
     );
 
-    let close = format!("/events/{}/close", current.report.event_id);
+    let close = format!("/events/{}/close", current.report.event_id.unwrap());
     app.send(post_form(&close, "", Some(&cookie))).await;
     let response = app
         .send(post_form(
@@ -432,7 +432,7 @@ async fn closing_or_reopening_an_event_a_guest_cannot_see_answers_not_found() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = open.report.event_id;
+    let id = open.report.event_id.unwrap();
     let guest = app.sign_in("guest").await;
 
     let close = app

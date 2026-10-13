@@ -61,7 +61,7 @@ async fn with_an_event_open_the_form_offers_an_update_with_my_last_rooms() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let event = EventChoice::Join(first.report.event_id);
+    let event = EventChoice::Join(first.report.event_id.unwrap());
     app.log(&partner, "2026-01-15T19:55:00Z", 6, &[kitchen], event)
         .await;
     let cookie = app.sign_in("daniele").await;
@@ -119,7 +119,7 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let id = first.report.event_id;
+    let id = first.report.event_id.unwrap();
     let close = format!(r#"action="/events/{}/close""#, id.0);
 
     let cookie = app.sign_in("guest").await;
@@ -190,7 +190,7 @@ async fn the_summary_counts_this_month_and_guests_count_only_their_own() {
             EventChoice::New { replacing: None },
         )
         .await;
-    let join = EventChoice::Join(first.report.event_id);
+    let join = EventChoice::Join(first.report.event_id.unwrap());
     app.log(&guest, "2026-01-10T21:00:00Z", 3, &[], join).await;
     app.log(
         &guest,
@@ -234,7 +234,11 @@ async fn opening_the_log_screen_runs_the_auto_close_sweep() {
 
     let html = text(app.send(get_with("/", &cookie)).await).await;
     assert!(html.contains("No smell event in progress."), "{html}");
-    let event = app.store.event(logged.report.event_id).await.unwrap();
+    let event = app
+        .store
+        .event(logged.report.event_id.unwrap())
+        .await
+        .unwrap();
     assert_eq!(
         event.unwrap().closed.map(|c| c.reason),
         Some(CloseReason::Auto0400)

@@ -15,7 +15,7 @@ use crate::{SqliteStore, SqliteTx};
 
 struct ReportRow {
     id: i64,
-    event_id: i64,
+    event_id: Option<i64>,
     user_id: i64,
     observed_at: i64,
     recorded_at: i64,
@@ -71,7 +71,7 @@ fn assemble(
     }
     Ok(SmellReport {
         id: ReportId(row.id),
-        event_id: EventId(row.event_id),
+        event_id: row.event_id.map(EventId),
         user_id: UserId(row.user_id),
         observed_at: instant(row.observed_at)?,
         recorded_at: instant(row.recorded_at)?,
@@ -285,7 +285,7 @@ impl ReportWrites for SqliteTx {
         let id = sqlx::query_scalar!(
             "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, note) \
              VALUES ($1, $2, $3, $4, $5) RETURNING id AS \"id!\"",
-            new.event_id.0,
+            new.event_id.map(|event| event.0),
             new.user_id.0,
             micros(new.observed_at),
             now,
@@ -323,7 +323,7 @@ impl ReportWrites for SqliteTx {
 
     async fn move_report(&mut self, id: ReportId, to: EventId) -> StoreResult<SmellReport> {
         let before = require_live(self.conn(), id).await?;
-        if before.event_id == to {
+        if before.event_id == Some(to) {
             return Ok(before);
         }
         sqlx::query!(

@@ -9,9 +9,6 @@ pub enum DomainError {
     #[error("a room can be listed only once in a report, got room {0} twice")]
     RoomListedTwice(i64),
 
-    #[error("a report needs at least one room")]
-    NoRooms,
-
     #[error("PM2.5 must be a number between 0 and 1000 µg/m³, got {0}")]
     InvalidPm25(f64),
 

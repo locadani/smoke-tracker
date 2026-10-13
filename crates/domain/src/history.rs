@@ -28,9 +28,10 @@ pub enum Change {
         from: Option<String>,
         to: Option<String>,
     },
+    /// Into another event; `None` is no event (a no-smell check).
     Moved {
-        from: EventId,
-        to: EventId,
+        from: Option<EventId>,
+        to: Option<EventId>,
     },
 }
 
@@ -47,7 +48,7 @@ pub struct HistoryEntry {
 /// read through [`SmellReport::upgrade_snapshot`].
 #[derive(Deserialize)]
 struct Snapshot {
-    event_id: EventId,
+    event_id: Option<EventId>,
     observed_at: DateTime<Utc>,
     rooms: Vec<RoomLevel>,
     symptoms: Vec<SymptomId>,
@@ -170,7 +171,7 @@ mod tests {
     fn report(rooms: &[(i64, u8)]) -> SmellReport {
         SmellReport {
             id: ReportId(9),
-            event_id: EventId(4),
+            event_id: Some(EventId(4)),
             user_id: UserId(1),
             observed_at: t("2026-01-15T19:00:00Z"),
             recorded_at: t("2026-01-15T19:00:01Z"),
@@ -246,7 +247,7 @@ mod tests {
     fn a_move_names_both_events_and_is_not_a_correction() {
         let before = report(&[(1, 6)]);
         let mut after = before.clone();
-        after.event_id = EventId(5);
+        after.event_id = Some(EventId(5));
         let history = report_history(&[
             entry(AuditAction::Create, None, &before),
             entry(AuditAction::Move, Some(&before), &after),
@@ -254,8 +255,8 @@ mod tests {
         assert_eq!(
             history[1].changes,
             [Change::Moved {
-                from: EventId(4),
-                to: EventId(5),
+                from: Some(EventId(4)),
+                to: Some(EventId(5)),
             }]
         );
         assert!(!was_corrected(&history));

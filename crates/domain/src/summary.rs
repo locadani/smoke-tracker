@@ -1,5 +1,5 @@
 //! The summary card on the Log screen (spec §9, screen 2): "This month: 14 events · 41 reports
-//! · 9 days with bedroom smoke."
+//! · 9 days with bedroom smoke · 6 clean checks."
 
 use std::collections::BTreeSet;
 
@@ -11,7 +11,10 @@ use crate::types::RoomId;
 pub struct MonthSummary {
     /// Events with at least one of the reports.
     pub events: usize,
+    /// Reports in an event.
     pub reports: usize,
+    /// No-smell checks made while no event was running.
+    pub checks: usize,
     /// Local days with a report giving the bedroom a level of 1 or more; `None` when there is no
     /// bedroom room.
     pub bedroom_days: Option<usize>,
@@ -24,7 +27,8 @@ pub fn summarise(
     bedroom: Option<RoomId>,
     schedule: &DailySchedule,
 ) -> MonthSummary {
-    let events: BTreeSet<_> = reports.iter().map(|r| r.event_id).collect();
+    let events: BTreeSet<_> = reports.iter().filter_map(|r| r.event_id).collect();
+    let checks = reports.iter().filter(|r| r.event_id.is_none()).count();
     let bedroom_days = bedroom.map(|room| {
         reports
             .iter()
@@ -39,7 +43,8 @@ pub fn summarise(
     });
     MonthSummary {
         events: events.len(),
-        reports: reports.len(),
+        reports: reports.len() - checks,
+        checks,
         bedroom_days,
     }
 }
@@ -52,11 +57,12 @@ mod tests {
     use crate::records::{ReportValues, RoomLevel};
     use crate::types::{EventId, Level, ReportId, UserId};
 
+    /// Event 0 stands for no event: a no-smell check.
     fn report(id: i64, event: i64, at: &str, rooms: &[(i64, u8)]) -> SmellReport {
         let at: DateTime<Utc> = at.parse().unwrap();
         SmellReport {
             id: ReportId(id),
-            event_id: EventId(event),
+            event_id: (event != 0).then_some(EventId(event)),
             user_id: UserId(1),
             observed_at: at,
             recorded_at: at,
@@ -81,7 +87,7 @@ mod tests {
     }
 
     #[test]
-    fn counts_events_reports_and_local_days_with_bedroom_smoke() {
+    fn counts_events_reports_checks_and_local_days_with_bedroom_smoke() {
         let bedroom = RoomId(3);
         let reports = [
             report(1, 1, "2026-01-10T20:00:00Z", &[(3, 4)]),
@@ -91,12 +97,15 @@ mod tests {
             report(4, 2, "2026-01-12T08:00:00Z", &[(1, 6)]),
             // The bedroom checked and clean: not a day with bedroom smoke.
             report(5, 2, "2026-01-12T09:00:00Z", &[(1, 6), (3, 0)]),
+            report(6, 0, "2026-01-13T09:00:00Z", &[(3, 0)]),
+            report(7, 0, "2026-01-14T09:00:00Z", &[]),
         ];
         assert_eq!(
             summarise(&reports, Some(bedroom), &rome()),
             MonthSummary {
                 events: 2,
                 reports: 5,
+                checks: 2,
                 bedroom_days: Some(2),
             }
         );
@@ -118,6 +127,7 @@ mod tests {
             MonthSummary {
                 events: 0,
                 reports: 0,
+                checks: 0,
                 bedroom_days: Some(0),
             }
         );

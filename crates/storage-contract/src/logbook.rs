@@ -4,7 +4,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::DomainError;
 use smoke_domain::clock::Clock;
 use smoke_domain::logbook::{EventChoice, LogError, Logged, SmellEntry, log_reading, log_smell};
-use smoke_domain::records::{Closure, Event, Pm25Reading, User};
+use smoke_domain::records::{Closure, Event, Pm25Reading, ReportValues, User};
 use smoke_domain::repos::{
     AuditRepo, Commit, EventRepo, ListRepo, ListWrites, ReadingRepo, ReportRepo, Transactional,
     UserWrites, WriteTx,
@@ -45,6 +45,15 @@ pub(crate) fn smell(at: DateTime<Utc>, intensity: u8) -> SmellEntry {
     SmellEntry {
         observed_at: at,
         values: report_values(intensity, &[FIRST_ROOM], &[]),
+        pm25: None,
+    }
+}
+
+/// "No smell" with no rooms: nothing anywhere in the home.
+pub(crate) fn no_smell(at: DateTime<Utc>) -> SmellEntry {
+    SmellEntry {
+        observed_at: at,
+        values: ReportValues::new(vec![], vec![], None).unwrap(),
         pm25: None,
     }
 }
@@ -104,7 +113,7 @@ where
     .await
     .unwrap();
     let open = fx.store.open_event().await.unwrap().unwrap();
-    assert_eq!(logged.report.event_id, open.id);
+    assert_eq!(logged.report.event_id, Some(open.id));
     assert_eq!((open.owner_id, open.opened_at), (p.guest.id, start()));
     assert_eq!(logged.reading, None);
 }
@@ -123,7 +132,7 @@ where
     .await
     .unwrap();
     fx.clock.advance(TimeDelta::minutes(20));
-    let event_id = first.report.event_id;
+    let event_id = first.report.event_id.unwrap();
     let second = log(
         fx,
         &p.guest,
@@ -132,7 +141,7 @@ where
     )
     .await
     .unwrap();
-    assert_eq!(second.report.event_id, event_id);
+    assert_eq!(second.report.event_id, Some(event_id));
     assert_eq!(event(fx, event_id).await.owner_id, p.resident.id);
     assert_eq!(fx.store.reports_for_event(event_id).await.unwrap().len(), 2);
 }
@@ -155,7 +164,7 @@ where
         fx,
         &p.resident,
         smell(fx.clock.now(), 2),
-        EventChoice::Join(first.report.event_id),
+        EventChoice::Join(first.report.event_id.unwrap()),
     )
     .await
     .unwrap();
@@ -165,13 +174,13 @@ where
         &p.guest,
         smell(fx.clock.now(), 5),
         EventChoice::New {
-            replacing: Some(first.report.event_id),
+            replacing: first.report.event_id,
         },
     )
     .await
     .unwrap();
 
-    let old = event(fx, first.report.event_id).await;
+    let old = event(fx, first.report.event_id.unwrap()).await;
     assert_eq!(
         old.closed,
         Some(Closure {
@@ -180,7 +189,7 @@ where
         })
     );
     let open = fx.store.open_event().await.unwrap().unwrap();
-    assert_eq!(open.id, next.report.event_id);
+    assert_eq!(Some(open.id), next.report.event_id);
     assert_eq!(open.owner_id, p.guest.id);
 }
 
@@ -204,7 +213,7 @@ where
         &p.partner,
         smell(fx.clock.now(), 5),
         EventChoice::New {
-            replacing: Some(first.report.event_id),
+            replacing: first.report.event_id,
         },
     )
     .await
@@ -215,7 +224,7 @@ where
         fx,
         &p.guest,
         smell(fx.clock.now(), 6),
-        EventChoice::Join(first.report.event_id),
+        EventChoice::Join(first.report.event_id.unwrap()),
     )
     .await;
     assert!(matches!(late_yes, Err(LogError::Stale)), "{late_yes:?}");
@@ -223,7 +232,7 @@ where
         fx,
         &p.guest,
         smell(fx.clock.now(), 6),
-        EventChoice::Continue(first.report.event_id),
+        EventChoice::Continue(first.report.event_id.unwrap()),
     )
     .await;
     assert!(
@@ -254,7 +263,7 @@ where
     )
     .await
     .unwrap();
-    let first_id = first.report.event_id;
+    let first_id = first.report.event_id.unwrap();
     fx.clock.advance(TimeDelta::minutes(5));
     let second = log(
         fx,
@@ -288,7 +297,7 @@ where
     assert!(matches!(unaware, Err(LogError::Stale)), "{unaware:?}");
     assert_eq!(
         fx.store.open_event().await.unwrap().map(|e| e.id),
-        Some(second.report.event_id)
+        second.report.event_id
     );
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries);
 }
@@ -308,7 +317,11 @@ pub async fn a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_pas
     )
     .await
     .unwrap();
-    assert!(event(fx, earlier_tonight.report.event_id).await.is_open());
+    assert!(
+        event(fx, earlier_tonight.report.event_id.unwrap())
+            .await
+            .is_open()
+    );
 
     let earlier_still = start() - TimeDelta::hours(2);
     let while_open = log(
@@ -316,13 +329,13 @@ pub async fn a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_pas
         &p.resident,
         smell(earlier_still, 3),
         EventChoice::New {
-            replacing: Some(earlier_tonight.report.event_id),
+            replacing: earlier_tonight.report.event_id,
         },
     )
     .await
     .unwrap();
     assert_eq!(
-        event(fx, while_open.report.event_id).await.closed,
+        event(fx, while_open.report.event_id.unwrap()).await.closed,
         Some(Closure {
             at: earlier_still,
             reason: CloseReason::Backdated
@@ -336,20 +349,22 @@ pub async fn a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_pas
         &p.resident,
         smell(yesterday, 3),
         EventChoice::New {
-            replacing: Some(earlier_tonight.report.event_id),
+            replacing: earlier_tonight.report.event_id,
         },
     )
     .await
     .unwrap();
     assert_eq!(
-        event(fx, past_four.report.event_id)
+        event(fx, past_four.report.event_id.unwrap())
             .await
             .closed
             .map(|c| c.reason),
         Some(CloseReason::Backdated)
     );
     assert!(
-        event(fx, earlier_tonight.report.event_id).await.is_open(),
+        event(fx, earlier_tonight.report.event_id.unwrap())
+            .await
+            .is_open(),
         "a past report never closes the open event"
     );
 }
@@ -374,7 +389,7 @@ where
     )
     .await
     .unwrap();
-    assert_eq!(inside.report.event_id, past.id);
+    assert_eq!(inside.report.event_id, Some(past.id));
     assert_eq!(event(fx, past.id).await.closed, Some(closed));
 
     let after = opened + TimeDelta::hours(2);
@@ -449,7 +464,7 @@ where
     )
     .await
     .unwrap();
-    assert_eq!(logged.report.event_id, guests.id);
+    assert_eq!(logged.report.event_id, Some(guests.id));
     assert!(event(fx, guests.id).await.is_open());
 
     let manual = add_event(
@@ -510,14 +525,14 @@ where
         .await
         .unwrap();
     let reading = logged.reading.unwrap();
-    assert_eq!(reading.event_id, Some(logged.report.event_id));
+    assert_eq!(reading.event_id, logged.report.event_id);
     assert_eq!(
         (reading.observed_at, reading.user_id),
         (start(), p.resident.id)
     );
     assert_eq!(
         fx.store
-            .readings_for_event(logged.report.event_id)
+            .readings_for_event(logged.report.event_id.unwrap())
             .await
             .unwrap(),
         [reading]
@@ -584,7 +599,7 @@ where
         &p.guest.actor(),
         entry,
         EventChoice::New {
-            replacing: Some(first.report.event_id),
+            replacing: first.report.event_id,
         },
         &rome(),
         fx.clock.now(),
@@ -595,7 +610,7 @@ where
 
     assert_eq!(
         fx.store.open_event().await.unwrap().map(|e| e.id),
-        Some(first.report.event_id),
+        first.report.event_id,
         "the close and the new event were rolled back with the report"
     );
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries);
@@ -659,5 +674,91 @@ where
             Err(LogError::Invalid(DomainError::ObservedInFuture))
         ),
         "{future:?}"
+    );
+}
+
+pub async fn a_no_smell_report_with_nothing_open_is_a_check_outside_any_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo + ReportRepo,
+{
+    let p = people(fx).await;
+    let logged = log(
+        fx,
+        &p.guest,
+        no_smell(start()),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    assert_eq!(logged.report.event_id, None);
+    assert!(logged.report.values.rooms().is_empty(), "the whole home");
+    assert_eq!(fx.store.open_event().await.unwrap(), None);
+    assert_eq!(fx.store.event(EventId(1)).await.unwrap(), None);
+    let listed = fx
+        .store
+        .reports_between(start(), start() + TimeDelta::minutes(1))
+        .await
+        .unwrap();
+    assert_eq!(listed, [logged.report]);
+}
+
+pub async fn a_no_smell_report_joins_the_open_event_without_closing_it<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let first = log(
+        fx,
+        &p.resident,
+        smell(start(), 6),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    fx.clock.advance(TimeDelta::minutes(30));
+    let clean = SmellEntry {
+        values: report_values(0, &[FIRST_ROOM], &[]),
+        ..smell(fx.clock.now(), 0)
+    };
+    let answer = EventChoice::New {
+        replacing: first.report.event_id,
+    };
+    let joined = log(fx, &p.guest, clean, answer).await.unwrap();
+    assert_eq!(joined.report.event_id, first.report.event_id);
+    let open = fx.store.open_event().await.unwrap().unwrap();
+    assert_eq!(Some(open.id), first.report.event_id);
+}
+
+pub async fn a_backdated_no_smell_report_joins_the_event_picked_or_none<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let past = add_event(fx, p.resident.id, start() - TimeDelta::hours(3), None).await;
+    let earlier = start() - TimeDelta::hours(2);
+    let joined = log(
+        fx,
+        &p.resident,
+        no_smell(earlier),
+        EventChoice::Join(past.id),
+    )
+    .await
+    .unwrap();
+    assert_eq!(joined.report.event_id, Some(past.id));
+
+    let before = start() - TimeDelta::hours(4);
+    let check = log(
+        fx,
+        &p.resident,
+        no_smell(before),
+        EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    assert_eq!(check.report.event_id, None);
+    assert_eq!(
+        fx.store.events_between(before, start()).await.unwrap(),
+        [event(fx, past.id).await],
+        "no event was created"
     );
 }

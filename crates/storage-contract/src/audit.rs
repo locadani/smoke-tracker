@@ -152,7 +152,11 @@ pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
         .pop()
         .unwrap();
     let stored = fx.store.report(p.report.id).await.unwrap().unwrap();
-    let in_event = fx.store.reports_for_event(stored.event_id).await.unwrap();
+    let in_event = fx
+        .store
+        .reports_for_event(stored.event_id.unwrap())
+        .await
+        .unwrap();
     assert_eq!(in_event.len(), 1);
     let rooms = fx.store.rooms().await.unwrap();
     let target = rooms.last().unwrap();

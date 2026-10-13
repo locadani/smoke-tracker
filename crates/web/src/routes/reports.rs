@@ -56,6 +56,11 @@ struct HistoryLine {
     changes: Vec<String>,
 }
 
+struct EventLink {
+    id: i64,
+    date: String,
+}
+
 struct MoveOption {
     value: String,
     label: String,
@@ -67,8 +72,8 @@ struct ReportPage {
     tr: Tr,
     signed_in: Option<String>,
     id: i64,
-    event_id: i64,
-    event_date: String,
+    /// `None` for a no-smell check outside any event.
+    event: Option<EventLink>,
     observed: String,
     recorded: String,
     intensity: String,
@@ -125,11 +130,10 @@ async fn report_page<S: Store>(
     let tz = schedule.tz();
     let actor = user.actor();
     let report = visible_report(state, user, id).await?;
-    let event = state
-        .store
-        .event(report.event_id)
-        .await?
-        .ok_or(AppError::NotFound)?;
+    let event = match report.event_id {
+        Some(id) => Some(state.store.event(id).await?.ok_or(AppError::NotFound)?),
+        None => None,
+    };
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
     let sees_all = can(&actor, Action::ViewAll, now);
@@ -197,7 +201,14 @@ async fn report_page<S: Store>(
                     ),
                     Change::Note { .. } => tr.t("history-note"),
                     Change::Moved { from, to } => {
-                        tr.t1("history-moved", "change", &format!("#{from} → #{to}"))
+                        let event = |id: &Option<EventId>| {
+                            id.map_or("—".to_owned(), |id| format!("#{id}"))
+                        };
+                        tr.t1(
+                            "history-moved",
+                            "change",
+                            &format!("{} → {}", event(from), event(to)),
+                        )
                     }
                 })
                 .collect(),
@@ -214,7 +225,7 @@ async fn report_page<S: Store>(
         );
     let mut move_options = Vec::new();
     if editable {
-        let joinable = joinable_events(state, user, tr, report.observed_at, Some(report.event_id));
+        let joinable = joinable_events(state, user, tr, report.observed_at, report.event_id);
         for (id, label) in joinable.await? {
             move_options.push(MoveOption {
                 value: format!("event-{id}"),
@@ -240,8 +251,10 @@ async fn report_page<S: Store>(
         tr,
         signed_in: Some(user.username.to_string()),
         id: id.0,
-        event_id: report.event_id.0,
-        event_date: time::date(tr.0, schedule.local_date(event.opened_at)),
+        event: event.map(|event| EventLink {
+            id: event.id.0,
+            date: time::date(tr.0, schedule.local_date(event.opened_at)),
+        }),
         observed: time::date_time(tr.0, report.observed_at, tz),
         recorded: time::date_time(tr.0, report.recorded_at, tz),
         intensity: format!(

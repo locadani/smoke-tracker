@@ -59,6 +59,8 @@ prompt-cancel = Cancel
 refused-stale = The events changed in the meantime. Check and try again.
 refused-another-open = Another event is open. Close it first.
 refused-outside-event = That time is outside the event: before it started, or on another day.
+refused-no-smell-new-event = A report with no smell cannot start an event.
+refused-check-smell = This is a no-smell check, so its levels stay at 0. To record a smell, log a new report.
 refused-future = The time cannot be in the future.
 refused-close-before-last-report = The end cannot be before the last report.
 refused-close-in-future = The end cannot be in the future.
@@ -126,6 +128,7 @@ event-reopen = Reopen
 
 report-title = Smell report
 report-event = Event
+report-no-event = None: a no-smell check
 report-observed = Observed
 report-recorded = Recorded
 report-note = Note

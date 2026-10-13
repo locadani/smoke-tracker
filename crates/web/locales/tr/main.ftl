@@ -59,6 +59,8 @@ prompt-cancel = Vazgeç
 refused-stale = Bu arada olaylar değişti. Kontrol edip tekrar dene.
 refused-another-open = Açık başka bir olay var. Önce onu kapat.
 refused-outside-event = Bu saat olayın dışında: başlamadan önce ya da başka bir günde.
+refused-no-smell-new-event = Kokusuz bir rapor olay başlatamaz.
+refused-check-smell = Bu kokusuz bir kontrol, seviyeleri 0 kalır. Bir koku kaydetmek için yeni bir rapor ekle.
 refused-future = Saat gelecekte olamaz.
 refused-close-before-last-report = Bitiş, son bildirimden önce olamaz.
 refused-close-in-future = Bitiş gelecekte olamaz.
@@ -126,6 +128,7 @@ event-reopen = Yeniden aç
 
 report-title = Koku bildirimi
 report-event = Olay
+report-no-event = Yok: kokusuz bir kontrol
 report-observed = Gözlem
 report-recorded = Kayıt
 report-note = Not

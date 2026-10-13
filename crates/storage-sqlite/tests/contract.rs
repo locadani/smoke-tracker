@@ -188,3 +188,25 @@ async fn migration_0003_refuses_a_report_without_rooms_and_changes_nothing() {
             .unwrap();
     assert_eq!(intensities, [6, 4, 5]);
 }
+
+#[tokio::test]
+async fn after_the_rebuild_the_link_tables_still_refer_to_the_reports() {
+    let (_dir, url) = database();
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    let pool = SqlitePool::connect(&url).await.unwrap();
+    for table in ["smell_report_rooms", "smell_report_symptoms"] {
+        let targets: Vec<String> =
+            sqlx::query_scalar("SELECT \"table\" FROM pragma_foreign_key_list($1)")
+                .bind(table)
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(
+            targets.contains(&"smell_reports".to_owned()),
+            "{table}: {targets:?}"
+        );
+    }
+}

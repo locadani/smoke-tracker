@@ -36,6 +36,12 @@ pub enum LogError {
     /// The time lies outside the event: before it started, or on another day.
     #[error("the time is outside the event")]
     OutsideEvent,
+    /// A no-smell report never opens an event (spec §7.1).
+    #[error("a no-smell report cannot start an event")]
+    NoSmellCannotOpen,
+    /// A check stays a no-smell report: a smell is logged as a new report (spec §7.1).
+    #[error("a check cannot be corrected to a smell")]
+    CheckCannotSmell,
     #[error(transparent)]
     Invalid(#[from] DomainError),
     #[error(transparent)]
@@ -43,11 +49,13 @@ pub enum LogError {
 }
 
 /// The answer to "Same smell still going?", "Which event was this?" or the auto-close notice.
+/// A no-smell report logged now ignores it: it joins the open event or stands alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EventChoice {
     /// Start a new event: nothing was asked, "No, it had stopped", or "New event". `replacing`
     /// is the event that was open when the answer was given (`None` if none was), so an event
-    /// opened meanwhile by another phone is never closed by a stale answer.
+    /// opened meanwhile by another phone is never closed by a stale answer. For a backdated
+    /// no-smell report: no event, a check.
     New { replacing: Option<EventId> },
     /// Join this event: "Yes, update", or the event picked for a past report.
     Join(EventId),
@@ -108,7 +116,8 @@ async fn open_new_event<T: EventWrites>(
 }
 
 /// Logs a smell report, and its PM2.5 reading if there is one, into the event `choice` names
-/// (spec §7.1, §7.2, §7.4, §7.5).
+/// (spec §7.1, §7.2, §7.4, §7.5). A no-smell report never opens or closes an event: logged now
+/// it joins the open event, if any; backdated it joins the event picked, or none.
 pub async fn log_smell<T>(
     tx: &mut T,
     actor: &Actor,
@@ -126,8 +135,12 @@ where
     let observed_at = entry.observed_at;
     let observed = classify_observed(observed_at, now)?;
     let open = tx.open_event().await?;
-    let event_id = match choice {
-        EventChoice::New { replacing } => {
+    let event_id = match (entry.values.is_no_smell(), observed, choice) {
+        (true, ObservedTime::Now, _) => open.map(|event| event.id),
+        (true, ObservedTime::Backdated, EventChoice::New { .. }) => None,
+        (true, ObservedTime::Backdated, EventChoice::Continue(_)) => return Err(LogError::Stale),
+        (_, _, EventChoice::Join(id)) => Some(join(tx, id, observed, observed_at, schedule).await?),
+        (false, _, EventChoice::New { replacing }) => {
             if open.as_ref().map(|e| e.id) != replacing {
                 return Err(LogError::Stale);
             }
@@ -138,23 +151,9 @@ where
                 }
                 (_, open) => open.is_some(),
             };
-            open_new_event(tx, actor.id, observed_at, schedule, now, another_open).await?
+            Some(open_new_event(tx, actor.id, observed_at, schedule, now, another_open).await?)
         }
-        EventChoice::Join(id) => {
-            let event = tx.event(id).await?.ok_or(LogError::Stale)?;
-            match observed {
-                ObservedTime::Now if !event.is_open() => return Err(LogError::Stale),
-                ObservedTime::Now => {}
-                ObservedTime::Backdated => {
-                    if !can_join_backdated(&event, observed_at, schedule) {
-                        return Err(LogError::OutsideEvent);
-                    }
-                    extend_to(tx, &event, observed_at).await?;
-                }
-            }
-            id
-        }
-        EventChoice::Continue(id) => {
+        (false, _, EventChoice::Continue(id)) => {
             let event = tx.event(id).await?.ok_or(LogError::Stale)?;
             let auto_closed = event.closed.map(|c| c.reason) == Some(CloseReason::Auto0400);
             if observed != ObservedTime::Now || open.is_some() || !auto_closed {
@@ -170,7 +169,7 @@ where
                 return Err(LogError::Forbidden);
             }
             tx.reopen_event(id).await?;
-            id
+            Some(id)
         }
     };
     let report = tx
@@ -185,7 +184,7 @@ where
         Some(value) => Some(
             tx.create_reading(NewReading {
                 user_id: actor.id,
-                event_id: Some(event_id),
+                event_id,
                 observed_at,
                 value,
             })
@@ -194,6 +193,29 @@ where
         None => None,
     };
     Ok(Logged { report, reading })
+}
+
+/// Joins the event `id` names: running now, or one the past report can belong to (its end moves
+/// if the report is later).
+async fn join<T: EventWrites>(
+    tx: &mut T,
+    id: EventId,
+    observed: ObservedTime,
+    observed_at: DateTime<Utc>,
+    schedule: &DailySchedule,
+) -> Result<EventId, LogError> {
+    let event = tx.event(id).await?.ok_or(LogError::Stale)?;
+    match observed {
+        ObservedTime::Now if !event.is_open() => return Err(LogError::Stale),
+        ObservedTime::Now => {}
+        ObservedTime::Backdated => {
+            if !can_join_backdated(&event, observed_at, schedule) {
+                return Err(LogError::OutsideEvent);
+            }
+            extend_to(tx, &event, observed_at).await?;
+        }
+    }
+    Ok(id)
 }
 
 /// Logs a PM2.5 reading on its own ("Log PM2.5 only", spec §7.6). It joins the event whose span
@@ -285,7 +307,8 @@ pub async fn reopen_event<T: EventWrites>(
 }
 
 /// "Correct a mistake" (spec §7.7): new values and observed time for a report. The time must
-/// still belong to the report's event; after a closed event's end, the end moves with it.
+/// still belong to the report's event; after a closed event's end, the end moves with it. A
+/// check (no event) keeps every level at 0 (spec §7.1).
 pub async fn correct_report<T: EventWrites + ReportWrites>(
     tx: &mut T,
     actor: &Actor,
@@ -297,16 +320,23 @@ pub async fn correct_report<T: EventWrites + ReportWrites>(
 ) -> Result<SmellReport, LogError> {
     let report = editable_report(tx, actor, id, now).await?;
     classify_observed(observed_at, now)?;
-    let event = tx.event(report.event_id).await?.ok_or(LogError::NotFound)?;
-    if !can_join_backdated(&event, observed_at, schedule) {
-        return Err(LogError::OutsideEvent);
+    match report.event_id {
+        Some(event_id) => {
+            let event = tx.event(event_id).await?.ok_or(LogError::NotFound)?;
+            if !can_join_backdated(&event, observed_at, schedule) {
+                return Err(LogError::OutsideEvent);
+            }
+            extend_to(tx, &event, observed_at).await?;
+        }
+        None if !values.is_no_smell() => return Err(LogError::CheckCannotSmell),
+        None => {}
     }
-    extend_to(tx, &event, observed_at).await?;
     Ok(tx.correct_report(id, observed_at, values).await?)
 }
 
 /// "Move to another event" (spec §7.7): into an event that was running when the report was
-/// observed (its end moves if needed), or into a new event owned by the report's author.
+/// observed (its end moves if needed), or into a new event owned by the report's author. A
+/// no-smell report never opens one (spec §7.1).
 pub async fn move_report<T: EventWrites + ReportWrites>(
     tx: &mut T,
     actor: &Actor,
@@ -317,7 +347,7 @@ pub async fn move_report<T: EventWrites + ReportWrites>(
 ) -> Result<SmellReport, LogError> {
     let report = editable_report(tx, actor, id, now).await?;
     let target = match to {
-        MoveTarget::Event(target) if target == report.event_id => return Ok(report),
+        MoveTarget::Event(target) if Some(target) == report.event_id => return Ok(report),
         MoveTarget::Event(target) => {
             let event = tx.event(target).await?.ok_or(LogError::NotFound)?;
             if !can_join_backdated(&event, report.observed_at, schedule) {
@@ -326,6 +356,7 @@ pub async fn move_report<T: EventWrites + ReportWrites>(
             extend_to(tx, &event, report.observed_at).await?;
             target
         }
+        MoveTarget::New if report.values.is_no_smell() => return Err(LogError::NoSmellCannotOpen),
         MoveTarget::New => {
             let another_open = tx.open_event().await?.is_some();
             let (owner, at) = (report.user_id, report.observed_at);

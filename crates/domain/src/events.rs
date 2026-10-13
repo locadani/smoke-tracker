@@ -47,7 +47,8 @@ pub struct EventSummary {
 /// The question to ask before saving a report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LogPrompt {
-    /// Nothing to ask: the report starts a new event.
+    /// Nothing to ask: the report starts a new event or, if it is a no-smell report, joins the
+    /// open event or stands alone as a check.
     Direct,
     /// "Same smell still going?" about the open event.
     SameSmell(EventSummary),
@@ -69,6 +70,16 @@ pub fn log_prompt(
         (ObservedTime::Now, Some(open), _) => LogPrompt::SameSmell(open),
         (ObservedTime::Now, None, Some(closed)) => LogPrompt::AutoClosed(closed),
         (ObservedTime::Now, None, None) => LogPrompt::Direct,
+    }
+}
+
+/// The prompt for a no-smell report (spec §7.1, §7.2): none when logged now, since it joins the
+/// open event or stands alone; "Which event was this?" when backdated, with "no event" in place
+/// of a new one.
+pub fn no_smell_prompt(observed: ObservedTime) -> LogPrompt {
+    match observed {
+        ObservedTime::Now => LogPrompt::Direct,
+        ObservedTime::Backdated => LogPrompt::WhichEvent,
     }
 }
 
@@ -260,6 +271,15 @@ mod tests {
     #[test]
     fn nothing_open_and_nothing_pending_logs_directly() {
         assert_eq!(log_prompt(ObservedTime::Now, None, None), LogPrompt::Direct);
+    }
+
+    #[test]
+    fn a_no_smell_report_is_asked_only_which_event_when_backdated() {
+        assert_eq!(no_smell_prompt(ObservedTime::Now), LogPrompt::Direct);
+        assert_eq!(
+            no_smell_prompt(ObservedTime::Backdated),
+            LogPrompt::WhichEvent
+        );
     }
 
     // --- new_event_state ---
