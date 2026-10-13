@@ -10,20 +10,50 @@ publish = false
 repository = "https://github.com/locadani/smoke-tracker"
 
 [workspace.dependencies]
+anyhow = "1.0.104"
+argon2 = "0.6.0"
+askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
+async-trait = "0.1.92"
+axum = { version = "0.8.9", default-features = false, features = ["form", "http1", "tokio", "tracing"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = "0.10"
+clap = { version = "4.6.7", features = ["derive"] }
+fluent-syntax = "0.12.0"
+fluent-templates = { version = "0.15.1", default-features = false, features = ["macros", "walkdir"] }
+getrandom = "0.4.3"
 hex = "0.4"
+http-body-util = "0.1.5"
 proptest = "1"
+rpassword = "7.5.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.11"
 smoke-domain = { path = "crates/domain" }
 smoke-storage-contract = { path = "crates/storage-contract" }
+smoke-storage-postgres = { path = "crates/storage-postgres" }
 smoke-storage-sqlite = { path = "crates/storage-sqlite" }
+smoke-web = { path = "crates/web" }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "macros", "migrate", "sqlx-toml"] }
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { version = "1.53", features = ["rt-multi-thread", "macros"] }
+tower = { version = "0.5.3", default-features = false, features = ["util"] }
+tower-http = { version = "0.7.1", features = ["catch-panic", "request-id", "trace"] }
+tower-sessions = { version = "0.15.0", default-features = false, features = ["axum-core"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", default-features = false, features = ["ansi", "env-filter", "fmt"] }
+
+# Argon2 is deliberately slow; unoptimised it makes every login test take seconds.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

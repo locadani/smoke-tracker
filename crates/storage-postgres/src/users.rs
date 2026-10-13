@@ -11,6 +11,7 @@ use sqlx::PgConnection;
 
 use crate::convert::{canonical, corrupt, instant, micros, opt_instant, parse};
 use crate::error::IntoStore;
+use crate::sessions;
 use crate::{PostgresStore, PostgresTx};
 
 struct UserRow {
@@ -137,6 +138,7 @@ impl UserWrites for PostgresTx {
         .execute(self.conn())
         .await
         .db()?;
+        sessions::delete_for_user(self.conn(), id).await?;
         audited(self, AuditAction::PasswordChange, before).await
     }
 
@@ -163,6 +165,7 @@ impl UserWrites for PostgresTx {
             .execute(self.conn())
             .await
             .db()?;
+        sessions::delete_for_user(self.conn(), id).await?;
         audited(self, AuditAction::Expire, before).await
     }
 

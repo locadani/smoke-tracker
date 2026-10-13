@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="{{ tr.lang() }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>
+  <title>{% block title %}{% endblock %} · {{ tr.t("app-name") }}</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx-2.0.11.min.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <span class="brand">{{ tr.t("app-name") }}</span>
+    {% if signed_in.is_some() %}
+    <form method="post" action="/logout">
+      <button type="submit" class="link">{{ tr.t("logout") }}</button>
+    </form>
+    {% endif %}
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <form method="post" action="/lang" class="languages">
+      <span>{{ tr.t("language") }}:</span>
+      <button type="submit" name="lang" value="en" lang="en" class="link">English</button>
+      <button type="submit" name="lang" value="it" lang="it" class="link">Italiano</button>
+      <button type="submit" name="lang" value="tr" lang="tr" class="link">Türkçe</button>
+    </form>
+  </footer>
+</body>
+</html>

@@ -12,6 +12,7 @@ mod jobs;
 mod lists;
 mod readings;
 mod reports;
+mod sessions;
 mod tx;
 mod users;
 
@@ -53,6 +54,11 @@ impl PostgresStore {
     }
 
     async fn read(&self) -> StoreResult<PoolConnection<Postgres>> {
+        self.pool.acquire().await.db()
+    }
+
+    /// A pooled connection for the unaudited single-statement writes (sessions).
+    async fn write(&self) -> StoreResult<PoolConnection<Postgres>> {
         self.pool.acquire().await.db()
     }
 }

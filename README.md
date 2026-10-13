@@ -27,6 +27,38 @@ scripts/sqlx-prepare.sh        # after changing a query or a migration; commit t
 
 Building needs no database: queries are checked against the committed `.sqlx/` metadata.
 
+## Running it
+
+Configuration comes from environment variables only; [`.env.example`](.env.example) lists
+every one.
+
+```sh
+cp .env.example .env && mkdir -p data
+set -a; . ./.env; set +a
+cargo run -p smoke-tracker -- create-resident <username>   # prompts for the password
+cargo run -p smoke-tracker -- serve                        # http://localhost:8080
+cargo run -p smoke-tracker -- verify-audit                 # exits with 1 if the history was altered
+```
+
+### Container
+
+Every push to `main` publishes `ghcr.io/locadani/smoke-tracker`: one static binary on a
+distroless base, with the database in the `/data` volume.
+
+```sh
+docker build -t smoke-tracker .
+docker volume create smoke-data
+docker run --rm -it -v smoke-data:/data smoke-tracker create-resident <username>
+docker run -d -p 8080:8080 -v smoke-data:/data -e APP_BASE_URL=http://localhost:8080 smoke-tracker
+```
+
+On **Cloud Run** (the run.app URL or a domain mapping, no load balancer) also set
+`CLIENT_IP_HEADER=X-Forwarded-For`. The app's TCP peer there is Google's front end, so
+without it every visitor shares one address and the per-address sign-in limit locks
+everyone out together. The front end appends the real client as the header's last entry,
+which is the one the app trusts. With `RUST_LOG=info,smoke_web=debug` each sign-in attempt
+logs the address it resolved, to check this on the first deploy.
+
 ## Hosting
 
 The app runs on Google Cloud Run, with its data in a Neon Postgres database. Both are on free
