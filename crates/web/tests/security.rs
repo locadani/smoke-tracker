@@ -45,7 +45,7 @@ async fn anonymous_requests_set_no_cookies() {
 }
 
 #[tokio::test]
-async fn cross_site_posts_are_refused() {
+async fn cross_site_posts_are_refused_with_a_page() {
     let app = TestApp::new().await;
     let cases: [&[(&str, &str)]; 4] = [
         &[("sec-fetch-site", "cross-site"), ("origin", BASE)],
@@ -65,6 +65,10 @@ async fn cross_site_posts_are_refused() {
         let response = app.send(request).await;
         assert_eq!(response.status(), StatusCode::FORBIDDEN, "{headers:?}");
         assert!(session_cookie(&response).is_none());
+        assert!(
+            text(response).await.contains("<h1>Request blocked</h1>"),
+            "{headers:?}"
+        );
     }
 }
 

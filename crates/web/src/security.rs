@@ -7,11 +7,12 @@ use axum::http::header::{
     CACHE_CONTROL, CONTENT_SECURITY_POLICY, ORIGIN, REFERRER_POLICY, STRICT_TRANSPORT_SECURITY,
     X_CONTENT_TYPE_OPTIONS, X_FRAME_OPTIONS,
 };
-use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 
 use crate::config::WebConfig;
+use crate::error::AppError;
 
 /// Same-origin resources only: no inline scripts or styles, no CDNs, no framing.
 pub(crate) const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; \
@@ -63,7 +64,7 @@ pub(crate) async fn check_origin(
         next.run(request).await
     } else {
         tracing::warn!("refused a cross-site request");
-        StatusCode::FORBIDDEN.into_response()
+        AppError::Forbidden.into_response()
     }
 }
 

@@ -5,7 +5,11 @@
 mod assets;
 mod auth;
 pub mod config;
+mod cookies;
+mod error;
+mod i18n;
 mod request_id;
+mod routes;
 mod security;
 mod sessions;
 mod state;
@@ -15,11 +19,11 @@ use std::net::SocketAddr;
 
 use axum::Router;
 use axum::extract::{DefaultBodyLimit, Request};
-use axum::http::StatusCode;
 use axum::middleware;
 use axum::routing::get;
 use smoke_domain::repos::Store;
 use tokio::net::TcpListener;
+use tower_http::catch_panic::CatchPanicLayer;
 use tower_http::request_id::{PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::trace::{DefaultOnResponse, TraceLayer};
 use tracing::Level;
@@ -34,7 +38,8 @@ const BODY_LIMIT_BYTES: usize = 16 * 1024;
 /// The whole application. Static assets and the health check skip sessions and the database.
 pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     let pages = Router::new()
-        .fallback(|| async { StatusCode::NOT_FOUND })
+        .fallback(routes::not_found)
+        .layer(CatchPanicLayer::custom(error::panic_response))
         .layer(sessions::layer(
             state.store.clone(),
             state.clock.clone(),
@@ -44,6 +49,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             state.config.clone(),
             security::check_origin,
         ))
+        .layer(middleware::from_fn(error::render_errors))
         .with_state(state.clone());
 
     Router::new()
