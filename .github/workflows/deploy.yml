@@ -52,6 +52,31 @@ jobs:
         with:
           persist-credentials: false
 
+      - uses: docker/setup-buildx-action@v4
+
+      # The tag carries no project ID: the build summary and record are public on this repo.
+      - name: Build
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: .
+          load: true
+          tags: smoke-tracker:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan the image and the crates compiled into it
+        # Pinned to a commit, not a tag: a third-party action's tags can be moved.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: smoke-tracker:${{ github.sha }}
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      # After the build: auth writes gha-creds-*.json into the workspace.
       - uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
@@ -64,29 +89,10 @@ jobs:
             | jq -e '.spec.template.spec.containers[0].env[]? | select(.name == "DATABASE_URL")' > /dev/null \
             || { echo "DATABASE_URL is not attached yet (infra/README.md, first-time setup)."; exit 1; }
 
-      - uses: docker/setup-buildx-action@v4
-
-      - name: Build
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          load: true
-          tags: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smoke-tracker/smoke-tracker:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Scan the image and the crates compiled into it
-        # Pinned to a commit, not a tag: a third-party action's tags can be moved.
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
-        with:
-          image-ref: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/smoke-tracker/smoke-tracker:${{ github.sha }}
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
-          exit-code: "1"
-
       - name: Push
         run: |
           gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker tag "smoke-tracker:$GITHUB_SHA" "$REGION-docker.pkg.dev/$PROJECT_ID/smoke-tracker/smoke-tracker:$GITHUB_SHA"
           docker push "$REGION-docker.pkg.dev/$PROJECT_ID/smoke-tracker/smoke-tracker:$GITHUB_SHA"
 
       # Only the image changes; every other setting is owned by Terraform.
