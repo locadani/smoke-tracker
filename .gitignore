@@ -1,0 +1,18 @@
+# Build output
+/target
+
+# Secrets and local config — never commit
+.env
+.env.*
+!.env.example
+
+# Local databases
+*.db
+*.db-shm
+*.db-wal
+/data/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
