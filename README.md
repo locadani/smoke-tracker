@@ -4,7 +4,7 @@ A small, installable web app (PWA) for logging cigarette smoke that drifts into 
 from neighbours. It records how strong the smell is, which rooms it reached, any symptoms, and
 PM2.5 readings, and builds a detailed, tamper-evident record over time.
 
-Written in Rust (Axum, Askama, htmx, SQLite).
+Written in Rust (Axum, Askama, htmx), with SQLite locally and Postgres in production.
 
 > **Status:** early development. See the [roadmap](docs/plans/ROADMAP.md).
 
@@ -58,6 +58,54 @@ without it every visitor shares one address and the per-address sign-in limit lo
 everyone out together. The front end appends the real client as the header's last entry,
 which is the one the app trusts. With `RUST_LOG=info,smoke_web=debug` each sign-in attempt
 logs the address it resolved, to check this on the first deploy.
+
+## Hosting
+
+The app runs on Google Cloud Run, with its data in a Neon Postgres database. Both are on free
+tiers, in Frankfurt. SQLite is used for local development and tests. The deploy workflow is
+added after milestone 3.
+
+```mermaid
+flowchart LR
+    dev([Merge a PR to main]) --> gha
+
+    subgraph gh ["GitHub"]
+        gha[GitHub Actions<br/>build + deploy]
+    end
+
+    subgraph gcp ["Google Cloud · europe-west3"]
+        wif[Workload Identity<br/>Federation]
+        ar[(Artifact Registry<br/>Docker images)]
+        run[Cloud Run<br/>service: smoke-tracker]
+        sm[Secret Manager<br/>smoke-tracker-database-url]
+    end
+
+    subgraph neon ["Neon · Frankfurt"]
+        db[(Postgres)]
+    end
+
+    gha -- "1 · logs in, no stored key" --> wif
+    gha -- "2 · pushes the image" --> ar
+    gha -- "3 · deploys the new image" --> run
+    ar -- image --> run
+    sm -- "read at startup" --> run
+    run -- SQL over TLS --> db
+    users([Browser / installed PWA]) -- HTTPS --> run
+```
+
+| Piece | What it does | Where secrets live |
+|---|---|---|
+| GitHub Actions | Builds the Docker image and deploys it on every merge to `main` | None. Project and account identifiers are stored as GitHub secrets only so they are masked in public logs |
+| Workload Identity Federation | Lets this repository's workflows act as narrowly-scoped service accounts (`smoke-tracker-deploy` for deploys, `terraform-plan` for read-only plans), with short-lived tokens instead of a stored key | — |
+| Artifact Registry | Stores the Docker images (repository `smoke-tracker`); a cleanup policy deletes old images and keeps the latest 3 | — |
+| Cloud Run | Runs the app as the `smoke-tracker-run` service account. Scales to zero when idle and allows at most one instance | — |
+| Secret Manager | Holds the database connection string; only `smoke-tracker-run` can read it. The app sees it as `DATABASE_URL` | `smoke-tracker-database-url` |
+| Neon | Postgres database. Pauses after 5 minutes idle and keeps 6 hours of restore history, so a daily backup job (planned) will cover older mistakes | The database password |
+
+No secret is ever stored in this repository, in a Docker image, or in GitHub.
+
+The Google Cloud side is Terraform: see [`infra/`](infra/README.md) for what is automatic, what is
+manual and why, and how changes are applied.
 
 ## Documentation
 
