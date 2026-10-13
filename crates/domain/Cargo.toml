@@ -1,0 +1,16 @@
+[package]
+name = "smoke-domain"
+version = "0.1.0"
+description = "Pure domain logic for Smoke Tracker: types, rules and the audit chain"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[dev-dependencies]
+
+[lints]
+workspace = true
