@@ -16,7 +16,7 @@ hex = "0.4"
 proptest = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
-sha2 = "0.10"
+sha2 = "0.11"
 smoke-domain = { path = "crates/domain" }
 smoke-storage-contract = { path = "crates/storage-contract" }
 smoke-storage-sqlite = { path = "crates/storage-sqlite" }
