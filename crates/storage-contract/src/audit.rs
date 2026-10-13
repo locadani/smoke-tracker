@@ -151,16 +151,20 @@ pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
         .unwrap()
         .pop()
         .unwrap();
+    let stored = fx.store.report(p.report.id).await.unwrap().unwrap();
+    let in_event = fx.store.reports_for_event(stored.event_id).await.unwrap();
+    assert_eq!(in_event.len(), 1);
     let rooms = fx.store.rooms().await.unwrap();
-    assert!(!p.report.values.rooms().contains(&rooms[2].id));
-    // The only report is the one `populate` made, and the stairwell (the last room) is not in it.
+    let target = rooms.last().unwrap();
+    assert_eq!(target.i18n_key.as_deref(), Some("room-stairwell"));
+    assert!(!stored.values.rooms().contains(&target.id));
+    // `populate` makes the only report, and the stairwell (the last room) is not linked to it.
     fx.raw(
         "INSERT INTO smell_report_rooms (smell_report_id, room_id) \
          SELECT (SELECT MIN(id) FROM smell_reports), (SELECT MAX(id) FROM rooms)",
     )
     .await
     .unwrap();
-    assert_eq!(rooms.last().unwrap().area, RoomArea::Common);
 
     let report = verify_store(&fx.store).await.unwrap();
     assert_eq!(report.chain, Ok(()));
