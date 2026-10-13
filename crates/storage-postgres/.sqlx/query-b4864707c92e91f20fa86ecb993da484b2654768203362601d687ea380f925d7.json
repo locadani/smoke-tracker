@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT symptom_id FROM smell_report_symptoms WHERE smell_report_id = $1 ORDER BY symptom_id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "symptom_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "smell_report_symptoms",
+            "name": "symptom_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "b4864707c92e91f20fa86ecb993da484b2654768203362601d687ea380f925d7"
+}

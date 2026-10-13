@@ -1,0 +1,3 @@
+# The query macros check this crate against POSTGRES_DATABASE_URL (see storage-sqlite/sqlx.toml).
+[common]
+database-url-var = "POSTGRES_DATABASE_URL"

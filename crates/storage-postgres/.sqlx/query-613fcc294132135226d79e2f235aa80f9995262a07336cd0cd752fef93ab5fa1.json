@@ -1,0 +1,101 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE (closed_at IS NULL OR closed_at >= $1) AND opened_at < $2 ORDER BY opened_at, id",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "owner_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "owner_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "opened_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "opened_at"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "closed_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "closed_at"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "close_reason",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "close_reason"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "auto_close_notice_seen_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "auto_close_notice_seen_at"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "recorded_at",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "events",
+            "name": "recorded_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "613fcc294132135226d79e2f235aa80f9995262a07336cd0cd752fef93ab5fa1"
+}

@@ -1,0 +1,14 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "DELETE FROM smell_report_rooms WHERE smell_report_id = $1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Int8"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "cd9ebdf7f44845f7bdb491afef6f238ae4731e0ee1495dc1b4b8836163d7432f"
+}

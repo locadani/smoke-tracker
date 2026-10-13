@@ -19,6 +19,7 @@ serde_json = "1"
 sha2 = "0.10"
 smoke-domain = { path = "crates/domain" }
 smoke-storage-contract = { path = "crates/storage-contract" }
+smoke-storage-sqlite = { path = "crates/storage-sqlite" }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "macros", "migrate", "sqlx-toml"] }
 tempfile = "3"
 thiserror = "2"
