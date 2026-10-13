@@ -42,7 +42,7 @@ Defaults were chosen so nothing blocks; each is a decision row and easy to chang
    minutes to CI. The alternative is running it only on `main` and weekly.
 3. **Snyk** is not added: Trivy (image + embedded crates) and cargo-deny (RustSec) cover the same
    ground for free with no token (decision #70). Snyk can still be added later.
-4. **Spec wording** (Task 13) needs your explicit approval before it is applied.
+4. **Spec wording** (Task 13): approved by the user on 2026-10-13 and already applied — nothing to do.
 
 ## Global Constraints
 
@@ -6691,15 +6691,15 @@ cargo deny check
 
 ---
 
-### Task 13: Spec wording — **only with the user's explicit approval**
+### Task 13: Spec wording — ✅ approved and applied (2026-10-13); skip
 
-Do not start this task until the user has approved these exact edits. They align the spec with
+The user approved all four edits on 2026-10-13; they were committed with this plan update. **Executors: skip this task.** They align the spec with
 decisions #56, #61 and #62; nothing in the code depends on them.
 
 **Files:**
 - Modify: `docs/specs/2026-10-13-smoke-tracker-design.md`
 
-- [ ] **Step 1: Show the user the edits and wait for approval**
+- [x] **Step 1: Show the user the edits and wait for approval**
 
 1. §8.4, first bullet — from *"Server-side sessions stored in the database via **tower-sessions**,
    using the backend matching `DATABASE_URL`."* to *"Server-side sessions via **tower-sessions**,
@@ -6712,7 +6712,7 @@ decisions #56, #61 and #62; nothing in the code depends on them.
 4. §11, *Cleanup* — from *"expired sessions are removed by tower-sessions"* to *"expired
    sessions are removed hourly by the server"*.
 
-- [ ] **Step 2: Apply exactly the approved edits and commit**
+- [x] **Step 2: Apply exactly the approved edits and commit**
 
 ```bash
 git add docs/specs/2026-10-13-smoke-tracker-design.md
