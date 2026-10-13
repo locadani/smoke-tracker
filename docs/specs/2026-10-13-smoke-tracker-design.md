@@ -47,7 +47,7 @@ offline logging, browser end-to-end tests, choosing the hosting provider.
 | **Resident** | The two people living in the apartment. Full access, manage other users. |
 | **Guest** | Invited person who stays temporarily. Logs data; sees only own data; expires. |
 | **Viewer** | Read-only person (e.g. lawyer, administrator). Sees all data; cannot write. |
-| **Smell report** | One person's observation at one moment: intensity, rooms, symptoms, note. |
+| **Smell report** | One person's observation at one moment: the rooms they checked, each with a level 0–10 (0 = checked, no smell), plus symptoms and a note. |
 | **PM2.5 reading** | A sensor value in µg/m³, entered by hand. Independent record type. |
 | **Event** | One smoke incident, grouping smell reports (and PM2.5 readings) from start to end. |
 | **Event owner** | The user who logged the event's first smell report. |
@@ -86,13 +86,15 @@ Shown in-app (Settings → Guides) and in the README.
 | What happened | Correct action |
 |---|---|
 | I made a mistake (wrong number, forgot a room, wrong symptom) | **Correct** that report (edit; recorded in history) |
-| The situation changed (stronger/weaker, new room, symptoms started) | **Add a new report** to the **same event** |
+| The situation changed (stronger/weaker, a room started or stopped, symptoms started) | **Add a new report** to the **same event** |
 | The smell went away completely and came back later | **Start a new event** |
 
 **Rules of thumb**
 
 1. **Never edit to show a change; add a report.** Editing changes the past; adding records the present.
-2. Add a report when intensity changes by **2 or more**, or a **new room or symptom** appears.
+2. Add a report when a room's level changes by **2 or more**, a **room starts or clears** (log it
+   at 0), or a **new symptom** appears. Each report lists only the rooms you checked: a room you
+   leave out is "not checked", never "clean".
 3. Unsure whether it's the same event? If the smell was **completely gone** at some point, it's a new one.
 4. **Close the event when the smell is gone.** Forgetting is fine (04:00 auto-close), but closing gives accurate durations.
 
@@ -103,6 +105,7 @@ edit action lives only on the report detail page, labelled **"Correct a mistake"
 
 | | Level | What it's like |
 |---|---|---|
+| 0 | Clean | You checked: no smoke smell at all. |
 | 1 | Barely there | Only if you focus. Unsure it's smoke. |
 | 2 | Faint | Noticeable entering the room, then fades. |
 | 3 | Light | Clearly smoke, but weak. Easy to ignore. |
@@ -172,9 +175,9 @@ events
 smell_reports
   id, event_id, user_id
   observed_at, recorded_at
-  intensity (1–10), note?
+  note?
   deleted_at?
-smell_report_rooms         (smell_report_id, room_id)
+smell_report_rooms         (smell_report_id, room_id, level 0–10)   -- at least one room per report
 smell_report_symptoms      (smell_report_id, symptom_id)
 
 pm25_readings
@@ -199,6 +202,9 @@ stairwell (shared) (*common*).
 
 **Starter symptoms:** cough, headache, sore throat, eye irritation, nausea, difficulty sleeping.
 
+A report's **intensity** is its highest room level. An event's intensity is the highest intensity
+among its reports.
+
 ### 6.1 Tamper-evident audit log (hash chain)
 
 - Every write goes through **one transaction** that changes the data **and** appends an audit
@@ -212,7 +218,7 @@ stairwell (shared) (*common*).
 - **Pinning:** backups (and future exports) include the latest hash, so recomputing the whole
   chain after tampering is also detectable.
 - Corrections made in the app are normal and visible. A report shows an "edited" badge and a
-  History view (e.g. *"09:15 next day, edited by Daniele: intensity 6 → 7, added bedroom"*).
+  History view (e.g. *"09:15 next day, edited by Daniele: living room 6 → 7, added bedroom 3"*).
 
 ---
 
@@ -223,11 +229,17 @@ stairwell (shared) (*common*).
 ### 7.1 Logging "now" with no open event
 A new event is created, owned by the logger.
 
+A report whose rooms are all at 0 cannot open an event (there is no smell to record); the form
+says so. The same holds for a backdated report that would need a new event.
+
 ### 7.2 Logging "now" with an open event
 Prompt: **"Same smell still going?"**
 - **[Yes, update]:** the report joins the open event.
 - **[No, it had stopped: new event]:** the open event is closed with `close_reason = new_event`
   and `closed_at` = its last smell report's `observed_at`. A new event is created.
+
+A report whose rooms are all at 0 joins the open event like any other (it records that the smell
+has gone); it does not close the event.
 
 **Guests** see the same prompt, but only the event's **start time**: *"A smell event is ongoing
 (started 19:05). Is this the same smell?"* They never see who logged it, intensities, rooms, or
@@ -321,9 +333,10 @@ QR code. There is no email.
 
 1. **Log (home screen; the icon opens here)**
    - Event status bar
-   - Intensity 1–10 button grid + ⓘ *How to rate* (popup, then a link to the full page; see §5)
    - **Rooms as toggle chips**, grouped *Inside / Common*, pre-selected from your last report in
-     the open event
+     the open event. Each selected room shows its own level row: **0** (clean) and **1–10**, with
+     ⓘ *How to rate* (popup, then a link to the full page; see §5). Every selected room needs a
+     level; at least one room is required.
    - **Symptoms as checkboxes**
    - Optional PM2.5 field
    - Time ("now", with a *change* link)
@@ -337,9 +350,10 @@ QR code. There is no email.
 4. **Report detail:** values, observed and recorded times, *Correct a mistake*, *Move to another
    event*, *History*.
 5. **Graphs** (Chart.js, self-hosted):
-   - intensity over time, one line per person, with PM2.5 on a secondary axis
+   - intensity over time (a report's highest room level), one line per person, with PM2.5 on a
+     secondary axis
    - events per day/week
-   - room × hour-of-day heatmap
+   - room × hour-of-day heatmap of room levels (0 counts as checked and clean)
    - symptom frequency
    - inside vs common-area comparison
 
@@ -380,7 +394,7 @@ Cargo workspace:
 smoke-tracker/
 ├─ crates/
 │  ├─ domain/     pure logic, no I/O
-│  │   types.rs        Intensity(1..=10), Pm25, UserId, Role, … (invalid states unrepresentable)
+│  │   types.rs        Level(0..=10), Pm25, UserId, Role, … (invalid states unrepresentable)
 │  │   permissions.rs  can(user, action) -> bool  (the §4 table as code)
 │  │   events.rs       lifecycle rules (§7)
 │  │   audit.rs        canonical serialisation, hash chain, verification
@@ -508,7 +522,7 @@ reverse proxy writes the client address into).
 ### 13.3 Testing
 | Layer | What | How |
 |---|---|---|
-| domain | permissions table (every cell), lifecycle rules, `Intensity` bounds, hash chain tamper detection | unit tests + proptest |
+| domain | permissions table (every cell), lifecycle rules, `Level` bounds, hash chain tamper detection | unit tests + proptest |
 | storage | migrations, queries, audit entry per write, soft deletes | contract tests vs SQLite (temporary file) and Postgres |
 | migration | SQLite → Postgres copy + verification | seeded end-to-end test in CI |
 | web | login and rate limit, guest isolation, expired guest can't write, viewer can't write, 5-minute invite expiry, Origin check | in-memory requests to the Axum router (`tower::ServiceExt::oneshot`) |
