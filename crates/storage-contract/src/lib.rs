@@ -12,6 +12,7 @@ pub mod audit;
 pub mod events;
 pub mod fixture;
 pub mod lists;
+pub mod logbook;
 pub mod readings;
 pub mod reports;
 pub mod sessions;
@@ -94,6 +95,20 @@ macro_rules! contract_tests {
             sessions::expiring_a_user_ends_their_sessions,
             sessions::a_rolled_back_password_change_keeps_the_sessions,
             sessions::sessions_are_not_audited,
+            logbook::logging_now_with_nothing_open_starts_an_open_event,
+            logbook::same_smell_joins_the_open_event,
+            logbook::a_new_event_closes_the_open_one_at_its_last_report,
+            logbook::a_stale_answer_is_refused_and_changes_nothing,
+            logbook::a_backdated_new_event_is_open_only_if_nothing_is_and_no_four_am_passed,
+            logbook::a_backdated_report_after_the_end_moves_the_end,
+            logbook::a_backdated_report_cannot_join_an_event_that_had_not_started,
+            logbook::continuing_an_auto_closed_event_reopens_it,
+            logbook::a_guest_cannot_continue_someone_elses_event,
+            logbook::a_reading_with_a_report_joins_the_reports_event,
+            logbook::a_reading_alone_joins_the_event_containing_its_time,
+            logbook::a_failed_report_rolls_back_the_new_event_close,
+            logbook::only_people_who_may_log_can_log,
+            logbook::a_time_in_the_future_is_refused,
             sweep::the_first_sweep_runs_and_is_remembered,
             sweep::a_sweep_at_four_closes_the_event_at_its_last_report,
             sweep::a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four,

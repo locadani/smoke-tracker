@@ -3,7 +3,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::records::Closure;
+use crate::logbook::close_at_last_report;
 use crate::repos::{Commit, EventWrites, JobRepo, JobWrites, StoreResult, Transactional};
 use crate::schedule::DailySchedule;
 use crate::types::{CloseReason, EventId};
@@ -40,10 +40,7 @@ where
     if let Some(event) = tx.open_event().await?
         && schedule.boundary_passed_since(event.opened_at, now)
     {
-        let last_report = tx.latest_report_at(event.id).await?;
-        let at = last_report.map_or(event.opened_at, |at| at.max(event.opened_at));
-        let reason = CloseReason::Auto0400;
-        tx.close_event(event.id, Closure { at, reason }).await?;
+        close_at_last_report(&mut tx, &event, CloseReason::Auto0400).await?;
         closed = Some(event.id);
     }
     tx.record_job_run(AUTO_CLOSE_JOB, now).await?;

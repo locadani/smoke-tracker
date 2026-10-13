@@ -7,6 +7,7 @@ pub mod audit;
 pub mod clock;
 pub mod error;
 pub mod events;
+pub mod logbook;
 pub mod permissions;
 pub mod records;
 pub mod repos;
