@@ -2,7 +2,14 @@
 
 use std::sync::Mutex;
 
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, DurationRound, TimeDelta, Utc};
+
+/// Drops sub-microsecond precision: Postgres stores no finer, so every stored instant is cut
+/// here to keep SQLite and Postgres data identical.
+pub fn truncate_to_micros(t: DateTime<Utc>) -> DateTime<Utc> {
+    t.duration_trunc(TimeDelta::microseconds(1))
+        .expect("a microsecond always divides a valid instant")
+}
 
 /// Anything that can tell the current time.
 pub trait Clock: Send + Sync {
@@ -15,7 +22,7 @@ pub struct SystemClock;
 
 impl Clock for SystemClock {
     fn now(&self) -> DateTime<Utc> {
-        Utc::now()
+        truncate_to_micros(Utc::now())
     }
 }
 
@@ -28,16 +35,17 @@ pub struct FakeClock {
 impl FakeClock {
     pub fn new(start: DateTime<Utc>) -> Self {
         Self {
-            now: Mutex::new(start),
+            now: Mutex::new(truncate_to_micros(start)),
         }
     }
 
     pub fn set(&self, to: DateTime<Utc>) {
-        *self.now.lock().expect("clock mutex poisoned") = to;
+        *self.now.lock().expect("clock mutex poisoned") = truncate_to_micros(to);
     }
 
     pub fn advance(&self, by: TimeDelta) {
-        *self.now.lock().expect("clock mutex poisoned") += by;
+        let mut now = self.now.lock().expect("clock mutex poisoned");
+        *now = truncate_to_micros(*now + by);
     }
 }
 
@@ -70,6 +78,25 @@ mod tests {
         assert_eq!(clock.now(), t("2026-01-15T11:30:00Z"));
         clock.set(t("2026-03-29T01:59:00Z"));
         assert_eq!(clock.now(), t("2026-03-29T01:59:00Z"));
+    }
+
+    #[test]
+    fn truncation_drops_everything_below_a_microsecond() {
+        assert_eq!(
+            truncate_to_micros(t("2026-01-15T20:00:00.123456789Z")),
+            t("2026-01-15T20:00:00.123456Z")
+        );
+    }
+
+    #[test]
+    fn clocks_never_report_sub_microsecond_precision() {
+        let fake = FakeClock::new(t("2026-01-15T20:00:00.123456789Z"));
+        assert_eq!(fake.now(), t("2026-01-15T20:00:00.123456Z"));
+        fake.set(t("2026-01-15T20:00:00.000000999Z"));
+        assert_eq!(fake.now(), t("2026-01-15T20:00:00Z"));
+        for _ in 0..100 {
+            assert_eq!(SystemClock.now().timestamp_subsec_nanos() % 1_000, 0);
+        }
     }
 
     #[test]
