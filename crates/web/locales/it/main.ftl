@@ -30,12 +30,15 @@ log-note = Nota (facoltativa)
 log-submit = Registra odore
 log-update = Aggiorna: la situazione è cambiata
 log-pm25-only = Registra solo PM2.5
+log-no-smell = Nessun odore
 log-read-only = Puoi consultare i dati ma non registrare.
 
 log-saved-report = Segnalazione salvata.
 log-saved-pm25 = Lettura PM2.5 salvata.
+log-saved-no-smell = Salvato: nessun odore.
 log-error-rooms = Scegli almeno una stanza.
 log-error-level = Scegli un livello da 0 a 10 per ogni stanza selezionata.
+log-error-no-smell-level = Nessun odore registra le stanze selezionate a 0. Togli i livelli sopra 0, oppure usa Registra odore.
 log-error-pm25 = Il PM2.5 deve essere un numero da 0 a 1000.
 log-error-pm25-missing = Inserisci un valore di PM2.5 per registrarlo da solo.
 log-error-time = Inserisci una data e un'ora valide.
@@ -52,6 +55,7 @@ prompt-which-event = Di quale evento si trattava?
 prompt-started-at = Iniziato alle { $time }
 prompt-ended-at = finito alle { $time }
 prompt-new-event = Nuovo evento
+prompt-no-event = Nessun evento: solo un controllo
 prompt-auto-closed = L'evento del { $when } è stato chiuso automaticamente.
 prompt-continue = Continuava ancora: è lo stesso evento
 prompt-cancel = Annulla
@@ -59,8 +63,8 @@ prompt-cancel = Annulla
 refused-stale = Nel frattempo gli eventi sono cambiati. Controlla e riprova.
 refused-another-open = C'è un altro evento aperto. Chiudilo prima.
 refused-outside-event = Quell'ora è fuori dall'evento: prima che iniziasse o in un altro giorno.
-refused-no-smell-new-event = Un rapporto senza odore non può iniziare un evento.
-refused-check-smell = Questo è un controllo senza odore: i livelli restano a 0. Per registrare un odore, registra un nuovo rapporto.
+refused-no-smell-new-event = Una segnalazione senza odore non può iniziare un evento.
+refused-check-smell = Questo è un controllo senza odore: i livelli restano a 0. Per registrare un odore, registra una nuova segnalazione.
 refused-future = L'ora non può essere nel futuro.
 refused-close-before-last-report = La fine non può essere prima dell'ultima segnalazione.
 refused-close-in-future = La fine non può essere nel futuro.
@@ -77,6 +81,10 @@ summary-reports = { $count ->
 summary-bedroom-days = { $count ->
     [one] 1 giorno con fumo in camera da letto
    *[other] { $count } giorni con fumo in camera da letto
+}
+summary-checks = { $count ->
+    [one] 1 controllo pulito
+   *[other] { $count } controlli puliti
 }
 
 rating-title = Come valutare
@@ -113,6 +121,7 @@ nav-events = Eventi
 
 events-title = Eventi
 events-none = Nessun evento questo mese.
+events-check = nessun odore (controllo)
 events-previous = ← Precedente
 events-next = Successivo →
 events-in-progress = in corso
@@ -134,6 +143,7 @@ report-recorded = Registrata
 report-note = Nota
 report-by = Registrata da
 report-none = nessuno
+report-whole-home = tutta la casa
 report-edited = modificata
 report-deleted = eliminata
 report-correct = Correggi un errore
@@ -150,6 +160,7 @@ history-removed = tolto { $name }
 history-note = nota modificata
 history-moved = evento { $change }
 correct-hint = Correggi solo gli errori. Se la situazione è cambiata, registra invece una nuova segnalazione.
+correct-check-hint = Questo è un controllo senza odore: ogni livello resta a 0. Se hai sentito un odore, registra invece una nuova segnalazione.
 correct-time = Osservata alle
 correct-submit = Salva la correzione
 

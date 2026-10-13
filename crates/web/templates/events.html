@@ -14,6 +14,9 @@
     {% for event in day.events %}
     <li><a href="/events/{{ event.id }}">{{ event.span }}</a> · {{ tr.n("summary-reports", event.reports) }}{% if let Some(max) = event.max_intensity %} · {{ tr.t1("events-max-intensity", "level", max) }}{% endif %}</li>
     {% endfor %}
+    {% for check in day.checks %}
+    <li><a href="/reports/{{ check.id }}">{{ check.at }} · {{ tr.t("events-check") }}</a></li>
+    {% endfor %}
     {% for reading in day.readings %}
     <li>{{ reading.at }} · {{ tr.t1("event-pm25", "value", reading.value) }}</li>
     {% endfor %}

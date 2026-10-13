@@ -118,17 +118,29 @@ impl TestApp {
             [] => vec![self.room("room-living-room").await],
             rooms => rooms.to_vec(),
         };
+        let rooms = rooms
+            .into_iter()
+            .map(|room| RoomLevel { room, level })
+            .collect();
+        self.log_values(user, at, rooms, choice).await
+    }
+
+    /// Logs "No smell" for the whole home through the domain, at `at` (RFC 3339).
+    pub async fn no_smell(&self, user: &User, at: &str) -> Logged {
+        let choice = EventChoice::New { replacing: None };
+        self.log_values(user, at, vec![], choice).await
+    }
+
+    async fn log_values(
+        &self,
+        user: &User,
+        at: &str,
+        rooms: Vec<RoomLevel>,
+        choice: EventChoice,
+    ) -> Logged {
         let entry = SmellEntry {
             observed_at: t(at),
-            values: ReportValues::new(
-                rooms
-                    .into_iter()
-                    .map(|room| RoomLevel { room, level })
-                    .collect(),
-                vec![],
-                None,
-            )
-            .unwrap(),
+            values: ReportValues::new(rooms, vec![], None).unwrap(),
             pm25: None,
         };
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();

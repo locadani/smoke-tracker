@@ -25,7 +25,7 @@
   {% endif %}
 </div>
 <p class="summary">
-  {{ tr.t("summary-this-month") }} {{ tr.n("summary-events", summary.events) }} · {{ tr.n("summary-reports", summary.reports) }}{% if let Some(days) = summary.bedroom_days %} · {{ tr.n("summary-bedroom-days", days) }}{% endif %}
+  {{ tr.t("summary-this-month") }} {{ tr.n("summary-events", summary.events) }} · {{ tr.n("summary-reports", summary.reports) }}{% if let Some(days) = summary.bedroom_days %} · {{ tr.n("summary-bedroom-days", days) }}{% endif %} · {{ tr.n("summary-checks", summary.checks) }}
 </p>
 {% if let Some(form) = form %}
 {% if let Some(error) = form.error %}
@@ -44,6 +44,7 @@
     <textarea name="note" rows="2" maxlength="2000">{{ form.note }}</textarea>
   </label>
   <button type="submit" name="action" value="smell">{% if form.update %}{{ tr.t("log-update") }}{% else %}{{ tr.t("log-submit") }}{% endif %}</button>
+  <button type="submit" name="action" value="no-smell" formnovalidate class="secondary">{{ tr.t("log-no-smell") }}</button>
   <button type="submit" name="action" value="pm25" formnovalidate class="secondary">{{ tr.t("log-pm25-only") }}</button>
 </form>
 {% include "rating_dialog.html" %}

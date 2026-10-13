@@ -40,6 +40,11 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
     assert!(html.contains(r#"name="symptom""#) && html.contains("Eye irritation"));
     assert!(html.contains(">Log smell</button>"), "{html}");
     assert!(html.contains(">Log PM2.5 only</button>"), "{html}");
+    assert!(
+        html.contains(r#"value="no-smell" formnovalidate class="secondary">No smell</button>"#),
+        "{html}"
+    );
+    assert!(html.contains(" · 0 clean checks"), "{html}");
 }
 
 #[tokio::test]

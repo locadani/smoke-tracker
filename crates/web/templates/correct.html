@@ -3,6 +3,9 @@
 {% block content %}
 <h1>{{ tr.t("report-correct") }}</h1>
 <p>{{ tr.t("correct-hint") }}</p>
+{% if check %}
+<p>{{ tr.t("correct-check-hint") }}</p>
+{% endif %}
 {% if let Some(error) = form.error %}
 <p class="notice" role="alert">{{ tr.t(error) }}</p>
 {% endif %}

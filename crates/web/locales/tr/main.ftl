@@ -30,12 +30,15 @@ log-note = Not (isteğe bağlı)
 log-submit = Kokuyu kaydet
 log-update = Güncelle: durum değişti
 log-pm25-only = Yalnızca PM2.5 kaydet
+log-no-smell = Koku yok
 log-read-only = Verilere bakabilirsin ama kayıt yapamazsın.
 
 log-saved-report = Bildirim kaydedildi.
 log-saved-pm25 = PM2.5 ölçümü kaydedildi.
+log-saved-no-smell = Kaydedildi: koku yok.
 log-error-rooms = En az bir oda seç.
 log-error-level = Seçtiğin her oda için 0 ile 10 arasında bir seviye seç.
+log-error-no-smell-level = Koku yok, seçili odaları 0 olarak kaydeder. 0'dan büyük seviyeleri kaldır ya da Kokuyu kaydet'i kullan.
 log-error-pm25 = PM2.5, 0 ile 1000 arasında bir sayı olmalı.
 log-error-pm25-missing = Tek başına kaydetmek için bir PM2.5 değeri gir.
 log-error-time = Geçerli bir tarih ve saat gir.
@@ -52,6 +55,7 @@ prompt-which-event = Bu hangi olaydı?
 prompt-started-at = { $time } saatinde başladı
 prompt-ended-at = { $time } saatinde bitti
 prompt-new-event = Yeni olay
+prompt-no-event = Olay yok: yalnızca kontrol
 prompt-auto-closed = { $when } tarihli olay otomatik olarak kapatıldı.
 prompt-continue = Hâlâ sürüyordu: devamı
 prompt-cancel = Vazgeç
@@ -59,8 +63,8 @@ prompt-cancel = Vazgeç
 refused-stale = Bu arada olaylar değişti. Kontrol edip tekrar dene.
 refused-another-open = Açık başka bir olay var. Önce onu kapat.
 refused-outside-event = Bu saat olayın dışında: başlamadan önce ya da başka bir günde.
-refused-no-smell-new-event = Kokusuz bir rapor olay başlatamaz.
-refused-check-smell = Bu kokusuz bir kontrol, seviyeleri 0 kalır. Bir koku kaydetmek için yeni bir rapor ekle.
+refused-no-smell-new-event = Kokusuz bir bildirim olay başlatamaz.
+refused-check-smell = Bu kokusuz bir kontrol, seviyeleri 0 kalır. Bir koku kaydetmek için yeni bir bildirim kaydet.
 refused-future = Saat gelecekte olamaz.
 refused-close-before-last-report = Bitiş, son bildirimden önce olamaz.
 refused-close-in-future = Bitiş gelecekte olamaz.
@@ -77,6 +81,10 @@ summary-reports = { $count ->
 summary-bedroom-days = { $count ->
     [one] yatak odasında duman olan 1 gün
    *[other] yatak odasında duman olan { $count } gün
+}
+summary-checks = { $count ->
+    [one] 1 temiz kontrol
+   *[other] { $count } temiz kontrol
 }
 
 rating-title = Nasıl puanlanır
@@ -113,6 +121,7 @@ nav-events = Olaylar
 
 events-title = Olaylar
 events-none = Bu ay olay yok.
+events-check = koku yok (kontrol)
 events-previous = ← Önceki
 events-next = Sonraki →
 events-in-progress = sürüyor
@@ -134,6 +143,7 @@ report-recorded = Kayıt
 report-note = Not
 report-by = Kaydeden
 report-none = yok
+report-whole-home = tüm ev
 report-edited = düzenlendi
 report-deleted = silindi
 report-correct = Bir hatayı düzelt
@@ -150,6 +160,7 @@ history-removed = çıkarıldı: { $name }
 history-note = not değişti
 history-moved = olay { $change }
 correct-hint = Yalnızca hataları düzelt. Durum değiştiyse bunun yerine yeni bir bildirim kaydet.
+correct-check-hint = Bu kokusuz bir kontrol: tüm seviyeler 0 kalır. Bir koku aldıysan bunun yerine yeni bir bildirim kaydet.
 correct-time = Gözlem zamanı
 correct-submit = Düzeltmeyi kaydet
 

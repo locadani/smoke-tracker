@@ -1,7 +1,7 @@
 //! Names shown for stored values: starter rooms and symptoms through their translation key,
 //! custom ones as typed, and the translation keys of enum values.
 
-use smoke_domain::records::{Room, RoomLevel, Symptom};
+use smoke_domain::records::{ReportValues, Room, RoomLevel, Symptom};
 use smoke_domain::types::CloseReason;
 use smoke_domain::types::RoomId;
 
@@ -26,6 +26,20 @@ pub(crate) fn room_by_id(tr: Tr, rooms: &[Room], id: RoomId) -> String {
 /// A room of a report with its level: "Living room 6".
 pub(crate) fn room_level(tr: Tr, rooms: &[Room], at: RoomLevel) -> String {
     format!("{} {}", room_by_id(tr, rooms, at.room), at.level.get())
+}
+
+/// A report's rooms with their levels, "Living room 6, Bedroom 0"; "whole home" for a no-smell
+/// report that lists none.
+pub(crate) fn report_rooms(tr: Tr, rooms: &[Room], values: &ReportValues) -> String {
+    if values.rooms().is_empty() {
+        return tr.t("report-whole-home");
+    }
+    values
+        .rooms()
+        .iter()
+        .map(|&at| room_level(tr, rooms, at))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 pub(crate) fn symptom(tr: Tr, symptom: &Symptom) -> String {

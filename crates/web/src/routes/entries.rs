@@ -9,7 +9,9 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
-use smoke_domain::events::{LogPrompt, can_join_backdated, classify_observed, log_prompt};
+use smoke_domain::events::{
+    LogPrompt, can_join_backdated, classify_observed, log_prompt, no_smell_prompt,
+};
 use smoke_domain::logbook::{EventChoice, LogError, SmellEntry, log_reading, log_smell};
 use smoke_domain::permissions::{Action, can};
 use smoke_domain::records::{Event, ReportValues, Room, RoomLevel, Symptom, User};
@@ -28,13 +30,14 @@ use crate::time::{self, TimeInputError};
 
 /// The translation keys [`read`] can return, for the translation tests.
 #[cfg(test)]
-pub(crate) const FORM_ERRORS: [&str; 8] = [
+pub(crate) const FORM_ERRORS: [&str; 9] = [
     "log-error-time",
     "log-error-time-skipped",
     "log-error-pm25",
     "log-error-pm25-missing",
     "log-error-rooms",
     "log-error-level",
+    "log-error-no-smell-level",
     "log-error-form",
     "log-error-note",
 ];
@@ -65,12 +68,25 @@ pub(crate) fn level_field(form: &Pairs, room: RoomId) -> Option<u8> {
         .and_then(|value| value.parse().ok())
 }
 
+/// How a form's rooms and levels are read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Smell {
+    /// "Log smell": at least one room, each with a level.
+    Levels,
+    /// "No smell": the selected rooms at 0, or the whole home when none is selected.
+    None,
+    /// "Correct a mistake": each selected room with a level; none selected is the whole home,
+    /// clean.
+    Correction,
+}
+
 /// Reads the rooms with their levels, the symptoms and the note. Only the offered rooms and
-/// symptoms are accepted; every selected room needs a level.
+/// symptoms are accepted.
 pub(crate) fn read_values(
     form: &Pairs,
     rooms: &[RoomId],
     symptoms: &[SymptomId],
+    smell: Smell,
 ) -> Result<ReportValues, &'static str> {
     let mut room_ids: Vec<RoomId> = form
         .ids("room")
@@ -91,13 +107,20 @@ pub(crate) fn read_values(
     {
         return Err("log-error-form");
     }
-    if room_ids.is_empty() {
+    if room_ids.is_empty() && smell == Smell::Levels {
         return Err("log-error-rooms");
     }
     let rooms = room_ids
         .into_iter()
         .map(|room| {
-            let level = level_field(form, room).and_then(|value| Level::new(value).ok());
+            let picked = level_field(form, room);
+            let level = match (smell, picked) {
+                (Smell::None, None | Some(0)) => Some(Level::CLEAN),
+                (Smell::None, Some(_)) => return Err("log-error-no-smell-level"),
+                (Smell::Levels | Smell::Correction, picked) => {
+                    picked.and_then(|value| Level::new(value).ok())
+                }
+            };
             Ok(RoomLevel {
                 room,
                 level: level.ok_or("log-error-level")?,
@@ -135,8 +158,12 @@ fn read(
         let value = pm25.ok_or("log-error-pm25-missing")?;
         return Ok(Entry::Pm25Only { observed_at, value });
     }
+    let smell = match form.get("action") {
+        Some("no-smell") => Smell::None,
+        _ => Smell::Levels,
+    };
     let (offered_rooms, offered_symptoms) = offered(rooms, symptoms, (&[], &[]));
-    let values = read_values(form, &offered_rooms, &offered_symptoms)?;
+    let values = read_values(form, &offered_rooms, &offered_symptoms, smell)?;
     Ok(Entry::Smell(SmellEntry {
         observed_at,
         values,
@@ -174,17 +201,21 @@ fn question_key(prompt: &LogPrompt) -> Option<String> {
 async fn current_prompt<S: Store>(
     state: &AppState<S>,
     user: &User,
-    observed_at: DateTime<Utc>,
+    entry: &SmellEntry,
     now: DateTime<Utc>,
 ) -> Result<(LogPrompt, Vec<Event>, Option<EventId>), AppError> {
-    let observed = classify_observed(observed_at, now).map_err(AppError::internal)?;
+    let observed = classify_observed(entry.observed_at, now).map_err(AppError::internal)?;
     let open = state.store.open_event().await?;
     let notices = notices::pending(state, user, now).await?;
-    let prompt = log_prompt(
-        observed,
-        open.as_ref().map(Event::summary),
-        notices.last().map(Event::summary),
-    );
+    let prompt = if entry.values.is_no_smell() {
+        no_smell_prompt(observed)
+    } else {
+        log_prompt(
+            observed,
+            open.as_ref().map(Event::summary),
+            notices.last().map(Event::summary),
+        )
+    };
     Ok((prompt, notices, open.map(|e| e.id)))
 }
 
@@ -220,7 +251,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         Entry::Smell(entry) => entry,
     };
 
-    let (prompt, notices, open) = current_prompt(&state, &user, entry.observed_at, now).await?;
+    let (prompt, notices, open) = current_prompt(&state, &user, &entry, now).await?;
     let asked = question_key(&prompt);
     let answer = form.get("choice").and_then(parse_choice);
     let choice = match (&asked, form.get("asked"), answer) {
@@ -230,20 +261,24 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
             other => other,
         },
         (Some(_), _, _) => {
-            return ask(&state, &user, tr, now, &form, prompt, entry.observed_at).await;
+            return ask(&state, &user, tr, now, &form, prompt, &entry).await;
         }
     };
-    let observed_at = entry.observed_at;
+    let saved = if entry.values.is_no_smell() {
+        "/?saved=no-smell"
+    } else {
+        "/?saved=report"
+    };
     let mut tx = state.store.begin(Some(user.id)).await?;
-    match log_smell(&mut tx, &actor, entry, choice, &schedule, now).await {
+    match log_smell(&mut tx, &actor, entry.clone(), choice, &schedule, now).await {
         Ok(_) => {}
         Err(LogError::Stale) => {
             drop(tx);
-            let (fresh, ..) = current_prompt(&state, &user, observed_at, now).await?;
+            let (fresh, ..) = current_prompt(&state, &user, &entry, now).await?;
             if fresh == LogPrompt::Direct {
                 return back_to_form(&state, &user, tr, now, &form, "refused-stale").await;
             }
-            return ask(&state, &user, tr, now, &form, fresh, observed_at).await;
+            return ask(&state, &user, tr, now, &form, fresh, &entry).await;
         }
         Err(error) => {
             drop(tx);
@@ -254,7 +289,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         notices::mark_seen(&mut tx, &notices).await?;
     }
     tx.commit().await?;
-    Ok(Redirect::to("/?saved=report").into_response())
+    Ok(Redirect::to(saved).into_response())
 }
 
 /// The Log screen again, with what was typed and what to fix.
@@ -326,7 +361,8 @@ pub(crate) async fn joinable_events<S: Store>(
         .collect())
 }
 
-/// Asks the event question. Guests see only start times of events (spec §7.2, §7.5).
+/// Asks the event question. Guests see only start times of events (spec §7.2, §7.5). A
+/// no-smell report is offered "no event" instead of a new one (spec §7.1).
 async fn ask<S: Store>(
     state: &AppState<S>,
     user: &User,
@@ -334,8 +370,9 @@ async fn ask<S: Store>(
     now: DateTime<Utc>,
     form: &Pairs,
     prompt: LogPrompt,
-    observed_at: DateTime<Utc>,
+    entry: &SmellEntry,
 ) -> Result<Response, AppError> {
+    let observed_at = entry.observed_at;
     let schedule = &state.config.schedule;
     let tz = schedule.tz();
     let answer = |choice: String, key: &str, primary: bool| Answer {
@@ -368,7 +405,11 @@ async fn ask<S: Store>(
                     primary: false,
                 })
                 .collect();
-            answers.push(new_event("prompt-new-event"));
+            answers.push(new_event(if entry.values.is_no_smell() {
+                "prompt-no-event"
+            } else {
+                "prompt-new-event"
+            }));
             (tr.t("prompt-which-event"), None, answers)
         }
         LogPrompt::AutoClosed(closed) => (
@@ -478,6 +519,22 @@ mod tests {
         ] {
             assert_eq!(read_form(pairs).err(), Some(key), "{pairs:?}");
         }
+    }
+
+    #[test]
+    fn no_smell_needs_no_room_and_puts_selected_rooms_at_zero() {
+        let Ok(Entry::Smell(home)) = read_form(&[("action", "no-smell")]) else {
+            panic!("the whole home");
+        };
+        assert!(home.values.rooms().is_empty() && home.values.is_no_smell());
+        let Ok(Entry::Smell(room)) = read_form(&[("action", "no-smell"), ("room", "1")]) else {
+            panic!("one room at 0");
+        };
+        assert_eq!(room.values.level_in(RoomId(1)), Some(Level::CLEAN));
+        assert_eq!(
+            read_form(&[("action", "no-smell"), ("room", "1"), ("level-1", "2")]).err(),
+            Some("log-error-no-smell-level")
+        );
     }
 
     #[test]

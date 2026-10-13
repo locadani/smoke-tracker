@@ -46,9 +46,16 @@ struct ReadingRow {
     value: String,
 }
 
+/// A no-smell check made while no event was running.
+struct CheckRow {
+    id: i64,
+    at: String,
+}
+
 struct Day {
     date: String,
     events: Vec<EventRow>,
+    checks: Vec<CheckRow>,
     readings: Vec<ReadingRow>,
 }
 
@@ -77,6 +84,7 @@ fn day(days: &mut BTreeMap<NaiveDate, Day>, tr: Tr, date: NaiveDate) -> &mut Day
     days.entry(date).or_insert_with(|| Day {
         date: time::date(tr.0, date),
         events: Vec::new(),
+        checks: Vec::new(),
         readings: Vec::new(),
     })
 }
@@ -111,13 +119,15 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         .unwrap_or(to)
         .max(to);
     let mut by_event: HashMap<EventId, Vec<SmellReport>> = HashMap::new();
+    let mut checks = Vec::new();
     for report in state
         .store
         .reports_between(window_start, window_end + TimeDelta::microseconds(1))
         .await?
     {
-        if let Some(event) = report.event_id {
-            by_event.entry(event).or_default().push(report);
+        match report.event_id {
+            Some(event) => by_event.entry(event).or_default().push(report),
+            None => checks.push(report),
         }
     }
 
@@ -145,6 +155,17 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
                 .max()
                 .map(|max| max.to_string()),
         });
+    }
+    for check in checks.iter().rev() {
+        let in_month = (from..to).contains(&check.observed_at);
+        if in_month && can_see(&actor, check.user_id, now) {
+            day(&mut days, tr, schedule.local_date(check.observed_at))
+                .checks
+                .push(CheckRow {
+                    id: check.id.0,
+                    at: time::clock(check.observed_at, tz),
+                });
+        }
     }
     for reading in state.store.readings_between(from, to).await?.iter().rev() {
         if reading.event_id.is_none() && can_see(&actor, reading.user_id, now) {
@@ -273,18 +294,13 @@ async fn detail<S: Store>(
             "level",
             &report.values.intensity().get().to_string(),
         )];
-        let room_names: Vec<String> = report
-            .values
-            .rooms()
-            .iter()
-            .map(|&at| labels::room_level(tr, &rooms, at))
-            .collect();
+        let room_names = labels::report_rooms(tr, &rooms, &report.values);
         let symptom_names: Vec<String> = symptoms
             .iter()
             .filter(|s| report.values.symptoms().contains(&s.id))
             .map(|s| labels::symptom(tr, s))
             .collect();
-        parts.extend([room_names.join(", "), symptom_names.join(", ")]);
+        parts.extend([room_names, symptom_names.join(", ")]);
         timeline.push((
             report.observed_at,
             Entry {

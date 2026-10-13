@@ -18,7 +18,7 @@ use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
-use crate::routes::entries::{joinable_events, read_time, read_values};
+use crate::routes::entries::{Smell, joinable_events, read_time, read_values};
 use crate::routes::guide::{GuideRow, levels};
 use crate::routes::log::{Draft, Fields, fields, offered};
 use crate::routes::refusal;
@@ -232,10 +232,12 @@ async fn report_page<S: Store>(
                 label,
             });
         }
-        move_options.push(MoveOption {
-            value: "new".to_owned(),
-            label: tr.t("prompt-new-event"),
-        });
+        if !report.values.is_no_smell() {
+            move_options.push(MoveOption {
+                value: "new".to_owned(),
+                label: tr.t("prompt-new-event"),
+            });
+        }
     }
 
     let none = || tr.t("report-none");
@@ -261,14 +263,7 @@ async fn report_page<S: Store>(
             "{intensity} · {}",
             tr.t(&format!("intensity-{intensity}-name"))
         ),
-        rooms: join(
-            report
-                .values
-                .rooms()
-                .iter()
-                .map(|&at| labels::room_level(tr, &rooms, at))
-                .collect(),
-        ),
+        rooms: labels::report_rooms(tr, &rooms, &report.values),
         symptoms: join(symptom_names(tr, &symptoms, report.values.symptoms())),
         note: report.values.note().map(str::to_owned),
         by: name(Some(report.user_id), &users),
@@ -295,6 +290,8 @@ struct CorrectPage {
     signed_in: Option<String>,
     id: i64,
     levels: Vec<GuideRow>,
+    /// A no-smell check: its levels stay at 0.
+    check: bool,
     form: CorrectForm,
 }
 
@@ -338,6 +335,7 @@ async fn correct_page<S: Store>(
         signed_in: Some(user.username.to_string()),
         id: report.id.0,
         levels: levels(tr),
+        check: report.event_id.is_none(),
         form: CorrectForm {
             fields: fields(tr, &rooms, &symptoms, &draft, keep),
             observed_at: draft.observed_at,
@@ -389,7 +387,7 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     let keep = (room_ids.as_slice(), report.values.symptoms());
     let (offered_rooms, offered_symptoms) = offered(&rooms, &symptoms, keep);
     let parsed = read_time(&form, "observed_at", schedule.tz()).and_then(|at| {
-        let values = read_values(&form, &offered_rooms, &offered_symptoms)?;
+        let values = read_values(&form, &offered_rooms, &offered_symptoms, Smell::Correction)?;
         Ok((at.unwrap_or(report.observed_at), values))
     });
     let error = match parsed {

@@ -212,6 +212,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
     let saved = match query.saved.as_deref() {
         Some("report") => Some("log-saved-report"),
         Some("pm25") => Some("log-saved-pm25"),
+        Some("no-smell") => Some("log-saved-no-smell"),
         _ => None,
     };
     let log_page = log_page(&state, &user, tr, now, None, None, saved).await?;

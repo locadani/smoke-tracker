@@ -455,3 +455,35 @@ async fn closing_or_reopening_an_event_a_guest_cannot_see_answers_not_found() {
     assert_eq!(reopen.status(), StatusCode::NOT_FOUND);
     assert!(!app.store.event(id).await.unwrap().unwrap().is_open());
 }
+
+#[tokio::test]
+async fn the_list_shows_each_days_checks_to_those_who_may_see_them() {
+    let app = TestApp::new().await;
+    app.at("2026-01-20T12:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let guest = app.add_user("guest", Role::Guest, Locale::En).await;
+    let mine = app.no_smell(&me, "2026-01-12T08:00:00Z").await;
+    let theirs = app.no_smell(&guest, "2026-01-13T08:00:00Z").await;
+
+    let resident = app.sign_in("daniele").await;
+    let html = text(app.send(get_with("/events?month=2026-01", &resident)).await).await;
+    for (check, at) in [(&mine, "09:00"), (&theirs, "09:00")] {
+        let row = format!(
+            r#"<a href="/reports/{}">{at} · no smell (check)</a>"#,
+            check.report.id
+        );
+        assert!(html.contains(&row), "{html}");
+    }
+    assert!(!html.contains("No events this month."), "{html}");
+
+    let cookie = app.sign_in("guest").await;
+    let html = text(app.send(get_with("/events?month=2026-01", &cookie)).await).await;
+    assert!(
+        html.contains(&format!("/reports/{}", theirs.report.id)),
+        "{html}"
+    );
+    assert!(
+        !html.contains(&format!("/reports/{}", mine.report.id)),
+        "{html}"
+    );
+}

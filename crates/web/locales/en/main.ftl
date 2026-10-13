@@ -30,12 +30,15 @@ log-note = Note (optional)
 log-submit = Log smell
 log-update = Update: situation changed
 log-pm25-only = Log PM2.5 only
+log-no-smell = No smell
 log-read-only = You can look at the data but not log.
 
 log-saved-report = Report saved.
 log-saved-pm25 = PM2.5 reading saved.
+log-saved-no-smell = Saved: no smell.
 log-error-rooms = Pick at least one room.
 log-error-level = Pick a level from 0 to 10 for each selected room.
+log-error-no-smell-level = No smell records the selected rooms at 0. Remove the levels above 0, or use Log smell.
 log-error-pm25 = PM2.5 must be a number from 0 to 1000.
 log-error-pm25-missing = Enter a PM2.5 value to log it on its own.
 log-error-time = Enter a valid date and time.
@@ -52,6 +55,7 @@ prompt-which-event = Which event was this?
 prompt-started-at = Started { $time }
 prompt-ended-at = ended { $time }
 prompt-new-event = New event
+prompt-no-event = No event: just a check
 prompt-auto-closed = The event from { $when } was auto-closed.
 prompt-continue = It was still going: continuation
 prompt-cancel = Cancel
@@ -77,6 +81,10 @@ summary-reports = { $count ->
 summary-bedroom-days = { $count ->
     [one] 1 day with bedroom smoke
    *[other] { $count } days with bedroom smoke
+}
+summary-checks = { $count ->
+    [one] 1 clean check
+   *[other] { $count } clean checks
 }
 
 rating-title = How to rate
@@ -113,6 +121,7 @@ nav-events = Events
 
 events-title = Events
 events-none = No events this month.
+events-check = no smell (check)
 events-previous = ← Previous
 events-next = Next →
 events-in-progress = in progress
@@ -134,6 +143,7 @@ report-recorded = Recorded
 report-note = Note
 report-by = Logged by
 report-none = none
+report-whole-home = whole home
 report-edited = edited
 report-deleted = deleted
 report-correct = Correct a mistake
@@ -150,6 +160,7 @@ history-removed = removed { $name }
 history-note = note changed
 history-moved = event { $change }
 correct-hint = Correct only mistakes. If the situation changed, log a new report instead.
+correct-check-hint = This is a no-smell check: every level stays at 0. If you smelled something, log a new report instead.
 correct-time = Observed at
 correct-submit = Save the correction
 

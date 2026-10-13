@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::{EventRepo, ReadingRepo, ReportRepo};
-use smoke_domain::types::{CloseReason, EventId, Locale, Role};
+use smoke_domain::types::{CloseReason, EventId, Locale, ReportId, Role};
 
 /// The value of the hidden `asked` field on a question page.
 fn asked(html: &str) -> String {
@@ -478,4 +478,102 @@ async fn viewers_cannot_log() {
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
     assert!(text(response).await.contains("<h1>Not allowed</h1>"));
     assert_eq!(app.store.event(EventId(1)).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn no_smell_with_nothing_open_saves_a_check_without_asking() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("guest", Role::Guest, Locale::En).await;
+    let cookie = app.sign_in("guest").await;
+
+    let response = app
+        .send(post_form("/log", "action=no-smell", Some(&cookie)))
+        .await;
+    assert_eq!(location(&response), Some("/?saved=no-smell"));
+    assert_eq!(app.store.open_event().await.unwrap(), None);
+    let check = app.store.report(ReportId(1)).await.unwrap().unwrap();
+    assert_eq!(check.event_id, None);
+    assert!(check.values.rooms().is_empty(), "the whole home");
+    let html = text(app.send(get_with("/?saved=no-smell", &cookie)).await).await;
+    assert!(html.contains("Saved: no smell."), "{html}");
+    assert!(html.contains(" · 1 clean check"), "{html}");
+}
+
+#[tokio::test]
+async fn no_smell_with_an_event_open_joins_it_without_the_question() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let first = app
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            6,
+            &[],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+    app.add_user("guest", Role::Guest, Locale::En).await;
+    let cookie = app.sign_in("guest").await;
+    let bedroom = app.room("room-bedroom").await;
+
+    let body = format!("room={0}&level-{0}=0&action=smell", bedroom.0);
+    let response = app.send(post_form("/log", &body, Some(&cookie))).await;
+    assert_eq!(location(&response), Some("/?saved=no-smell"));
+    let open = app.store.open_event().await.unwrap().unwrap();
+    assert_eq!(Some(open.id), first.report.event_id, "still open");
+    let reports = app.store.reports_for_event(open.id).await.unwrap();
+    assert_eq!(reports.len(), 2);
+    assert!(reports[1].values.is_no_smell());
+}
+
+#[tokio::test]
+async fn a_past_no_smell_report_is_offered_no_event_instead_of_a_new_one() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let body = "action=no-smell&observed_at=2026-01-15T12:00";
+    let question = text(app.send(post_form("/log", body, Some(&cookie))).await).await;
+    assert!(
+        question.contains("<h1>Which event was this?</h1>"),
+        "{question}"
+    );
+    assert!(
+        question.contains(">No event: just a check</button>"),
+        "{question}"
+    );
+    assert!(!question.contains(">New event</button>"), "{question}");
+
+    let answer = format!("{body}&asked={}&choice=new", asked(&question));
+    let response = app.send(post_form("/log", &answer, Some(&cookie))).await;
+    assert_eq!(location(&response), Some("/?saved=no-smell"));
+    let check = app.store.report(ReportId(1)).await.unwrap().unwrap();
+    assert_eq!(check.event_id, None);
+    assert_eq!(app.store.event(EventId(1)).await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn no_smell_records_selected_rooms_at_zero_and_refuses_a_higher_level() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let bedroom = app.room("room-bedroom").await;
+
+    let body = format!("room={0}&level-{0}=4&action=no-smell", bedroom.0);
+    let response = app.send(post_form("/log", &body, Some(&cookie))).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        text(response)
+            .await
+            .contains("No smell records the selected rooms at 0.")
+    );
+
+    let body = format!("room={}&action=no-smell", bedroom.0);
+    app.send(post_form("/log", &body, Some(&cookie))).await;
+    let check = app.store.report(ReportId(1)).await.unwrap().unwrap();
+    assert_eq!(check.values.level_in(bedroom).map(|l| l.get()), Some(0));
 }

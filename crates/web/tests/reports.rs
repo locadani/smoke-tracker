@@ -382,3 +382,56 @@ async fn guests_see_other_events_in_the_move_options_without_their_end() {
         "a guest never learns when another event ended: {html}"
     );
 }
+
+#[tokio::test]
+async fn a_check_has_no_event_and_cannot_be_corrected_to_a_smell() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let check = app.no_smell(&me, "2026-01-15T19:00:00Z").await.report;
+    let cookie = app.sign_in("daniele").await;
+    let id = check.id;
+
+    let html = text(app.send(get_with(&format!("/reports/{id}"), &cookie)).await).await;
+    assert!(html.contains("<dd>None: a no-smell check</dd>"), "{html}");
+    assert!(html.contains("<dd>whole home</dd>"), "{html}");
+    assert!(html.contains("<dd>0 · Clean</dd>"), "{html}");
+    assert!(
+        !html.contains(r#"value="new""#),
+        "a check never opens an event: {html}"
+    );
+
+    let form = text(
+        app.send(get_with(&format!("/reports/{id}/correct"), &cookie))
+            .await,
+    )
+    .await;
+    assert!(form.contains("This is a no-smell check"), "{form}");
+    let bedroom = app.room("room-bedroom").await;
+    let body = format!(
+        "room={0}&level-{0}=3&observed_at=2026-01-15T20:00",
+        bedroom.0
+    );
+    let refused = app
+        .send(post_form(
+            &format!("/reports/{id}/correct"),
+            &body,
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(refused.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(text(refused).await.contains("its levels stay at 0"));
+
+    let body = format!(
+        "room={0}&level-{0}=0&observed_at=2026-01-15T20:00",
+        bedroom.0
+    );
+    let response = app
+        .send(post_form(
+            &format!("/reports/{id}/correct"),
+            &body,
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(location(&response), Some(&*format!("/reports/{id}")));
+}

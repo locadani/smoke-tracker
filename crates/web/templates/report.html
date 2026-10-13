@@ -29,6 +29,7 @@
 </dl>
 {% if editable %}
 <p><a href="/reports/{{ id }}/correct">{{ tr.t("report-correct") }}</a></p>
+{% if !move_options.is_empty() %}
 <form method="post" action="/reports/{{ id }}/move" class="stack">
   <label>{{ tr.t("report-move") }}
     <select name="target">
@@ -39,6 +40,7 @@
   </label>
   <button type="submit" class="secondary">{{ tr.t("report-move-submit") }}</button>
 </form>
+{% endif %}
 {% endif %}
 <h2>{{ tr.t("report-history") }}</h2>
 <ol class="history">
