@@ -308,7 +308,8 @@ Built after the first apply, in the go-live plan (`docs/plans/infra-go-live.md`)
   `attach_database_url` is `true`. The bucket is in the EU, so outside the free tier; a few dumps
   cost fractions of a cent. Neon's free plan keeps only 6 hours of history, which is why this
   exists. It replaces Litestream → R2 in the original spec (§13.2). Restore with
-  `pg_restore --clean --no-owner`; it overwrites live data (`infra/README.md`).
+  `pg_restore --clean --if-exists --no-owner --single-transaction`, run in a `postgres:18-alpine`
+  container so the client matches the dump; it overwrites live data (`infra/README.md`).
 - **First resident.** Run once from Cloud Shell: `docker run -it` of the deployed image with
   `create-resident`, passing `DATABASE_URL` from Secret Manager to that one process. A Cloud Run
   job was considered and dropped: the command asks for the password on a terminal, and a job has
@@ -322,7 +323,7 @@ Built after the first apply, in the go-live plan (`docs/plans/infra-go-live.md`)
 - CI: `check` passes; `plan` posts a comment on a test PR, with the project ID and number shown
   as `***`.
 - After the first-time setup: `terraform plan` reports **no changes**; the service URL shows the
-  sample page.
+  sample page; after go-live, the app's sign-in page, where the first resident can sign in.
 - The `import` adopts the existing Artifact Registry repository without replacing it.
 - The Artifact Registry repository shows both cleanup policies, dry run off.
 

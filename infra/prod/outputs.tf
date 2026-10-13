@@ -1,6 +1,6 @@
 output "service_url" {
-  description = "Open this to check the service."
-  value       = module.app.service_url
+  description = "The address the app is configured with (APP_BASE_URL); open this to check the service."
+  value       = local.app_base_url
 }
 
 output "project_number" {

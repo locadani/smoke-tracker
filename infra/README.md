@@ -146,16 +146,17 @@ Done once, in the Google Cloud console and Cloud Shell.
    account visible), run `terraform apply` again.
 
 6. **Database secret.** Secret Manager → `smoke-tracker-database-url` → New version → paste the Neon
-   *direct* connection string. Don't save it anywhere else. It ends in `sslmode=require`, so the
-   connection is encrypted.
+   *direct* connection string. Don't save it anywhere else. It contains `sslmode=require`, so the
+   connection is encrypted. Leave `channel_binding=require` in; the app ignores it with a warning.
 7. **GitHub** (Settings → Secrets and variables → Actions), from `terraform output` unless noted:
    - Secrets: `GCP_PROJECT_ID` (the value in `terraform.tfvars`), `GCP_PROJECT_NUMBER` (`project_number`), `GCP_WIF_PROVIDER`
      (`workload_identity_provider`), `GCP_DEPLOY_SA` (`deploy_service_account`), `GCP_PLAN_SA`
      (`plan_service_account`), `TF_STATE_BUCKET` (`terraform output state_bucket` in `bootstrap/`).
    - Variable: `GCP_REGION` = `europe-west3`.
 
-   `deploy.yml` uses `GCP_DEPLOY_SA` and `GCP_REGION` (and the project values) to log in and deploy;
-   `infra.yml` uses the plan ones.
+   `deploy.yml` uses `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`, `GCP_DEPLOY_SA` and the variable
+   `GCP_REGION`. `infra.yml` uses `GCP_PROJECT_ID`, `GCP_PROJECT_NUMBER`, `GCP_WIF_PROVIDER`,
+   `GCP_PLAN_SA` and `TF_STATE_BUCKET`.
 
    These are identifiers, not credentials; they are secrets so GitHub masks them in public logs.
 8. **Connect the secret.** A PR sets `attach_database_url = true` in `prod/main.tf`; merge, then in Cloud Shell
@@ -165,21 +166,22 @@ Done once, in the Google Cloud console and Cloud Shell.
 9. **First deploy.** In GitHub, open Actions → Deploy and the most recent run (merging the PR
    that added `deploy.yml` created one, skipped while the secrets were missing), then click
    **Re-run all jobs**. A re-run keeps its original push trigger. Later merges deploy on their
-   own. The deploy refuses until `DATABASE_URL` is attached (step 8).
-10. **First resident.** In Cloud Shell, with the tag of the image that was just deployed (the commit
-    SHA shown in the Deploy run, or from `gcloud artifacts docker images list`):
+   own. The deploy refuses until `DATABASE_URL` is attached (step 8). GitHub allows re-runs only for
+   30 days; if the run is older, merge any small change outside `docs/`, `*.md` and `infra/`.
+10. **First resident.** In Cloud Shell, using the image the service runs:
 
     ```bash
-    gcloud auth configure-docker europe-west3-docker.pkg.dev
-    docker run -it --rm \
-      -e DATABASE_URL="$(gcloud secrets versions access latest --secret=smoke-tracker-database-url)" \
-      europe-west3-docker.pkg.dev/YOUR_PROJECT_ID/smoke-tracker/smoke-tracker:LATEST_TAG \
-      create-resident YOUR_USERNAME
+    gcloud auth configure-docker europe-west3-docker.pkg.dev --quiet
+    IMAGE="$(gcloud run services describe smoke-tracker --region europe-west3 --format='value(spec.template.spec.containers[0].image)')"
+    DATABASE_URL="$(gcloud secrets versions access latest --secret=smoke-tracker-database-url)" \
+    docker run -it --rm -e DATABASE_URL "$IMAGE" create-resident YOUR_USERNAME
     ```
 
-    The command asks for the password. The connection string is passed only to that one process
-    and is not saved.
-11. **Check.** Open `terraform output service_url`, sign in as the resident, and run a second
+    The command asks for the password. `-e DATABASE_URL` without a value takes it from the
+    environment, so the connection string never appears on a command line; it reaches only that
+    one process and is not saved.
+11. **Check.** Open `terraform output service_url` (the address the app is configured with; its
+    Origin check requires it), sign in as the resident, and run a second
     `terraform plan`: it reports no changes.
 
 The first plan comment on a PR may fail with "permission denied" for a few minutes after the
@@ -201,15 +203,16 @@ Run one now:
 gcloud run jobs execute smoke-tracker-backup --region europe-west3
 ```
 
-Restore, from Cloud Shell (it has the Postgres client). **This overwrites the live data.**
+Restore, from Cloud Shell, with Docker so the client matches the dump's version.
+**This overwrites the live data.** Replace `FILE.dump` with a name from the listing.
 
 ```bash
+gcloud storage ls gs://YOUR_BACKUPS_BUCKET/
 gcloud storage cp gs://YOUR_BACKUPS_BUCKET/FILE.dump .
-pg_restore --clean --no-owner -d "$DATABASE_URL" FILE.dump
+DATABASE_URL="$(gcloud secrets versions access latest --secret=smoke-tracker-database-url)" \
+docker run --rm -e DATABASE_URL -v "$PWD":/restore postgres:18-alpine \
+  sh -c 'pg_restore --clean --if-exists --no-owner --single-transaction -d "$DATABASE_URL" /restore/FILE.dump'
 ```
-
-Set `DATABASE_URL` first, from the secret, for this shell only. Without a local client, run the
-same `pg_restore` in `docker run` with `postgres:18-alpine`.
 
 ## Rules for the deploy workflow
 
