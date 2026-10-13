@@ -19,6 +19,7 @@ use crate::records::{
 use crate::types::{
     EventId, Locale, Pm25, ReadingId, ReportId, RoomId, SymptomId, UserId, Username,
 };
+use crate::verify::AuditState;
 
 /// A write the current data does not allow.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -279,6 +280,39 @@ pub trait WriteTx:
 
 impl<T> WriteTx for T where
     T: Commit + UserWrites + ListWrites + EventWrites + ReportWrites + ReadingWrites + JobWrites
+{
+}
+
+pub trait SnapshotRepo: Send + Sync {
+    /// The audit log and every record with audit snapshots (deleted ones included), read in one
+    /// read transaction.
+    fn audit_state(&self) -> impl Future<Output = StoreResult<AuditState>> + Send;
+}
+
+/// A complete storage backend.
+pub trait Store:
+    Transactional<Tx: WriteTx>
+    + UserRepo
+    + ListRepo
+    + EventRepo
+    + ReportRepo
+    + ReadingRepo
+    + JobRepo
+    + AuditRepo
+    + SnapshotRepo
+{
+}
+
+impl<T> Store for T where
+    T: Transactional<Tx: WriteTx>
+        + UserRepo
+        + ListRepo
+        + EventRepo
+        + ReportRepo
+        + ReadingRepo
+        + JobRepo
+        + AuditRepo
+        + SnapshotRepo
 {
 }
 
