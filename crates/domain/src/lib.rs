@@ -5,6 +5,7 @@
 
 pub mod clock;
 pub mod error;
+pub mod permissions;
 pub mod types;
 
 pub use error::DomainError;
