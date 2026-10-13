@@ -1,10 +1,11 @@
 //! Stored records and the inputs that create them. Each record serialises to the snapshot the
 //! audit log keeps of it.
 
+use std::borrow::Cow;
 use std::fmt;
 
 use chrono::{DateTime, Utc};
-use serde::{Serialize, Serializer};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::DomainError;
@@ -12,7 +13,7 @@ use crate::audit::AuditEntity;
 use crate::events::EventSummary;
 use crate::permissions::Actor;
 use crate::types::{
-    CloseReason, EventId, Intensity, ListName, Locale, Pm25, ReadingId, ReportId, Role, RoomArea,
+    CloseReason, EventId, Level, ListName, Locale, Pm25, ReadingId, ReportId, Role, RoomArea,
     RoomId, SymptomId, UserId, Username,
 };
 
@@ -157,12 +158,18 @@ impl Audited for Event {
     }
 }
 
-/// What a smell report says. Room and symptom ids are kept sorted and unique, and a blank note
-/// is no note.
+/// A room the person checked, and how strong the smell was there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomLevel {
+    pub room: RoomId,
+    pub level: Level,
+}
+
+/// What a smell report says: the rooms checked, each with its level, sorted by room; the
+/// symptoms, sorted and unique; a note, where a blank note is no note.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReportValues {
-    intensity: Intensity,
-    rooms: Vec<RoomId>,
+    rooms: Vec<RoomLevel>,
     symptoms: Vec<SymptomId>,
     note: Option<String>,
 }
@@ -171,13 +178,17 @@ impl ReportValues {
     pub const NOTE_MAX_CHARS: usize = 2000;
 
     pub fn new(
-        intensity: Intensity,
-        mut rooms: Vec<RoomId>,
+        mut rooms: Vec<RoomLevel>,
         mut symptoms: Vec<SymptomId>,
         note: Option<&str>,
     ) -> Result<Self, DomainError> {
-        rooms.sort_unstable();
-        rooms.dedup();
+        if rooms.is_empty() {
+            return Err(DomainError::NoRooms);
+        }
+        rooms.sort_unstable_by_key(|r| r.room);
+        if let Some(pair) = rooms.windows(2).find(|pair| pair[0].room == pair[1].room) {
+            return Err(DomainError::RoomListedTwice(pair[0].room.0));
+        }
         symptoms.sort_unstable();
         symptoms.dedup();
         let note = note.map(str::trim).filter(|n| !n.is_empty());
@@ -188,19 +199,32 @@ impl ReportValues {
             }
         }
         Ok(Self {
-            intensity,
             rooms,
             symptoms,
             note: note.map(str::to_owned),
         })
     }
 
-    pub fn intensity(&self) -> Intensity {
-        self.intensity
+    pub fn rooms(&self) -> &[RoomLevel] {
+        &self.rooms
     }
 
-    pub fn rooms(&self) -> &[RoomId] {
-        &self.rooms
+    pub fn room_ids(&self) -> Vec<RoomId> {
+        self.rooms.iter().map(|r| r.room).collect()
+    }
+
+    /// The level reported for `room`; `None` when the room was not checked.
+    pub fn level_in(&self, room: RoomId) -> Option<Level> {
+        self.rooms.iter().find(|r| r.room == room).map(|r| r.level)
+    }
+
+    /// The report's intensity: its highest room level (spec §6).
+    pub fn intensity(&self) -> Level {
+        self.rooms
+            .iter()
+            .map(|r| r.level)
+            .max()
+            .unwrap_or(Level::CLEAN)
     }
 
     pub fn symptoms(&self) -> &[SymptomId] {
@@ -227,6 +251,28 @@ pub struct SmellReport {
 impl SmellReport {
     pub fn is_deleted(&self) -> bool {
         self.deleted_at.is_some()
+    }
+
+    /// A snapshot audited before rooms had their own levels (`"intensity": 6, "rooms": [2]`),
+    /// in today's shape: every room at the report's intensity, as migration 0003 converted the
+    /// stored report. Any other snapshot is returned unchanged.
+    pub fn upgrade_snapshot(snapshot: &Value) -> Cow<'_, Value> {
+        let Value::Object(fields) = snapshot else {
+            return Cow::Borrowed(snapshot);
+        };
+        let (Some(intensity), Some(Value::Array(rooms))) =
+            (fields.get("intensity"), fields.get("rooms"))
+        else {
+            return Cow::Borrowed(snapshot);
+        };
+        let mut upgraded = fields.clone();
+        upgraded.remove("intensity");
+        let rooms = rooms
+            .iter()
+            .map(|room| serde_json::json!({ "room": room, "level": intensity }))
+            .collect();
+        upgraded.insert("rooms".to_owned(), Value::Array(rooms));
+        Cow::Owned(Value::Object(upgraded))
     }
 }
 
@@ -346,10 +392,16 @@ mod tests {
         }
     }
 
-    fn values(rooms: Vec<i64>, note: Option<&str>) -> ReportValues {
+    fn at(room: i64, level: u8) -> RoomLevel {
+        RoomLevel {
+            room: RoomId(room),
+            level: Level::new(level).unwrap(),
+        }
+    }
+
+    fn values(rooms: &[(i64, u8)], note: Option<&str>) -> ReportValues {
         ReportValues::new(
-            Intensity::new(6).unwrap(),
-            rooms.into_iter().map(RoomId).collect(),
+            rooms.iter().map(|&(room, level)| at(room, level)).collect(),
             vec![SymptomId(2), SymptomId(1), SymptomId(2)],
             note,
         )
@@ -388,28 +440,48 @@ mod tests {
     }
 
     #[test]
-    fn report_values_sort_and_dedup_ids_and_trim_the_note() {
-        let v = values(vec![3, 1, 3], Some("  smell from the balcony "));
-        assert_eq!(v.rooms(), [RoomId(1), RoomId(3)]);
+    fn report_values_sort_rooms_and_symptoms_and_trim_the_note() {
+        let v = values(&[(3, 0), (1, 6)], Some("  smell from the balcony "));
+        assert_eq!(v.rooms(), [at(1, 6), at(3, 0)]);
+        assert_eq!(v.room_ids(), [RoomId(1), RoomId(3)]);
         assert_eq!(v.symptoms(), [SymptomId(1), SymptomId(2)]);
         assert_eq!(v.note(), Some("smell from the balcony"));
     }
 
     #[test]
+    fn a_report_needs_a_room_and_lists_each_room_once() {
+        assert_eq!(
+            ReportValues::new(vec![], vec![], None),
+            Err(DomainError::NoRooms)
+        );
+        assert_eq!(
+            ReportValues::new(vec![at(3, 2), at(1, 1), at(3, 2)], vec![], None),
+            Err(DomainError::RoomListedTwice(3))
+        );
+    }
+
+    #[test]
+    fn the_intensity_is_the_highest_room_level() {
+        let v = values(&[(1, 2), (2, 7), (3, 0)], None);
+        assert_eq!(v.intensity(), Level::new(7).unwrap());
+        assert_eq!(v.level_in(RoomId(3)), Some(Level::CLEAN));
+        assert_eq!(v.level_in(RoomId(4)), None);
+        assert_eq!(values(&[(1, 0)], None).intensity(), Level::CLEAN);
+    }
+
+    #[test]
     fn a_blank_note_becomes_none() {
-        assert_eq!(values(vec![], Some("   ")).note(), None);
-        assert_eq!(values(vec![], None).note(), None);
+        assert_eq!(values(&[(1, 1)], Some("   ")).note(), None);
+        assert_eq!(values(&[(1, 1)], None).note(), None);
     }
 
     #[test]
     fn notes_are_limited_in_characters_not_bytes() {
         let at_limit = "ç".repeat(ReportValues::NOTE_MAX_CHARS);
-        assert!(
-            ReportValues::new(Intensity::new(1).unwrap(), vec![], vec![], Some(&at_limit)).is_ok()
-        );
+        assert!(ReportValues::new(vec![at(1, 1)], vec![], Some(&at_limit)).is_ok());
         let over = "x".repeat(ReportValues::NOTE_MAX_CHARS + 1);
         assert_eq!(
-            ReportValues::new(Intensity::new(1).unwrap(), vec![], vec![], Some(&over)),
+            ReportValues::new(vec![at(1, 1)], vec![], Some(&over)),
             Err(DomainError::NoteTooLong(2001))
         );
     }
@@ -422,7 +494,7 @@ mod tests {
             user_id: UserId(1),
             observed_at: t("2026-01-15T19:00:00Z"),
             recorded_at: t("2026-01-15T19:00:00.123456Z"),
-            values: values(vec![2], None),
+            values: values(&[(2, 6), (5, 0)], None),
             deleted_at: None,
         };
         assert_eq!(
@@ -433,14 +505,38 @@ mod tests {
                 "user_id": 1,
                 "observed_at": "2026-01-15T19:00:00Z",
                 "recorded_at": "2026-01-15T19:00:00.123456Z",
-                "intensity": 6,
-                "rooms": [2],
+                "rooms": [{ "room": 2, "level": 6 }, { "room": 5, "level": 0 }],
                 "symptoms": [1, 2],
                 "note": null,
                 "deleted_at": null,
             })
         );
         assert_eq!(report.audit_id(), 9);
+    }
+
+    #[test]
+    fn a_snapshot_from_before_room_levels_reads_as_every_room_at_the_intensity() {
+        let old = json!({
+            "id": 9,
+            "event_id": 4,
+            "intensity": 6,
+            "rooms": [2, 5],
+            "symptoms": [1],
+        });
+        assert_eq!(
+            SmellReport::upgrade_snapshot(&old).into_owned(),
+            json!({
+                "id": 9,
+                "event_id": 4,
+                "rooms": [{ "room": 2, "level": 6 }, { "room": 5, "level": 6 }],
+                "symptoms": [1],
+            })
+        );
+        let current = json!({ "id": 9, "rooms": [{ "room": 2, "level": 6 }] });
+        assert!(matches!(
+            SmellReport::upgrade_snapshot(&current),
+            Cow::Borrowed(_)
+        ));
     }
 
     #[test]

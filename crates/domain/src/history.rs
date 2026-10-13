@@ -1,11 +1,12 @@
 //! A smell report's History view (spec §6.1): what each audit entry changed, e.g.
-//! "intensity 6 → 7, added bedroom".
+//! "living room 6 → 7, added bedroom 3".
 
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
 use crate::audit::{AuditAction, ChainedEntry};
-use crate::types::{EventId, RoomId, SymptomId, UserId};
+use crate::records::{RoomLevel, SmellReport};
+use crate::types::{EventId, Level, RoomId, SymptomId, UserId};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Change {
@@ -13,11 +14,13 @@ pub enum Change {
         from: DateTime<Utc>,
         to: DateTime<Utc>,
     },
-    Intensity {
-        from: u8,
-        to: u8,
+    /// A room listed before and after, at another level.
+    LevelChanged {
+        room: RoomId,
+        from: Level,
+        to: Level,
     },
-    RoomAdded(RoomId),
+    RoomAdded(RoomLevel),
     RoomRemoved(RoomId),
     SymptomAdded(SymptomId),
     SymptomRemoved(SymptomId),
@@ -40,13 +43,13 @@ pub struct HistoryEntry {
     pub changes: Vec<Change>,
 }
 
-/// The audited fields of a smell report, as `SmellReport` serialises them.
+/// The audited fields of a smell report, as `SmellReport` serialises them; older snapshots are
+/// read through [`SmellReport::upgrade_snapshot`].
 #[derive(Deserialize)]
 struct Snapshot {
     event_id: EventId,
     observed_at: DateTime<Utc>,
-    intensity: u8,
-    rooms: Vec<RoomId>,
+    rooms: Vec<RoomLevel>,
     symptoms: Vec<SymptomId>,
     note: Option<String>,
 }
@@ -58,7 +61,8 @@ pub fn report_history(entries: &[ChainedEntry]) -> Vec<HistoryEntry> {
         .map(|entry| {
             let record = &entry.record;
             let snapshot = |value: &Option<serde_json::Value>| -> Option<Snapshot> {
-                serde_json::from_value(value.clone()?).ok()
+                let value = SmellReport::upgrade_snapshot(value.as_ref()?).into_owned();
+                serde_json::from_value(value).ok()
             };
             let changes = match (snapshot(&record.before), snapshot(&record.after)) {
                 (Some(before), Some(after)) => changes(&before, &after),
@@ -99,21 +103,32 @@ fn changes(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
             to: after.observed_at,
         });
     }
-    if before.intensity != after.intensity {
-        changes.push(Change::Intensity {
-            from: before.intensity,
-            to: after.intensity,
-        });
+    let level_in =
+        |rooms: &[RoomLevel], room: RoomId| rooms.iter().find(|r| r.room == room).map(|r| r.level);
+    for now in &after.rooms {
+        if let Some(was) = level_in(&before.rooms, now.room)
+            && was != now.level
+        {
+            changes.push(Change::LevelChanged {
+                room: now.room,
+                from: was,
+                to: now.level,
+            });
+        }
     }
     changes.extend(
-        added(&before.rooms, &after.rooms)
-            .into_iter()
-            .map(Change::RoomAdded),
+        after
+            .rooms
+            .iter()
+            .filter(|now| level_in(&before.rooms, now.room).is_none())
+            .map(|now| Change::RoomAdded(*now)),
     );
     changes.extend(
-        added(&after.rooms, &before.rooms)
-            .into_iter()
-            .map(Change::RoomRemoved),
+        before
+            .rooms
+            .iter()
+            .filter(|was| level_in(&after.rooms, was.room).is_none())
+            .map(|was| Change::RoomRemoved(was.room)),
     );
     changes.extend(
         added(&before.symptoms, &after.symptoms)
@@ -138,14 +153,21 @@ fn changes(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
 mod tests {
     use super::*;
     use crate::audit::{AuditEntity, AuditRecord, GENESIS_HASH};
-    use crate::records::{Audited, ReportValues, SmellReport};
-    use crate::types::{Intensity, ReportId};
+    use crate::records::{Audited, ReportValues};
+    use crate::types::ReportId;
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
     }
 
-    fn report(intensity: u8, rooms: &[i64]) -> SmellReport {
+    fn at(room: i64, level: u8) -> RoomLevel {
+        RoomLevel {
+            room: RoomId(room),
+            level: Level::new(level).unwrap(),
+        }
+    }
+
+    fn report(rooms: &[(i64, u8)]) -> SmellReport {
         SmellReport {
             id: ReportId(9),
             event_id: EventId(4),
@@ -153,8 +175,7 @@ mod tests {
             observed_at: t("2026-01-15T19:00:00Z"),
             recorded_at: t("2026-01-15T19:00:01Z"),
             values: ReportValues::new(
-                Intensity::new(intensity).unwrap(),
-                rooms.iter().copied().map(RoomId).collect(),
+                rooms.iter().map(|&(room, level)| at(room, level)).collect(),
                 vec![SymptomId(1)],
                 None,
             )
@@ -185,15 +206,10 @@ mod tests {
 
     #[test]
     fn a_correction_lists_each_changed_value() {
-        let before = report(6, &[1]);
+        let before = report(&[(2, 4), (3, 6)]);
         let mut after = before.clone();
-        after.values = ReportValues::new(
-            Intensity::new(7).unwrap(),
-            vec![RoomId(1), RoomId(3)],
-            vec![],
-            Some("from the balcony"),
-        )
-        .unwrap();
+        after.values =
+            ReportValues::new(vec![at(1, 3), at(3, 7)], vec![], Some("from the balcony")).unwrap();
         after.observed_at = t("2026-01-15T19:30:00Z");
         let history = report_history(&[
             entry(AuditAction::Create, None, &before),
@@ -209,8 +225,13 @@ mod tests {
                     from: t("2026-01-15T19:00:00Z"),
                     to: t("2026-01-15T19:30:00Z"),
                 },
-                Change::Intensity { from: 6, to: 7 },
-                Change::RoomAdded(RoomId(3)),
+                Change::LevelChanged {
+                    room: RoomId(3),
+                    from: Level::new(6).unwrap(),
+                    to: Level::new(7).unwrap(),
+                },
+                Change::RoomAdded(at(1, 3)),
+                Change::RoomRemoved(RoomId(2)),
                 Change::SymptomRemoved(SymptomId(1)),
                 Change::Note {
                     from: None,
@@ -223,7 +244,7 @@ mod tests {
 
     #[test]
     fn a_move_names_both_events_and_is_not_a_correction() {
-        let before = report(6, &[1]);
+        let before = report(&[(1, 6)]);
         let mut after = before.clone();
         after.event_id = EventId(5);
         let history = report_history(&[
@@ -241,8 +262,36 @@ mod tests {
     }
 
     #[test]
+    fn a_correction_audited_before_room_levels_compares_every_room_at_its_intensity() {
+        let mut old = entry(
+            AuditAction::Update,
+            Some(&report(&[(1, 6)])),
+            &report(&[(1, 6)]),
+        );
+        old.record.before = Some(serde_json::json!({
+            "event_id": 4, "observed_at": "2026-01-15T19:00:00Z",
+            "intensity": 6, "rooms": [1], "symptoms": [1], "note": null,
+        }));
+        old.record.after = Some(serde_json::json!({
+            "event_id": 4, "observed_at": "2026-01-15T19:00:00Z",
+            "intensity": 7, "rooms": [1, 3], "symptoms": [1], "note": null,
+        }));
+        assert_eq!(
+            report_history(&[old])[0].changes,
+            [
+                Change::LevelChanged {
+                    room: RoomId(1),
+                    from: Level::new(6).unwrap(),
+                    to: Level::new(7).unwrap(),
+                },
+                Change::RoomAdded(at(3, 7)),
+            ]
+        );
+    }
+
+    #[test]
     fn a_deletion_has_no_value_changes() {
-        let before = report(6, &[1]);
+        let before = report(&[(1, 6)]);
         let mut after = before.clone();
         after.deleted_at = Some(t("2026-01-16T08:15:00Z"));
         let history = report_history(&[entry(AuditAction::Delete, Some(&before), &after)]);

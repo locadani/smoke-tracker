@@ -1,8 +1,9 @@
 //! Names shown for stored values: starter rooms and symptoms through their translation key,
 //! custom ones as typed, and the translation keys of enum values.
 
-use smoke_domain::records::{Room, Symptom};
+use smoke_domain::records::{Room, RoomLevel, Symptom};
 use smoke_domain::types::CloseReason;
+use smoke_domain::types::RoomId;
 
 use crate::i18n::Tr;
 
@@ -11,6 +12,20 @@ pub(crate) fn room(tr: Tr, room: &Room) -> String {
         Some(key) => tr.t(key),
         None => room.name.to_string(),
     }
+}
+
+/// The name of the room with this id among `rooms`; empty if there is none.
+pub(crate) fn room_by_id(tr: Tr, rooms: &[Room], id: RoomId) -> String {
+    rooms
+        .iter()
+        .find(|r| r.id == id)
+        .map(|r| room(tr, r))
+        .unwrap_or_default()
+}
+
+/// A room of a report with its level: "Living room 6".
+pub(crate) fn room_level(tr: Tr, rooms: &[Room], at: RoomLevel) -> String {
+    format!("{} {}", room_by_id(tr, rooms, at.room), at.level.get())
 }
 
 pub(crate) fn symptom(tr: Tr, symptom: &Symptom) -> String {

@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at FROM smell_reports WHERE id = $1",
+  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at FROM smell_reports WHERE deleted_at IS NULL AND observed_at >= $1 AND observed_at < $2 ORDER BY observed_at, id",
   "describe": {
     "columns": [
       {
@@ -60,17 +60,6 @@
       },
       {
         "ordinal": 5,
-        "name": "intensity",
-        "type_info": "Int8",
-        "origin": {
-          "Table": {
-            "table": "smell_reports",
-            "name": "intensity"
-          }
-        }
-      },
-      {
-        "ordinal": 6,
         "name": "note",
         "type_info": "Text",
         "origin": {
@@ -81,7 +70,7 @@
         }
       },
       {
-        "ordinal": 7,
+        "ordinal": 6,
         "name": "deleted_at",
         "type_info": "Int8",
         "origin": {
@@ -94,6 +83,7 @@
     ],
     "parameters": {
       "Left": [
+        "Int8",
         "Int8"
       ]
     },
@@ -103,10 +93,9 @@
       false,
       false,
       false,
-      false,
       true,
       true
     ]
   },
-  "hash": "7a50981d2efa1f25531e334ae47c92cdb224c6fa62ca0d46e6627522e4b40e3c"
+  "hash": "5695bb752fd880e627f83e7a64e969b0f34f70e6476bd5ce1c17c65195c13263"
 }

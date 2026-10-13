@@ -271,10 +271,11 @@ async fn detail<S: Store>(
             "level",
             &report.values.intensity().get().to_string(),
         )];
-        let room_names: Vec<String> = rooms
+        let room_names: Vec<String> = report
+            .values
+            .rooms()
             .iter()
-            .filter(|room| report.values.rooms().contains(&room.id))
-            .map(|room| labels::room(tr, room))
+            .map(|&at| labels::room_level(tr, &rooms, at))
             .collect();
         let symptom_names: Vec<String> = symptoms
             .iter()

@@ -14,13 +14,13 @@ use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
 use smoke_domain::logbook::{EventChoice, Logged, SmellEntry, log_reading, log_smell};
-use smoke_domain::records::{NewUser, User};
+use smoke_domain::records::{NewUser, RoomLevel, User};
 use smoke_domain::records::{Pm25Reading, ReportValues};
 use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Intensity, Pm25, RoomId};
+use smoke_domain::types::{Level, Pm25, RoomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -103,20 +103,28 @@ impl TestApp {
             .id
     }
 
-    /// Logs a report through the domain, as the Log form would, at `at` (RFC 3339).
+    /// Logs a report through the domain, as the Log form would, at `at` (RFC 3339): every room
+    /// in `rooms` at `level`, or the living room alone when `rooms` is empty.
     pub async fn log(
         &self,
         user: &User,
         at: &str,
-        intensity: u8,
+        level: u8,
         rooms: &[RoomId],
         choice: EventChoice,
     ) -> Logged {
+        let level = Level::new(level).unwrap();
+        let rooms = match rooms {
+            [] => vec![self.room("room-living-room").await],
+            rooms => rooms.to_vec(),
+        };
         let entry = SmellEntry {
             observed_at: t(at),
             values: ReportValues::new(
-                Intensity::new(intensity).unwrap(),
-                rooms.to_vec(),
+                rooms
+                    .into_iter()
+                    .map(|room| RoomLevel { room, level })
+                    .collect(),
                 vec![],
                 None,
             )

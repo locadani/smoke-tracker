@@ -14,6 +14,7 @@ pub mod events;
 pub mod fixture;
 pub mod lists;
 pub mod logbook;
+pub mod migrations;
 pub mod readings;
 pub mod reports;
 pub mod sessions;

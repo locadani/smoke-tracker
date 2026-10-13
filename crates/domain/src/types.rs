@@ -224,29 +224,35 @@ impl fmt::Debug for NewPassword {
     }
 }
 
-/// How strong a smell is, on the personal 1–10 scale.
+/// How strong a smell is in one room, on the personal 0–10 scale: 0 means the room was checked
+/// and smelled clean.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
-pub struct Intensity(u8);
+pub struct Level(u8);
 
-impl Intensity {
-    pub const MIN: u8 = 1;
+impl Level {
+    pub const MIN: u8 = 0;
     pub const MAX: u8 = 10;
+    pub const CLEAN: Level = Level(0);
 
     pub fn new(value: u8) -> Result<Self, DomainError> {
-        if (Self::MIN..=Self::MAX).contains(&value) {
+        if value <= Self::MAX {
             Ok(Self(value))
         } else {
-            Err(DomainError::InvalidIntensity(value))
+            Err(DomainError::InvalidLevel(value))
         }
     }
 
     pub fn get(self) -> u8 {
         self.0
     }
+
+    pub fn is_clean(self) -> bool {
+        self == Self::CLEAN
+    }
 }
 
-impl TryFrom<u8> for Intensity {
+impl TryFrom<u8> for Level {
     type Error = DomainError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
@@ -254,9 +260,9 @@ impl TryFrom<u8> for Intensity {
     }
 }
 
-impl From<Intensity> for u8 {
-    fn from(intensity: Intensity) -> Self {
-        intensity.0
+impl From<Level> for u8 {
+    fn from(level: Level) -> Self {
+        level.0
     }
 }
 
@@ -300,26 +306,24 @@ mod tests {
     use super::*;
 
     #[test]
-    fn intensity_accepts_the_full_range() {
-        for value in 1..=10 {
-            assert_eq!(Intensity::new(value).unwrap().get(), value);
+    fn level_accepts_zero_to_ten() {
+        for value in 0..=10 {
+            assert_eq!(Level::new(value).unwrap().get(), value);
         }
+        assert!(Level::new(0).unwrap().is_clean());
+        assert!(!Level::new(1).unwrap().is_clean());
     }
 
     #[test]
-    fn intensity_rejects_values_outside_one_to_ten() {
-        assert_eq!(Intensity::new(0), Err(DomainError::InvalidIntensity(0)));
-        assert_eq!(Intensity::new(11), Err(DomainError::InvalidIntensity(11)));
+    fn level_rejects_values_above_ten() {
+        assert_eq!(Level::new(11), Err(DomainError::InvalidLevel(11)));
     }
 
     #[test]
-    fn intensity_cannot_be_deserialised_out_of_range() {
-        assert!(serde_json::from_str::<Intensity>("11").is_err());
-        assert_eq!(serde_json::from_str::<Intensity>("7").unwrap().get(), 7);
-        assert_eq!(
-            serde_json::to_string(&Intensity::new(7).unwrap()).unwrap(),
-            "7"
-        );
+    fn level_cannot_be_deserialised_out_of_range() {
+        assert!(serde_json::from_str::<Level>("11").is_err());
+        assert_eq!(serde_json::from_str::<Level>("0").unwrap(), Level::CLEAN);
+        assert_eq!(serde_json::to_string(&Level::new(7).unwrap()).unwrap(), "7");
     }
 
     #[test]

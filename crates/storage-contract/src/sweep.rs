@@ -6,15 +6,16 @@ use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::clock::Clock;
 use smoke_domain::records::{Event, NewReport};
 use smoke_domain::repos::{
-    AuditRepo, Commit, EventRepo, EventWrites, JobRepo, JobWrites, ReportWrites, Transactional,
-    UserWrites,
+    AuditRepo, Commit, EventRepo, EventWrites, JobRepo, JobWrites, ListRepo, ListWrites,
+    ReportWrites, Transactional, UserWrites,
 };
 use smoke_domain::schedule::DailySchedule;
+use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::{AUTO_CLOSE_JOB, SweepOutcome, auto_close};
 use smoke_domain::types::{CloseReason, Role, UserId};
 
 use crate::Fixture;
-use crate::fixture::{add_event, add_user, last_entry, report_values};
+use crate::fixture::{FIRST_ROOM, add_event, add_user, last_entry, report_values};
 
 fn t(s: &str) -> DateTime<Utc> {
     s.parse().expect("valid instant")
@@ -33,7 +34,7 @@ where
         event_id: event.id,
         user_id: user,
         observed_at: at,
-        values: report_values(5, &[], &[]),
+        values: report_values(5, &[FIRST_ROOM], &[]),
     })
     .await
     .unwrap();
@@ -53,8 +54,9 @@ where
 /// An evening event (20:00–21:30 UTC) on the night before `date`, with no sweep since.
 async fn evening_event<S>(fx: &Fixture<S>, user: UserId, date: &str) -> Event
 where
-    S: Transactional<Tx: EventWrites + ReportWrites + JobWrites> + JobRepo,
+    S: Transactional<Tx: EventWrites + ReportWrites + JobWrites + ListWrites> + JobRepo + ListRepo,
 {
+    seed_starter_lists(&fx.store).await.unwrap();
     let opened = t(&format!("{date}T20:00:00Z")) - TimeDelta::days(1);
     let mut tx = fx.store.begin(None).await.unwrap();
     tx.record_job_run(AUTO_CLOSE_JOB, opened).await.unwrap();
@@ -83,8 +85,9 @@ where
 
 pub async fn a_sweep_at_four_closes_the_event_at_its_last_report<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites>
+    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites + ListWrites>
         + JobRepo
+        + ListRepo
         + EventRepo
         + AuditRepo,
 {
@@ -120,7 +123,10 @@ where
 
 pub async fn a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites> + JobRepo + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites + ListWrites>
+        + JobRepo
+        + ListRepo
+        + EventRepo,
 {
     let user = add_user(fx, "daniele", Role::Resident).await;
     let first = evening_event(fx, user.id, "2026-01-16").await;
@@ -182,7 +188,10 @@ where
 
 pub async fn on_dst_days_the_sweep_still_runs_at_four_local<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites> + JobRepo + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites + ListWrites>
+        + JobRepo
+        + ListRepo
+        + EventRepo,
 {
     let user = add_user(fx, "daniele", Role::Resident).await;
     // Spring forward: 04:00 CEST is 02:00 UTC. Fall back: 04:00 CET is 03:00 UTC.

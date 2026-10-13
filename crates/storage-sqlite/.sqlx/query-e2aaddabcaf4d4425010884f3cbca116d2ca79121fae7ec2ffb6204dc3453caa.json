@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at FROM smell_reports WHERE deleted_at IS NULL AND observed_at >= $1 AND observed_at < $2 ORDER BY observed_at, id",
+  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at FROM smell_reports ORDER BY id",
   "describe": {
     "columns": [
       {
@@ -59,19 +59,8 @@
         }
       },
       {
-        "name": "intensity",
-        "ordinal": 5,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "smell_reports",
-            "name": "intensity"
-          }
-        }
-      },
-      {
         "name": "note",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -82,7 +71,7 @@
       },
       {
         "name": "deleted_at",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -93,10 +82,9 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 0
     },
     "nullable": [
-      false,
       false,
       false,
       false,
@@ -106,5 +94,5 @@
       true
     ]
   },
-  "hash": "6418a21bc07dbd7ef634d7f337fe16a2ef7f5a8cf2639b6f54e50d63fbb0e1b9"
+  "hash": "e2aaddabcaf4d4425010884f3cbca116d2ca79121fae7ec2ffb6204dc3453caa"
 }

@@ -13,7 +13,7 @@ use smoke_domain::repos::{
 use smoke_domain::types::{CloseReason, EventId, ReportId};
 
 use crate::Fixture;
-use crate::fixture::{add_event, report_values, start};
+use crate::fixture::{FIRST_ROOM, add_event, report_values, start};
 use crate::logbook::{log, people, rome, smell};
 
 async fn close<S>(
@@ -52,7 +52,7 @@ where
     S: Transactional<Tx: WriteTx>,
 {
     let mut tx = fx.store.begin(Some(who.id)).await.unwrap();
-    let values = report_values(intensity, &[], &[]);
+    let values = report_values(intensity, &[FIRST_ROOM], &[]);
     let now = fx.clock.now();
     let report = correct_report(&mut tx, &who.actor(), id, at, values, &rome(), now).await?;
     tx.commit().await.unwrap();

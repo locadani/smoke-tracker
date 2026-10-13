@@ -9,14 +9,14 @@ use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::FakeClock;
 use smoke_domain::records::{
-    Closure, Event, NewEvent, NewReport, NewUser, PasswordHash, ReportValues, Room, SmellReport,
-    Symptom, User,
+    Closure, Event, NewEvent, NewReport, NewUser, PasswordHash, ReportValues, Room, RoomLevel,
+    SmellReport, Symptom, User,
 };
 use smoke_domain::repos::{
     AuditRepo, Commit, EventWrites, ListRepo, ListWrites, ReportWrites, Transactional, UserWrites,
 };
 use smoke_domain::starter::seed_starter_lists;
-use smoke_domain::types::{Intensity, Locale, Role, RoomId, SymptomId, UserId, Username};
+use smoke_domain::types::{Level, Locale, Role, RoomId, SymptomId, UserId, Username};
 
 /// Runs SQL directly against the test database, bypassing the store: how tests tamper.
 pub type RawSql = Box<
@@ -157,14 +157,17 @@ where
     }
 }
 
-pub fn report_values(intensity: u8, rooms: &[RoomId], symptoms: &[SymptomId]) -> ReportValues {
-    ReportValues::new(
-        Intensity::new(intensity).expect("valid intensity"),
-        rooms.to_vec(),
-        symptoms.to_vec(),
-        None,
-    )
-    .expect("valid values")
+/// The first starter room. Suites that log seed the starter lists first.
+pub const FIRST_ROOM: RoomId = RoomId(1);
+
+/// Report values with every room in `rooms` at `level`.
+pub fn report_values(level: u8, rooms: &[RoomId], symptoms: &[SymptomId]) -> ReportValues {
+    let level = Level::new(level).expect("valid level");
+    let rooms = rooms
+        .iter()
+        .map(|&room| RoomLevel { room, level })
+        .collect();
+    ReportValues::new(rooms, symptoms.to_vec(), None).expect("valid values")
 }
 
 pub async fn add_report<S>(

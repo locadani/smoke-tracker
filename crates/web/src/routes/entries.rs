@@ -12,10 +12,10 @@ use chrono_tz::Tz;
 use smoke_domain::events::{LogPrompt, can_join_backdated, classify_observed, log_prompt};
 use smoke_domain::logbook::{EventChoice, LogError, SmellEntry, log_reading, log_smell};
 use smoke_domain::permissions::{Action, can};
-use smoke_domain::records::{Event, ReportValues, Room, Symptom, User};
+use smoke_domain::records::{Event, ReportValues, Room, RoomLevel, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{EventId, Intensity, Pm25, Role, RoomId, SymptomId};
+use smoke_domain::types::{EventId, Level, Pm25, Role, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
@@ -28,12 +28,13 @@ use crate::time::{self, TimeInputError};
 
 /// The translation keys [`read`] can return, for the translation tests.
 #[cfg(test)]
-pub(crate) const FORM_ERRORS: [&str; 7] = [
+pub(crate) const FORM_ERRORS: [&str; 8] = [
     "log-error-time",
     "log-error-time-skipped",
     "log-error-pm25",
     "log-error-pm25-missing",
-    "log-error-intensity",
+    "log-error-rooms",
+    "log-error-level",
     "log-error-form",
     "log-error-note",
 ];
@@ -58,23 +59,27 @@ pub(crate) fn read_time(
         .transpose()
 }
 
-/// Reads intensity, rooms, symptoms and note. Only the offered rooms and symptoms are accepted.
+/// The level picked for `room` (`level-<id>`), if any.
+pub(crate) fn level_field(form: &Pairs, room: RoomId) -> Option<u8> {
+    form.get(&format!("level-{room}"))
+        .and_then(|value| value.parse().ok())
+}
+
+/// Reads the rooms with their levels, the symptoms and the note. Only the offered rooms and
+/// symptoms are accepted; every selected room needs a level.
 pub(crate) fn read_values(
     form: &Pairs,
     rooms: &[RoomId],
     symptoms: &[SymptomId],
 ) -> Result<ReportValues, &'static str> {
-    let intensity = form
-        .get("intensity")
-        .and_then(|value| value.parse().ok())
-        .and_then(|value| Intensity::new(value).ok())
-        .ok_or("log-error-intensity")?;
-    let room_ids: Vec<RoomId> = form
+    let mut room_ids: Vec<RoomId> = form
         .ids("room")
         .ok_or("log-error-form")?
         .into_iter()
         .map(RoomId)
         .collect();
+    room_ids.sort_unstable();
+    room_ids.dedup();
     let symptom_ids: Vec<SymptomId> = form
         .ids("symptom")
         .ok_or("log-error-form")?
@@ -86,8 +91,20 @@ pub(crate) fn read_values(
     {
         return Err("log-error-form");
     }
-    ReportValues::new(intensity, room_ids, symptom_ids, form.get("note"))
-        .map_err(|_| "log-error-note")
+    if room_ids.is_empty() {
+        return Err("log-error-rooms");
+    }
+    let rooms = room_ids
+        .into_iter()
+        .map(|room| {
+            let level = level_field(form, room).and_then(|value| Level::new(value).ok());
+            Ok(RoomLevel {
+                room,
+                level: level.ok_or("log-error-level")?,
+            })
+        })
+        .collect::<Result<_, &'static str>>()?;
+    ReportValues::new(rooms, symptom_ids, form.get("note")).map_err(|_| "log-error-note")
 }
 
 /// Reads and validates the Log form. `Err` is the translation key of what to fix. Only rooms
@@ -414,25 +431,48 @@ mod tests {
     }
 
     #[test]
-    fn a_smell_needs_an_intensity_and_offered_rooms_only() {
-        let Ok(Entry::Smell(entry)) = read_form(&[("intensity", "6"), ("room", "1")]) else {
+    fn a_smell_needs_offered_rooms_each_with_a_level() {
+        let Ok(Entry::Smell(entry)) = read_form(&[("room", "1"), ("level-1", "6")]) else {
             panic!("a valid smell");
         };
         assert_eq!(entry.observed_at, now());
-        assert_eq!(entry.values.rooms(), [RoomId(1)]);
+        assert_eq!(
+            entry.values.rooms(),
+            [RoomLevel {
+                room: RoomId(1),
+                level: Level::new(6).unwrap(),
+            }]
+        );
         assert_eq!(entry.pm25, None);
+        let Ok(Entry::Smell(clean)) =
+            read_form(&[("room", "1"), ("level-1", "0"), ("level-3", "9")])
+        else {
+            panic!("a valid clean report");
+        };
+        assert!(
+            clean.values.intensity().is_clean(),
+            "unselected rooms are ignored"
+        );
         for (pairs, key) in [
-            (&[("room", "1")][..], "log-error-intensity"),
-            (&[("intensity", "11")][..], "log-error-intensity"),
-            (&[("intensity", "6"), ("room", "2")][..], "log-error-form"),
-            (&[("intensity", "6"), ("room", "x")][..], "log-error-form"),
+            (&[("level-1", "6")][..], "log-error-rooms"),
+            (&[("room", "1")][..], "log-error-level"),
+            (&[("room", "1"), ("level-1", "11")][..], "log-error-level"),
+            (&[("room", "2"), ("level-2", "6")][..], "log-error-form"),
+            (&[("room", "x")][..], "log-error-form"),
             (
-                &[("intensity", "6"), ("symptom", "1")][..],
+                &[("room", "1"), ("level-1", "6"), ("symptom", "1")][..],
                 "log-error-form",
             ),
-            (&[("intensity", "6"), ("pm25", "-1")][..], "log-error-pm25"),
             (
-                &[("intensity", "6"), ("observed_at", "2026-01-15T22:00")][..],
+                &[("room", "1"), ("level-1", "6"), ("pm25", "-1")][..],
+                "log-error-pm25",
+            ),
+            (
+                &[
+                    ("room", "1"),
+                    ("level-1", "6"),
+                    ("observed_at", "2026-01-15T22:00"),
+                ][..],
                 "refused-future",
             ),
         ] {

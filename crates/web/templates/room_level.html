@@ -1,0 +1,10 @@
+{# One room chip and its level row 0–10, shown while the room is selected (spec §9, screen 1). #}
+<div class="room">
+  <label class="chip"><input type="checkbox" name="room" value="{{ choice.room.value }}"{% if choice.room.checked %} checked{% endif %}><span>{{ choice.room.label }}</span></label>
+  <fieldset class="levels">
+    <legend>{{ tr.t1("log-level-in", "room", choice.room.label) }}</legend>
+    {% for level in choice.levels %}
+    <label class="chip"><input type="radio" name="level-{{ choice.room.value }}" value="{{ level.value }}"{% if level.checked %} checked{% endif %}><span>{{ level.label }}</span></label>
+    {% endfor %}
+  </fieldset>
+</div>

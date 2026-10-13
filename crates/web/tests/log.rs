@@ -27,7 +27,10 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
         html.contains(r#"<form method="post" action="/log""#),
         "{html}"
     );
-    assert_eq!(html.matches(r#"name="intensity""#).count(), 10);
+    let bedroom_id = app.room("room-bedroom").await;
+    let level_row = format!(r#"name="level-{bedroom_id}""#);
+    assert_eq!(html.matches(&level_row).count(), 11, "levels 0 to 10");
+    assert!(html.contains("<legend>Level in Bedroom</legend>"), "{html}");
     let inside = html.find("Inside").unwrap();
     let common = html.find("Common areas").unwrap();
     let bedroom = html.find("<span>Bedroom</span>").unwrap();
@@ -250,6 +253,10 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
     );
     assert!(html.contains(r#"<dialog id="rating-guide""#), "{html}");
     assert!(html.contains(r#"<form method="dialog""#), "{html}");
+    assert!(
+        html.contains(r#"<tr><th scope="row">0</th><td>Pulito</td></tr>"#),
+        "{html}"
+    );
     assert!(html.contains("<td>Appena percepibile</td>"), "{html}");
     assert!(
         html.contains("Tra due numeri, scegli il più basso."),
@@ -261,6 +268,10 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
     assert_eq!(guide.status(), StatusCode::OK);
     let guide = text(guide).await;
     assert!(guide.contains("<h1>Come valutare</h1>"), "{guide}");
+    assert!(
+        guide.contains("Hai controllato: nessun odore di fumo."),
+        "{guide}"
+    );
     assert!(
         guide.contains("Come una stanza piena di fumo. Devi uscire."),
         "{guide}"

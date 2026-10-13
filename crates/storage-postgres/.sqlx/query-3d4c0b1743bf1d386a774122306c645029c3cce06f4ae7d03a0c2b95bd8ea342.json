@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, intensity, note) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id AS \"id!\"",
+  "query": "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, note) VALUES ($1, $2, $3, $4, $5) RETURNING id AS \"id!\"",
   "describe": {
     "columns": [
       {
@@ -21,7 +21,6 @@
         "Int8",
         "Int8",
         "Int8",
-        "Int8",
         "Text"
       ]
     },
@@ -29,5 +28,5 @@
       false
     ]
   },
-  "hash": "729019263b47f4a434b4a3e729b94ba075db98ff571953cca1f974bbf6d32490"
+  "hash": "3d4c0b1743bf1d386a774122306c645029c3cce06f4ae7d03a0c2b95bd8ea342"
 }

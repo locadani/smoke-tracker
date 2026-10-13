@@ -12,7 +12,8 @@ pub struct MonthSummary {
     /// Events with at least one of the reports.
     pub events: usize,
     pub reports: usize,
-    /// Local days with a report naming the bedroom; `None` when there is no bedroom room.
+    /// Local days with a report giving the bedroom a level of 1 or more; `None` when there is no
+    /// bedroom room.
     pub bedroom_days: Option<usize>,
 }
 
@@ -27,7 +28,11 @@ pub fn summarise(
     let bedroom_days = bedroom.map(|room| {
         reports
             .iter()
-            .filter(|r| r.values.rooms().contains(&room))
+            .filter(|r| {
+                r.values
+                    .level_in(room)
+                    .is_some_and(|level| !level.is_clean())
+            })
             .map(|r| schedule.local_date(r.observed_at))
             .collect::<BTreeSet<_>>()
             .len()
@@ -44,10 +49,10 @@ mod tests {
     use chrono::{DateTime, Utc};
 
     use super::*;
-    use crate::records::ReportValues;
-    use crate::types::{EventId, Intensity, ReportId, UserId};
+    use crate::records::{ReportValues, RoomLevel};
+    use crate::types::{EventId, Level, ReportId, UserId};
 
-    fn report(id: i64, event: i64, at: &str, rooms: &[i64]) -> SmellReport {
+    fn report(id: i64, event: i64, at: &str, rooms: &[(i64, u8)]) -> SmellReport {
         let at: DateTime<Utc> = at.parse().unwrap();
         SmellReport {
             id: ReportId(id),
@@ -56,8 +61,13 @@ mod tests {
             observed_at: at,
             recorded_at: at,
             values: ReportValues::new(
-                Intensity::new(5).unwrap(),
-                rooms.iter().copied().map(RoomId).collect(),
+                rooms
+                    .iter()
+                    .map(|&(room, level)| RoomLevel {
+                        room: RoomId(room),
+                        level: Level::new(level).unwrap(),
+                    })
+                    .collect(),
                 vec![],
                 None,
             )
@@ -74,17 +84,19 @@ mod tests {
     fn counts_events_reports_and_local_days_with_bedroom_smoke() {
         let bedroom = RoomId(3);
         let reports = [
-            report(1, 1, "2026-01-10T20:00:00Z", &[3]),
-            report(2, 1, "2026-01-10T22:30:00Z", &[1, 3]),
+            report(1, 1, "2026-01-10T20:00:00Z", &[(3, 4)]),
+            report(2, 1, "2026-01-10T22:30:00Z", &[(1, 2), (3, 5)]),
             // 00:30 on the 11th in Rome: a second bedroom day.
-            report(3, 1, "2026-01-10T23:30:00Z", &[3]),
-            report(4, 2, "2026-01-12T08:00:00Z", &[1]),
+            report(3, 1, "2026-01-10T23:30:00Z", &[(3, 1)]),
+            report(4, 2, "2026-01-12T08:00:00Z", &[(1, 6)]),
+            // The bedroom checked and clean: not a day with bedroom smoke.
+            report(5, 2, "2026-01-12T09:00:00Z", &[(1, 6), (3, 0)]),
         ];
         assert_eq!(
             summarise(&reports, Some(bedroom), &rome()),
             MonthSummary {
                 events: 2,
-                reports: 4,
+                reports: 5,
                 bedroom_days: Some(2),
             }
         );
@@ -93,7 +105,12 @@ mod tests {
     #[test]
     fn without_a_bedroom_or_reports_the_counts_are_empty() {
         assert_eq!(
-            summarise(&[report(1, 1, "2026-01-10T20:00:00Z", &[3])], None, &rome()).bedroom_days,
+            summarise(
+                &[report(1, 1, "2026-01-10T20:00:00Z", &[(3, 4)])],
+                None,
+                &rome()
+            )
+            .bedroom_days,
             None
         );
         assert_eq!(

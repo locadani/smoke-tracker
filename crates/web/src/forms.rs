@@ -38,6 +38,17 @@ impl Pairs {
             .collect()
     }
 
+    /// What follows `prefix` in each field name that starts with it, e.g. the room ids of
+    /// `level-<id>` fields.
+    pub(crate) fn names_with_prefix<'a>(
+        &'a self,
+        prefix: &'a str,
+    ) -> impl Iterator<Item = &'a str> + 'a {
+        self.0
+            .iter()
+            .filter_map(move |(key, _)| key.strip_prefix(prefix))
+    }
+
     /// All pairs except those named in `skip`: what a follow-up form re-posts as hidden fields.
     pub(crate) fn without(&self, skip: &[&str]) -> Vec<(String, String)> {
         self.0

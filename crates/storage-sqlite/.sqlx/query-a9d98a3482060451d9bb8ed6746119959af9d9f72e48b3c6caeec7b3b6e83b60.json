@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO smell_report_rooms (smell_report_id, room_id, level) VALUES ($1, $2, $3)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a9d98a3482060451d9bb8ed6746119959af9d9f72e48b3c6caeec7b3b6e83b60"
+}

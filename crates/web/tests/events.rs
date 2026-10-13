@@ -151,7 +151,7 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
     assert!(html.contains("Started by daniele"), "{html}");
     assert!(
         html.contains(&format!(
-            r#"<a href="/reports/{}">intensity 3 · Bedroom</a>"#,
+            r#"<a href="/reports/{}">intensity 3 · Bedroom 3</a>"#,
             first.report.id
         )),
         "{html}"

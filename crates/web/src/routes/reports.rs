@@ -9,17 +9,17 @@ use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::history::{Change, report_history, was_corrected};
 use smoke_domain::logbook::{MoveTarget, correct_report, move_report};
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{Room, SmellReport, Symptom, User};
+use smoke_domain::records::{SmellReport, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{EventId, ReportId, RoomId, SymptomId, UserId};
+use smoke_domain::types::{EventId, ReportId, SymptomId, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
 use crate::routes::entries::{joinable_events, read_time, read_values};
-use crate::routes::guide::{Level, levels};
+use crate::routes::guide::{GuideRow, levels};
 use crate::routes::log::{Draft, Fields, fields, offered};
 use crate::routes::refusal;
 use crate::state::AppState;
@@ -39,14 +39,6 @@ async fn visible_report<S: Store>(
         .await?
         .filter(|r| can_see(&user.actor(), r.user_id, now))
         .ok_or(AppError::NotFound)
-}
-
-fn room_names(tr: Tr, rooms: &[Room], ids: &[RoomId]) -> Vec<String> {
-    rooms
-        .iter()
-        .filter(|r| ids.contains(&r.id))
-        .map(|r| labels::room(tr, r))
-        .collect()
 }
 
 fn symptom_names(tr: Tr, symptoms: &[Symptom], ids: &[SymptomId]) -> Vec<String> {
@@ -177,18 +169,21 @@ async fn report_page<S: Store>(
                             time::date_time(tr.0, *to, tz)
                         ),
                     ),
-                    Change::Intensity { from, to } => {
-                        tr.t1("history-intensity", "change", &format!("{from} → {to}"))
-                    }
-                    Change::RoomAdded(room) => tr.t1(
+                    Change::LevelChanged { room, from, to } => format!(
+                        "{} {} → {}",
+                        labels::room_by_id(tr, &rooms, *room),
+                        from.get(),
+                        to.get()
+                    ),
+                    Change::RoomAdded(at) => tr.t1(
                         "history-added",
                         "name",
-                        &room_names(tr, &rooms, &[*room]).concat(),
+                        &labels::room_level(tr, &rooms, *at),
                     ),
                     Change::RoomRemoved(room) => tr.t1(
                         "history-removed",
                         "name",
-                        &room_names(tr, &rooms, &[*room]).concat(),
+                        &labels::room_by_id(tr, &rooms, *room),
                     ),
                     Change::SymptomAdded(symptom) => tr.t1(
                         "history-added",
@@ -253,7 +248,14 @@ async fn report_page<S: Store>(
             "{intensity} · {}",
             tr.t(&format!("intensity-{intensity}-name"))
         ),
-        rooms: join(room_names(tr, &rooms, report.values.rooms())),
+        rooms: join(
+            report
+                .values
+                .rooms()
+                .iter()
+                .map(|&at| labels::room_level(tr, &rooms, at))
+                .collect(),
+        ),
         symptoms: join(symptom_names(tr, &symptoms, report.values.symptoms())),
         note: report.values.note().map(str::to_owned),
         by: name(Some(report.user_id), &users),
@@ -279,7 +281,7 @@ struct CorrectPage {
     tr: Tr,
     signed_in: Option<String>,
     id: i64,
-    levels: Vec<Level>,
+    levels: Vec<GuideRow>,
     form: CorrectForm,
 }
 
@@ -316,7 +318,8 @@ async fn correct_page<S: Store>(
 ) -> Result<CorrectPage, AppError> {
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
-    let keep = (report.values.rooms(), report.values.symptoms());
+    let room_ids = report.values.room_ids();
+    let keep = (room_ids.as_slice(), report.values.symptoms());
     Ok(CorrectPage {
         tr,
         signed_in: Some(user.username.to_string()),
@@ -340,8 +343,13 @@ pub(crate) async fn correct_form<S: Store + Clone + 'static>(
 ) -> Result<Response, AppError> {
     let report = editable_report(&state, &user, ReportId(id)).await?;
     let draft = Draft {
-        intensity: Some(report.values.intensity().get()),
-        rooms: report.values.rooms().to_vec(),
+        rooms: report.values.room_ids(),
+        levels: report
+            .values
+            .rooms()
+            .iter()
+            .map(|r| (r.room, r.level.get()))
+            .collect(),
         symptoms: report.values.symptoms().to_vec(),
         pm25: String::new(),
         observed_at: time::input_value(report.observed_at, state.config.schedule.tz()),
@@ -364,7 +372,8 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     let report = editable_report(&state, &user, ReportId(id)).await?;
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
-    let keep = (report.values.rooms(), report.values.symptoms());
+    let room_ids = report.values.room_ids();
+    let keep = (room_ids.as_slice(), report.values.symptoms());
     let (offered_rooms, offered_symptoms) = offered(&rooms, &symptoms, keep);
     let parsed = read_time(&form, "observed_at", schedule.tz()).and_then(|at| {
         let values = read_values(&form, &offered_rooms, &offered_symptoms)?;

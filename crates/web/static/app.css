@@ -92,26 +92,34 @@ legend {
   margin-bottom: 0.5rem;
 }
 
-.levels {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 0.5rem;
-}
-
-.levels legend {
-  grid-column: 1 / -1;
-}
-
-.chips {
+.rooms {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.chips legend,
-.chips .group {
+.rooms legend,
+.rooms .group,
+.room:has(input[name="room"]:checked) {
   flex-basis: 100%;
   margin: 0;
+}
+
+.levels {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.levels legend {
+  grid-column: 1 / -1;
+  font-weight: 400;
+  margin: 0;
+}
+
+.room:not(:has(input[name="room"]:checked)) .levels {
+  display: none;
 }
 
 .chip {

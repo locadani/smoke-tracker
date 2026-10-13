@@ -40,7 +40,7 @@ async fn a_report_shows_both_times_its_values_and_its_history() {
         "recorded: {html}"
     );
     assert!(html.contains("<dd>6 · Strong</dd>"), "{html}");
-    assert!(html.contains("<dd>Bedroom</dd>"), "{html}");
+    assert!(html.contains("<dd>Bedroom 6</dd>"), "{html}");
     assert!(html.contains("<dd>daniele</dd>"), "{html}");
     assert!(
         html.contains("<li>15/01/2026 21:00 · daniele · logged</li>"),
@@ -76,7 +76,10 @@ async fn correcting_a_mistake_is_recorded_and_badged() {
             .await,
     )
     .await;
-    assert!(form.contains(r#"value="6" required checked>"#), "{form}");
+    assert!(
+        form.contains(&format!(r#"name="level-{}" value="6" checked>"#, bedroom.0)),
+        "{form}"
+    );
     assert!(
         form.contains(&format!(r#"value="{}" checked><span>Bedroom"#, bedroom.0)),
         "{form}"
@@ -89,7 +92,7 @@ async fn correcting_a_mistake_is_recorded_and_badged() {
 
     app.at("2026-01-16T08:15:00Z");
     let body = format!(
-        "intensity=7&room={}&room={}&observed_at=2026-01-15T19:05&note=",
+        "room={0}&level-{0}=7&room={1}&level-{1}=3&observed_at=2026-01-15T19:05&note=",
         bedroom.0, kitchen.0
     );
     let response = app
@@ -107,7 +110,7 @@ async fn correcting_a_mistake_is_recorded_and_badged() {
     );
     assert!(
         html.contains(
-            "<li>16/01/2026 09:15 · daniele · corrected: intensity 6 → 7, added Kitchen</li>"
+            "<li>16/01/2026 09:15 · daniele · corrected: Bedroom 6 → 7, added Kitchen 3</li>"
         ),
         "{html}"
     );
@@ -132,7 +135,7 @@ async fn a_correction_must_stay_inside_the_event() {
     let response = app
         .send(post_form(
             &format!("/reports/{id}/correct"),
-            "intensity=6&observed_at=2026-01-15T18:00",
+            "room=1&level-1=6&observed_at=2026-01-15T18:00",
             Some(&cookie),
         ))
         .await;
@@ -262,7 +265,7 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
                 .await,
             app.send(post_form(
                 &format!("/reports/{id}/correct"),
-                "intensity=1",
+                "room=1&level-1=1",
                 Some(&cookie),
             ))
             .await,

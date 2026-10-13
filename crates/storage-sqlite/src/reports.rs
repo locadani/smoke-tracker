@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
 use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::records::{NewReport, ReportValues, SmellReport};
+use smoke_domain::records::{NewReport, ReportValues, RoomLevel, SmellReport};
 use smoke_domain::repos::{Conflict, ReportRepo, ReportWrites, StoreError, StoreResult};
-use smoke_domain::types::{EventId, Intensity, ReportId, RoomId, SymptomId, UserId};
+use smoke_domain::types::{EventId, Level, ReportId, RoomId, SymptomId, UserId};
 use sqlx::SqliteConnection;
 
 use crate::convert::{corrupt, instant, micros, opt_instant};
@@ -19,19 +19,21 @@ struct ReportRow {
     user_id: i64,
     observed_at: i64,
     recorded_at: i64,
-    intensity: i64,
     note: Option<String>,
     deleted_at: Option<i64>,
 }
 
 async fn load(conn: &mut SqliteConnection, row: ReportRow) -> StoreResult<SmellReport> {
-    let rooms = sqlx::query_scalar!(
-        "SELECT room_id FROM smell_report_rooms WHERE smell_report_id = $1 ORDER BY room_id",
+    let rooms = sqlx::query!(
+        "SELECT room_id, level FROM smell_report_rooms WHERE smell_report_id = $1 ORDER BY room_id",
         row.id,
     )
     .fetch_all(&mut *conn)
     .await
-    .db()?;
+    .db()?
+    .into_iter()
+    .map(|l| (l.room_id, l.level))
+    .collect();
     let symptoms = sqlx::query_scalar!(
         "SELECT symptom_id FROM smell_report_symptoms WHERE smell_report_id = $1 ORDER BY symptom_id",
         row.id,
@@ -42,14 +44,24 @@ async fn load(conn: &mut SqliteConnection, row: ReportRow) -> StoreResult<SmellR
     assemble(row, rooms, symptoms)
 }
 
-/// A report from its row and the ids in its link tables.
-fn assemble(row: ReportRow, rooms: Vec<i64>, symptoms: Vec<i64>) -> StoreResult<SmellReport> {
-    let intensity = u8::try_from(row.intensity)
-        .map_err(corrupt)
-        .and_then(|value| Intensity::new(value).map_err(corrupt))?;
+/// A report from its row, its `(room id, level)` pairs and its symptom ids.
+fn assemble(
+    row: ReportRow,
+    rooms: Vec<(i64, i64)>,
+    symptoms: Vec<i64>,
+) -> StoreResult<SmellReport> {
+    let rooms = rooms
+        .into_iter()
+        .map(|(room, level)| {
+            let level = u8::try_from(level).map_err(corrupt)?;
+            Ok(RoomLevel {
+                room: RoomId(room),
+                level: Level::new(level).map_err(corrupt)?,
+            })
+        })
+        .collect::<StoreResult<_>>()?;
     let values = ReportValues::new(
-        intensity,
-        rooms.into_iter().map(RoomId).collect(),
+        rooms,
         symptoms.into_iter().map(SymptomId).collect(),
         row.note.as_deref(),
     )
@@ -68,9 +80,9 @@ fn assemble(row: ReportRow, rooms: Vec<i64>, symptoms: Vec<i64>) -> StoreResult<
     })
 }
 
-/// Groups `(report id, linked id)` pairs by report.
-fn group(links: impl IntoIterator<Item = (i64, i64)>) -> HashMap<i64, Vec<i64>> {
-    let mut grouped: HashMap<i64, Vec<i64>> = HashMap::new();
+/// Groups `(report id, link)` pairs by report.
+fn group<T>(links: impl IntoIterator<Item = (i64, T)>) -> HashMap<i64, Vec<T>> {
+    let mut grouped: HashMap<i64, Vec<T>> = HashMap::new();
     for (report, linked) in links {
         grouped.entry(report).or_default().push(linked);
     }
@@ -91,7 +103,7 @@ async fn load_all(
 async fn fetch(conn: &mut SqliteConnection, id: ReportId) -> StoreResult<Option<SmellReport>> {
     let row = sqlx::query_as!(
         ReportRow,
-        "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+        "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
          FROM smell_reports WHERE id = $1",
         id.0,
     )
@@ -128,9 +140,10 @@ async fn insert_links(
 ) -> StoreResult<()> {
     for room in values.rooms() {
         sqlx::query!(
-            "INSERT INTO smell_report_rooms (smell_report_id, room_id) VALUES ($1, $2)",
+            "INSERT INTO smell_report_rooms (smell_report_id, room_id, level) VALUES ($1, $2, $3)",
             id,
-            room.0,
+            room.room.0,
+            i64::from(room.level.get()),
         )
         .execute(&mut *conn)
         .await
@@ -186,7 +199,7 @@ impl ReportRepo for SqliteStore {
         let mut conn = self.read().await?;
         let rows = sqlx::query_as!(
             ReportRow,
-            "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+            "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
              FROM smell_reports WHERE event_id = $1 AND deleted_at IS NULL \
              ORDER BY observed_at, id",
             event.0,
@@ -208,7 +221,7 @@ impl ReportRepo for SqliteStore {
         let mut conn = self.read().await?;
         let rows = sqlx::query_as!(
             ReportRow,
-            "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+            "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
              FROM smell_reports WHERE deleted_at IS NULL AND observed_at >= $1 AND observed_at < $2 \
              ORDER BY observed_at, id",
             from,
@@ -218,7 +231,7 @@ impl ReportRepo for SqliteStore {
         .await
         .db()?;
         let rooms = sqlx::query!(
-            "SELECT l.smell_report_id, l.room_id FROM smell_report_rooms l \
+            "SELECT l.smell_report_id, l.room_id, l.level FROM smell_report_rooms l \
              JOIN smell_reports r ON r.id = l.smell_report_id \
              WHERE r.deleted_at IS NULL AND r.observed_at >= $1 AND r.observed_at < $2 \
              ORDER BY l.smell_report_id, l.room_id",
@@ -239,7 +252,11 @@ impl ReportRepo for SqliteStore {
         .fetch_all(&mut *conn)
         .await
         .db()?;
-        let mut rooms = group(rooms.into_iter().map(|l| (l.smell_report_id, l.room_id)));
+        let mut rooms = group(
+            rooms
+                .into_iter()
+                .map(|l| (l.smell_report_id, (l.room_id, l.level))),
+        );
         let mut symptoms = group(
             symptoms
                 .into_iter()
@@ -266,13 +283,12 @@ impl ReportWrites for SqliteTx {
     async fn create_report(&mut self, new: NewReport) -> StoreResult<SmellReport> {
         let now = micros(self.now());
         let id = sqlx::query_scalar!(
-            "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, intensity, note) \
-             VALUES ($1, $2, $3, $4, $5, $6) RETURNING id AS \"id!\"",
+            "INSERT INTO smell_reports (event_id, user_id, observed_at, recorded_at, note) \
+             VALUES ($1, $2, $3, $4, $5) RETURNING id AS \"id!\"",
             new.event_id.0,
             new.user_id.0,
             micros(new.observed_at),
             now,
-            i64::from(new.values.intensity().get()),
             new.values.note(),
         )
         .fetch_one(self.conn())
@@ -292,9 +308,8 @@ impl ReportWrites for SqliteTx {
     ) -> StoreResult<SmellReport> {
         let before = require_live(self.conn(), id).await?;
         sqlx::query!(
-            "UPDATE smell_reports SET observed_at = $1, intensity = $2, note = $3 WHERE id = $4",
+            "UPDATE smell_reports SET observed_at = $1, note = $2 WHERE id = $3",
             micros(observed_at),
-            i64::from(values.intensity().get()),
             values.note(),
             id.0,
         )
@@ -340,7 +355,7 @@ impl ReportWrites for SqliteTx {
 pub(crate) async fn fetch_all(conn: &mut SqliteConnection) -> StoreResult<Vec<SmellReport>> {
     let rows = sqlx::query_as!(
         ReportRow,
-        "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at \
+        "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at \
          FROM smell_reports ORDER BY id"
     )
     .fetch_all(&mut *conn)

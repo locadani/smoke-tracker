@@ -12,13 +12,14 @@ use smoke_domain::repos::Store;
 use smoke_domain::starter::BEDROOM_KEY;
 use smoke_domain::summary::{MonthSummary, summarise};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Intensity, RoomArea, RoomId, SymptomId};
+use smoke_domain::types::{Level, RoomArea, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::i18n::Tr;
-use crate::routes::guide::{Level, levels};
+use crate::routes::entries::level_field;
+use crate::routes::guide::{GuideRow, levels};
 use crate::routes::{can_open, notices};
 use crate::state::AppState;
 use crate::{labels, time};
@@ -26,8 +27,9 @@ use crate::{labels, time};
 /// What the form holds: blank, pre-filled, or as typed before a validation error.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Draft {
-    pub(crate) intensity: Option<u8>,
     pub(crate) rooms: Vec<RoomId>,
+    /// The level picked for each room, selected or not.
+    pub(crate) levels: Vec<(RoomId, u8)>,
     pub(crate) symptoms: Vec<SymptomId>,
     pub(crate) pm25: String,
     pub(crate) observed_at: String,
@@ -39,12 +41,16 @@ impl Draft {
     pub(crate) fn from_form(form: &Pairs) -> Self {
         let text = |name| form.get(name).unwrap_or_default().to_owned();
         Self {
-            intensity: form.get("intensity").and_then(|v| v.parse().ok()),
             rooms: form
                 .ids("room")
                 .unwrap_or_default()
                 .into_iter()
                 .map(RoomId)
+                .collect(),
+            levels: form
+                .names_with_prefix("level-")
+                .filter_map(|id| id.parse().ok().map(RoomId))
+                .filter_map(|room| level_field(form, room).map(|level| (room, level)))
                 .collect(),
             symptoms: form
                 .ids("symptom")
@@ -66,12 +72,17 @@ pub(crate) struct Choice {
     pub(crate) checked: bool,
 }
 
-/// The intensity, room and symptom fields shared by the Log form and the correction form
+/// A room chip and the row of levels it shows while selected.
+pub(crate) struct RoomChoice {
+    pub(crate) room: Choice,
+    pub(crate) levels: Vec<Choice>,
+}
+
+/// The room, level and symptom fields shared by the Log form and the correction form
 /// (`templates/report_fields.html`).
 pub(crate) struct Fields {
-    pub(crate) intensities: Vec<Choice>,
-    pub(crate) inside: Vec<Choice>,
-    pub(crate) common: Vec<Choice>,
+    pub(crate) inside: Vec<RoomChoice>,
+    pub(crate) common: Vec<RoomChoice>,
     pub(crate) symptoms: Vec<Choice>,
 }
 
@@ -88,21 +99,30 @@ pub(crate) fn fields(
         rooms
             .iter()
             .filter(|r| r.area == area && (r.hidden_at.is_none() || keep.0.contains(&r.id)))
-            .map(|r| Choice {
-                value: r.id.0,
-                label: labels::room(tr, r),
-                checked: draft.rooms.contains(&r.id),
+            .map(|r| {
+                let picked = draft
+                    .levels
+                    .iter()
+                    .find(|(room, _)| *room == r.id)
+                    .map(|&(_, level)| level);
+                RoomChoice {
+                    room: Choice {
+                        value: r.id.0,
+                        label: labels::room(tr, r),
+                        checked: draft.rooms.contains(&r.id),
+                    },
+                    levels: (Level::MIN..=Level::MAX)
+                        .map(|value| Choice {
+                            value: value.into(),
+                            label: value.to_string(),
+                            checked: picked == Some(value),
+                        })
+                        .collect(),
+                }
             })
             .collect()
     };
     Fields {
-        intensities: (Intensity::MIN..=Intensity::MAX)
-            .map(|value| Choice {
-                value: value.into(),
-                label: value.to_string(),
-                checked: draft.intensity == Some(value),
-            })
-            .collect(),
         inside: room_choices(RoomArea::Inside),
         common: room_choices(RoomArea::Common),
         symptoms: symptoms
@@ -171,7 +191,7 @@ pub(crate) struct LogPage {
     /// A translation key confirming what was just saved.
     saved: Option<&'static str>,
     summary: MonthSummary,
-    levels: Vec<Level>,
+    levels: Vec<GuideRow>,
     /// `None` for people who may not log (viewers, expired guests).
     form: Option<FormView>,
 }
@@ -251,7 +271,7 @@ pub(crate) async fn log_page<S: Store>(
             None => {
                 let mut blank = Draft::default();
                 if let Some(last) = open_reports.iter().rev().find(|r| r.user_id == user.id) {
-                    blank.rooms = last.values.rooms().to_vec();
+                    blank.rooms = last.values.room_ids();
                 }
                 blank
             }

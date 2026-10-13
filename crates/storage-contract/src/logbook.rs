@@ -14,7 +14,7 @@ use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::types::{CloseReason, EventId, Pm25, Role, RoomId};
 
 use crate::Fixture;
-use crate::fixture::{add_event, add_user, report_values, start};
+use crate::fixture::{FIRST_ROOM, add_event, add_user, report_values, start};
 
 /// Everyone who might log, and the seeded lists.
 pub(crate) struct People {
@@ -44,7 +44,7 @@ pub(crate) fn rome() -> DailySchedule {
 pub(crate) fn smell(at: DateTime<Utc>, intensity: u8) -> SmellEntry {
     SmellEntry {
         observed_at: at,
-        values: report_values(intensity, &[], &[]),
+        values: report_values(intensity, &[FIRST_ROOM], &[]),
         pm25: None,
     }
 }

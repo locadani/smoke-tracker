@@ -1,12 +1,12 @@
 {
-  "db_name": "SQLite",
-  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, intensity, note, deleted_at FROM smell_reports ORDER BY id",
+  "db_name": "PostgreSQL",
+  "query": "SELECT id, event_id, user_id, observed_at, recorded_at, note, deleted_at FROM smell_reports WHERE id = $1",
   "describe": {
     "columns": [
       {
-        "name": "id",
         "ordinal": 0,
-        "type_info": "Integer",
+        "name": "id",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "smell_reports",
@@ -15,9 +15,9 @@
         }
       },
       {
-        "name": "event_id",
         "ordinal": 1,
-        "type_info": "Integer",
+        "name": "event_id",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "smell_reports",
@@ -26,9 +26,9 @@
         }
       },
       {
-        "name": "user_id",
         "ordinal": 2,
-        "type_info": "Integer",
+        "name": "user_id",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "smell_reports",
@@ -37,9 +37,9 @@
         }
       },
       {
-        "name": "observed_at",
         "ordinal": 3,
-        "type_info": "Integer",
+        "name": "observed_at",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "smell_reports",
@@ -48,9 +48,9 @@
         }
       },
       {
-        "name": "recorded_at",
         "ordinal": 4,
-        "type_info": "Integer",
+        "name": "recorded_at",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "smell_reports",
@@ -59,19 +59,8 @@
         }
       },
       {
-        "name": "intensity",
         "ordinal": 5,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "smell_reports",
-            "name": "intensity"
-          }
-        }
-      },
-      {
         "name": "note",
-        "ordinal": 6,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -81,9 +70,9 @@
         }
       },
       {
+        "ordinal": 6,
         "name": "deleted_at",
-        "ordinal": 7,
-        "type_info": "Integer",
+        "type_info": "Int8",
         "origin": {
           "Table": {
             "table": "smell_reports",
@@ -93,10 +82,11 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Left": [
+        "Int8"
+      ]
     },
     "nullable": [
-      false,
       false,
       false,
       false,
@@ -106,5 +96,5 @@
       true
     ]
   },
-  "hash": "8f86d0a006b1f14eaf6906fb87f56be9c2ccd00919081e6fc24c0a6fd6e5fa22"
+  "hash": "4d164cd174258ed127f7ec72bbd1a05771c197dc0316111cff18afb51dbaf282"
 }
