@@ -251,8 +251,8 @@ Set by hand from the Terraform outputs.
 1. In Cloud Shell, download the pinned Terraform into `~/bin`, check that the Service Usage,
    Cloud Resource Manager and Cloud Storage APIs are enabled, and clone the repository.
 2. Run `infra/bootstrap` in Cloud Shell: it creates the state bucket (`europe-west3`, standard
-   class, uniform access, public access prevention, object versioning, older versions beyond 10
-   deleted) with a local state, then moves its own state into the bucket.
+   class, uniform access, public access prevention, object versioning, the current state plus 9 older versions kept) with a local state, then moves its own state into the bucket; the local copy is deleted only after
+   the bucket is checked to hold it.
 3. In Cloud Shell:
    1. create `terraform.tfvars` and `backend.hcl` in `infra/prod` from the examples;
    2. `terraform init`, `terraform plan` (the registry shows as *import*, not *create*),

@@ -12,7 +12,7 @@ resource "google_storage_bucket" "state" {
 
   lifecycle_rule {
     condition {
-      num_newer_versions = var.noncurrent_versions_kept
+      num_newer_versions = var.state_versions_kept
       with_state         = "ARCHIVED"
     }
     action {

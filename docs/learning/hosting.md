@@ -82,9 +82,9 @@ ARM (`arm64`), so moving means building for both.
   it doesn't delete resources removed from the file ("incremental" mode); deleting needs
   "complete" mode or deployment stacks.
 - **Terraform keeps its own record (the state)** because it talks to any cloud's API directly, and
-  those APIs don't track "this belongs to your project". The state maps each block of code to a
+  those APIs know which project a resource is in, but not which configuration owns it. The state maps each block of code to a
   real resource ID, which is what lets Terraform rename, delete and plan quickly.
-- **Google's closest equivalent to Bicep** was Deployment Manager (deprecated). Its successor,
+- **Google's closest equivalent to Bicep** was Deployment Manager (retired in 2026). Its successor,
   Infrastructure Manager, is managed Terraform that stores the state for you.
 - **Chicken and egg:** the state bucket can't hold its own state before it exists. The bootstrap
   creates it with a local state, then `terraform init -migrate-state` moves that state into it.

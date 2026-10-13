@@ -47,7 +47,7 @@ terraform apply
 ```
 
 The bucket can't be deleted or replaced by Terraform (`prevent_destroy`), so a change that would
-replace it (name, region) stops at plan; and every state file keeps its 10 previous versions, which
+replace it (name, region) stops at plan; and every state file keeps the current state plus 9 older versions, which
 can be restored from the bucket's "Noncurrent versions" in the console.
 
 ## First-time setup
@@ -77,22 +77,34 @@ Done once, in the Google Cloud console and Cloud Shell.
    git clone https://github.com/locadani/smoke-tracker.git ~/smoke-tracker
    ```
 
-4. **State bucket (bootstrap).** Run these back to back — until the last command, the bucket's own
-   state exists only on the Cloud Shell disk:
+4. **State bucket (bootstrap).** Until the check in (iii) passes, the local state file is the only
+   record of the bucket, so do (ii) and (iii) in one sitting.
+
+   (i) Copy the two example files and **edit them** (project ID, and a bucket name such as
+   `<project-id>-tfstate`; the same name in both), then stop and check them:
 
    ```bash
    cd ~/smoke-tracker/infra/bootstrap
-   cp terraform.tfvars.example terraform.tfvars   # fill in project ID and a bucket name, e.g. <project-id>-tfstate
-   cp backend.hcl.example backend.hcl             # the same bucket name
-   printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
-   terraform init
-   terraform apply                                # creates the bucket
-   rm backend_override.tf
-   terraform init -migrate-state -backend-config=backend.hcl   # answer "yes": the state moves into the bucket
-   rm -f terraform.tfstate terraform.tfstate.backup
+   cp terraform.tfvars.example terraform.tfvars
+   cp backend.hcl.example backend.hcl
    ```
 
-   Then `terraform plan` in this folder must say "No changes".
+   (ii) Create the bucket with a local state, then move the state into it:
+
+   ```bash
+   printf 'terraform {\n  backend "local" {}\n}\n' > backend_override.tf
+   terraform init
+   terraform apply
+   rm backend_override.tf
+   terraform init -migrate-state -backend-config=backend.hcl   # answer "yes"
+   ```
+
+   (iii) Check: `terraform plan` says "No changes", and
+   `gcloud storage ls gs://YOUR_BUCKET/smoke-tracker/bootstrap/` lists `default.tfstate`.
+
+   (iv) Only then, as a separate command: `rm terraform.tfstate terraform.tfstate.backup`.
+
+   If the local state is lost before (iii), run `terraform import google_storage_bucket.state YOUR_BUCKET`.
 
 5. **Configure and apply production:**
 

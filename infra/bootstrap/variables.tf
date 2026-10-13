@@ -14,8 +14,8 @@ variable "region" {
   default     = "europe-west3"
 }
 
-variable "noncurrent_versions_kept" {
-  description = "Older copies of each state file to keep, for recovery."
+variable "state_versions_kept" {
+  description = "State versions to keep, including the current one."
   type        = number
   default     = 10
 }
