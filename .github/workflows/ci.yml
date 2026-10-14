@@ -53,6 +53,40 @@ jobs:
       - name: format and lint (biome.json)
         run: biome ci .
 
+  accessibility:
+    name: accessibility (axe, light and dark)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/e2e
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: build the app
+        working-directory: .
+        run: cargo build --locked -p smoke-tracker
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: seed through the app, then axe every page at phone size
+        run: npx playwright test
+        env:
+          SMOKE_TRACKER_BIN: ${{ github.workspace }}/target/debug/smoke-tracker
+      - name: screenshots and report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: accessibility-report
+          path: |
+            tests/e2e/report
+            tests/e2e/results
+          retention-days: 14
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

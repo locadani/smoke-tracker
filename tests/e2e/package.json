@@ -1,0 +1,13 @@
+{
+  "name": "smoke-tracker-e2e",
+  "private": true,
+  "description": "Accessibility checks of the running app in a browser (look-and-feel spec §10)",
+  "type": "module",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0"
+  }
+}

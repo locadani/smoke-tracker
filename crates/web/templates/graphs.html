@@ -90,7 +90,7 @@
   <p>{{ tr.t("graphs-rooms-none") }}</p>
   {% else %}
   <p class="hint">{{ tr.t("graphs-rooms-hint") }}</p>
-  <div class="scroll">
+  <div class="scroll" role="region" tabindex="0" aria-label="{{ tr.t("graphs-rooms") }}">
     <table class="heatmap">
       <thead>
         <tr><th scope="col">{{ tr.t("graphs-room") }}</th>{% for hour in hours.clone() %}<th scope="col">{{ hour }}</th>{% endfor %}</tr>

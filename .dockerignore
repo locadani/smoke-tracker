@@ -5,6 +5,7 @@ target
 .githooks
 .superpowers
 docs
+tests
 data
 *.db
 *.db-*
