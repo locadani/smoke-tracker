@@ -8,3 +8,4 @@ pub mod ex02_permissions;
 pub mod ex03_text_enum;
 pub mod ex04_audit_chain;
 pub mod ex05_event_repo;
+pub mod ex06_transaction;
