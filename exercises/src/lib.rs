@@ -5,3 +5,4 @@
 
 pub mod ex01_newtypes;
 pub mod ex02_permissions;
+pub mod ex03_text_enum;
