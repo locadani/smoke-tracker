@@ -1,5 +1,6 @@
 //! Static files, compiled into the binary (spec §10.3). Each is listed here explicitly; a test
-//! checks the list matches the `static/` folder.
+//! checks the list matches the `static/` folder. The stylesheet is the exception: it is written
+//! as several files under `css/` and joined at compile time into the one `/static/app.css`.
 
 use std::sync::LazyLock;
 
@@ -25,8 +26,33 @@ macro_rules! asset {
     };
 }
 
+/// Joins the stylesheet sources, in the order given, into one `&str`, and lists their names.
+macro_rules! stylesheet {
+    ($($file:literal),+ $(,)?) => {
+        (
+            concat!($(include_str!(concat!("../css/", $file))),+),
+            &[$($file),+],
+        )
+    };
+}
+
+/// The served stylesheet and its sources, in cascade order: `00-layers.css` declares the
+/// layers, so it comes first.
+const STYLESHEET: (&str, &[&str]) = stylesheet!(
+    "00-layers.css",
+    "10-reset.css",
+    "20-tokens.css",
+    "30-base.css",
+    "40-layout.css",
+    "90-utilities.css",
+);
+
 const ASSETS: &[Asset] = &[
-    asset!("app.css", "text/css; charset=utf-8"),
+    Asset {
+        path: "app.css",
+        content_type: "text/css; charset=utf-8",
+        body: STYLESHEET.0.as_bytes(),
+    },
     asset!("app.js", "text/javascript; charset=utf-8"),
     asset!("chart-4.5.1.umd.min.js", "text/javascript; charset=utf-8"),
     asset!("favicon.svg", "image/svg+xml"),
@@ -91,15 +117,109 @@ mod tests {
     const CHART_JS_SHA256: &str =
         "48444a82d4edcb5bec0f1965faacdde18d9c17db3063d042abada2f705c9f54a";
 
-    #[test]
-    fn every_file_in_the_static_folder_is_served() {
-        let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/static");
-        let on_disk: BTreeSet<String> = std::fs::read_dir(dir)
+    /// The names of the files in `dir` (relative to the crate), sorted.
+    fn files_in(dir: &str) -> Vec<String> {
+        let path = format!("{}/{dir}", env!("CARGO_MANIFEST_DIR"));
+        let mut names: Vec<String> = std::fs::read_dir(path)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .collect();
-        let listed: BTreeSet<String> = ASSETS.iter().map(|a| a.path.to_owned()).collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn every_file_in_the_static_folder_is_served() {
+        let on_disk: BTreeSet<String> = files_in("static").into_iter().collect();
+        let listed: BTreeSet<String> = ASSETS
+            .iter()
+            .map(|a| a.path.to_owned())
+            .filter(|path| path != "app.css")
+            .collect();
         assert_eq!(on_disk, listed);
+    }
+
+    #[test]
+    fn the_stylesheet_joins_every_css_file_in_name_order() {
+        assert_eq!(files_in("css"), STYLESHEET.1);
+        assert!(
+            STYLESHEET
+                .0
+                .contains("@layer reset, tokens, base, layout, components, utilities;"),
+            "the layer order is declared"
+        );
+        let first_rule = STYLESHEET.0.find('{').unwrap();
+        let declaration = STYLESHEET.0.find("@layer reset,").unwrap();
+        assert!(declaration < first_rule, "the layers are declared first");
+    }
+
+    /// The source of each stylesheet file, by name.
+    fn css_sources() -> impl Iterator<Item = (&'static str, String)> {
+        STYLESHEET.1.iter().map(|&name| {
+            let path = format!("{}/css/{name}", env!("CARGO_MANIFEST_DIR"));
+            (name, std::fs::read_to_string(path).unwrap())
+        })
+    }
+
+    #[test]
+    fn every_rule_sits_in_a_layer() {
+        for (name, source) in css_sources().skip(1) {
+            let code = without_comments(&source);
+            let code = code.trim_start();
+            assert!(code.starts_with("@layer "), "{name} starts outside a layer");
+            let body_end = matching_brace(code, code.find('{').unwrap());
+            assert!(
+                code[body_end + 1..].trim().is_empty(),
+                "{name} has rules after its layer block"
+            );
+        }
+    }
+
+    #[test]
+    fn colours_are_written_only_as_tokens() {
+        for (name, source) in css_sources().filter(|(name, _)| *name != "20-tokens.css") {
+            let code = without_comments(&source);
+            for function in ["rgb(", "rgba(", "hsl(", "hwb(", "lab(", "lch(", "oklch("] {
+                assert!(
+                    !code.contains(function),
+                    "{name} has a raw colour: {function}"
+                );
+            }
+            let hex = code
+                .match_indices('#')
+                .find(|(at, _)| code[at + 1..].starts_with(|c: char| c.is_ascii_hexdigit()));
+            assert_eq!(hex, None, "{name} has a hex colour");
+        }
+    }
+
+    fn without_comments(css: &str) -> String {
+        let mut out = String::new();
+        let mut rest = css;
+        while let Some(start) = rest.find("/*") {
+            out.push_str(&rest[..start]);
+            let end = rest[start..].find("*/").expect("a closed comment");
+            rest = &rest[start + end + 2..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// The index of the `}` that closes the `{` at `open`.
+    fn matching_brace(code: &str, open: usize) -> usize {
+        let mut depth = 0;
+        for (index, byte) in code.bytes().enumerate().skip(open) {
+            match byte {
+                b'{' => depth += 1,
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return index;
+                    }
+                }
+                _ => {}
+            }
+        }
+        panic!("an unclosed block");
     }
 
     fn asset(path: &str) -> &'static Asset {

@@ -1,0 +1,4 @@
+/* Smoke Tracker stylesheet. The files in crates/web/css/ are joined in name order into the one
+   /static/app.css (assets.rs). Every rule sits in one of these layers, so a later layer wins
+   whatever the selectors' specificity. */
+@layer reset, tokens, base, layout, components, utilities;
