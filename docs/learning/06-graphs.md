@@ -48,8 +48,9 @@ can be many tests, and they run in microseconds.
   data. Read the comment at the top of the file: the caller has already limited the reports to one
   period and to what the viewer may see (#123).
 - `crates/web/src/routes/graphs.rs::show` is the other half. It fetches the reports for the
-  period, filters them, calls the domain functions and hands the results to the page. It holds no
-  rules of its own about days or averages.
+  period, filters them, calls the domain functions and hands the results to the page. The rules about
+  days, weeks and counting stay in the domain crate; the route keeps only presentation choices,
+  such as rounding an average for a colour class and picking the axis ticks.
 
 **Why this way.** The functions are pure so that the tests at the bottom of
 `crates/domain/src/graphs.rs` can cover time zones, empty buckets and clean checks with a few
@@ -65,8 +66,8 @@ where moving every row into memory is too slow; here a month of reports for one 
 ## 2. Periods and buckets
 
 **The idea.** A bar chart needs one bar per day (or week), including the days with nothing in
-them, or the chart would skip empty days and mislead. A *bucket* is the first day of the day or
-week a date falls in; a *period* is the stretch the chart covers. The app builds the list of
+them, or the chart would skip empty days and mislead. A *bucket* is one bar's slot, named by its first day: the day itself in a
+daily chart, the Monday of the week in a weekly one; a *period* is the stretch the chart covers. The app builds the list of
 buckets first and fills it afterwards, so a missing zero cannot happen.
 
 **In our code.**
@@ -92,7 +93,7 @@ buckets first and fills it afterwards, so a missing zero cannot happen.
   every bucket with one starting value, a `0` for events or an empty `AreaLevels` for areas.
 - `crates/domain/src/graphs.rs::events_per_bucket` keeps the earliest report of each event with
   `BTreeMap::entry(..).and_modify(..).or_insert(..)`: if the event is there already, keep the
-  smaller time; if not, insert it. An event counts once, as in the summary card (#123).
+  smaller time; if not, insert it. An event counts once, as in the summary card (#94, restated in #123).
 
 **Why this way.** A graph that starts at the first bar of the year is wrong when the year
 does not start on a Monday, so the first bucket may start in the year before. Alternatives:
@@ -130,8 +131,8 @@ whether it is there or not.
 
 **Why this way.** A `BTreeMap` iterates in key order, so the output is stable without a sort and
 the tests compare whole vectors. Alternatives: a `HashMap` lost because its order changes between
-runs, so every function would need a sort to be deterministic. `Itertools::group_by` lost because
-it is a new dependency for a loop of five lines. A `HashMap` would be the better choice when the
+runs, so every function would need a sort to be deterministic. An external
+grouping helper lost because it would be a new dependency for a loop of five lines. A `HashMap` would be the better choice when the
 keys have no order or when there are very many of them and order does not matter.
 
 **Read more.** [std: `BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html),
@@ -156,7 +157,8 @@ be lost, while `as` always compiles and may cut digits silently.
   `Option<Level>` be compared.
 - `crates/domain/src/graphs.rs::LevelTally::mean` returns `None` when nobody checked the room:
   `(self.checks > 0).then(|| f64::from(self.total) / f64::from(self.checks))`. The closure runs
-  only when the condition is true, so the division by zero never happens.
+  only when the condition is true, so with no checks the division is never evaluated. Dividing floats by zero would not panic
+  anyway, it would give `NaN`; the point of `None` is that the page can show "no data" instead.
 - `u32::from(room.level.get())` in `crates/domain/src/graphs.rs::room_hours` widens a `u8` to a
   `u32`. If the type of the total changed to something smaller, this line would stop compiling.
 - `crates/web/src/routes/graphs.rs::heat_rows` does use `as u8` on a rounded average. It is
@@ -197,15 +199,16 @@ and one forgotten check is a leak. Filtering in SQL lost because it would be a s
 rule, in a second dialect. Passing the viewer would be the better choice if different functions
 needed different parts of what the viewer may see.
 
-**Read more.** [The Rust Book: processing a series of items with iterators](https://doc.rust-lang.org/book/ch13-02-iterators.html).
+**Read more.** [std: `Iterator::filter`](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.filter).
 
 ## 6. From numbers to a chart: JSON in a data attribute, a vendored library and the CSP
 
 **The idea.** A browser draws the charts with a JavaScript library (Chart.js). The server must hand
 it the numbers. The page also carries a *Content-Security-Policy* (CSP), a response header in which
 the app tells the browser which scripts it may run: here only scripts from the app's own address.
-That rules out an inline `<script>` with the numbers in it. So the numbers travel as JSON inside
-an attribute, which is plain inert text that the page's own script reads.
+That rules out an inline *executable* `<script>` with the numbers in it. The numbers travel as
+JSON inside an attribute, which is inert text that the page's own script reads. (A
+`<script type="application/json">` block is not executed, so it would also pass; see below.)
 
 **In our code.**
 
@@ -225,8 +228,14 @@ an attribute, which is plain inert text that the page's own script reads.
   `?month=2026-13` falls back to the current month with status 200.
   `crates/web/src/routes/graphs.rs::intl_locale` picks the language tag for the date labels.
 
-**Why this way.** The CSP allows only same-origin scripts, so a data attribute is the way to pass
-data without relaxing the policy. Vendoring means a copy committed to the repository and checked
+**Why this way.** The CSP allows only same-origin scripts, so inline executable code is blocked;
+the numbers must be inert data. Two forms are: an attribute, or a non-executed
+`<script type="application/json">` block. Decision #124 chose the attribute and rejected the
+block; Askama's escaping already makes an attribute safe, and one `data-chart` per canvas keeps
+each configuration next to the chart it belongs to. The block would be the better choice for
+very large payloads, where an attribute becomes unwieldy. The CSP also stays `'self'` with no
+exception because Chart.js 4 sets styles through the CSSOM, which the policy allows, so no
+`style-src` relaxation is needed. Vendoring means a copy committed to the repository and checked
 by hash: no CDN, no third-party request, and a build that never changes by itself. Alternatives: a
 JSON endpoint per chart lost because it means more requests and more routes to protect. SVG
 drawn by the server lost because it has no interaction and takes a lot of drawing code. A
@@ -343,7 +352,8 @@ would be the better choice if setup were slow and the tests never committed.
    started as `Some(Level)` of zero instead of `None`?
 4. Where exactly is a guest kept from seeing other people's data in the graphs, and what would
    break if that moved after the counting?
-5. Why can the chart configuration not be an inline `<script>`, and what carries it instead?
+5. Why can the chart configuration not be an inline executable `<script>`, which two inert forms
+   would pass the CSP, and why did the app pick the attribute?
 6. What does `the_readme_tables_match_the_english_guides` fail on, and why can it read `README.md`
    with `include_str!`?
 
