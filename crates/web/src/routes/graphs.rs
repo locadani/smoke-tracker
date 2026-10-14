@@ -14,8 +14,8 @@ use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use smoke_domain::graphs::{
-    AreaLevels, Period, PersonLine, RoomHours, area_levels, events_per_bucket, intensity_lines,
-    room_hours, symptom_counts,
+    AreaLevels, Granularity, Period, PersonLine, RoomHours, area_levels, events_per_bucket,
+    intensity_lines, room_hours, symptom_counts,
 };
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::{Pm25Reading, Room, SmellReport, Symptom};
@@ -48,27 +48,46 @@ fn period(query: &GraphsQuery, today: NaiveDate) -> Period {
         .filter(|y| time::SUPPORTED_YEARS.contains(y))
         .and_then(|y| NaiveDate::from_ymd_opt(y, 1, 1));
     if let Some(first) = year {
-        return Period::Year(first);
+        return Period::year(first);
     }
     let month = query.month.as_deref().and_then(time::parse_month);
-    Period::Month(month.unwrap_or(today))
+    Period::month(month.unwrap_or(today))
 }
 
 /// The query string that asks for `period`.
 fn address(period: Period) -> String {
-    match period {
-        Period::Month(_) => format!("month={}", period.first_day().format("%Y-%m")),
-        Period::Year(_) => format!("year={}", period.first_day().year()),
+    match period.granularity() {
+        Granularity::Day => format!("month={}", period.first_day().format("%Y-%m")),
+        Granularity::Week => format!("year={}", period.first_day().year()),
+    }
+}
+
+/// The month or year before or after `period`.
+fn step(period: Period, forward: bool) -> Period {
+    let first = period.first_day();
+    let months = Months::new(match period.granularity() {
+        Granularity::Day => 1,
+        Granularity::Week => 12,
+    });
+    let first = if forward {
+        first + months
+    } else {
+        first - months
+    };
+    match period.granularity() {
+        Granularity::Day => Period::month(first),
+        Granularity::Week => Period::year(first),
     }
 }
 
 /// The other kind of period: a month's year, or a year's current month (January when the year
 /// is not this one).
 fn switched(period: Period, today: NaiveDate) -> Period {
-    match period {
-        Period::Month(date) => Period::Year(date),
-        Period::Year(date) if date.year() == today.year() => Period::Month(today),
-        Period::Year(date) => Period::Month(date),
+    let first = period.first_day();
+    match period.granularity() {
+        Granularity::Day => Period::year(first),
+        Granularity::Week if first.year() == today.year() => Period::month(today),
+        Granularity::Week => Period::month(first),
     }
 }
 
@@ -87,9 +106,9 @@ fn intl_locale(locale: Locale) -> &'static str {
 /// drift an hour off midnight after a clock change.
 fn tick_values(period: Period, schedule: &DailySchedule) -> Vec<i64> {
     let first = period.first_day();
-    let days: Vec<NaiveDate> = match period {
-        Period::Month(_) => period.buckets(),
-        Period::Year(_) => (0..12).map(|m| first + Months::new(m)).collect(),
+    let days: Vec<NaiveDate> = match period.granularity() {
+        Granularity::Day => period.buckets(),
+        Granularity::Week => (0..12).map(|m| first + Months::new(m)).collect(),
     };
     days.into_iter()
         .map(|day| schedule.day_span(day).0.timestamp_millis())
@@ -173,9 +192,9 @@ fn intensity_chart(
 fn bucket_labels(tr: Tr, period: Period, buckets: &[NaiveDate]) -> Vec<String> {
     buckets
         .iter()
-        .map(|&day| match period {
-            Period::Month(_) => day.day().to_string(),
-            Period::Year(_) => time::day_month(tr.0, day),
+        .map(|&day| match period.granularity() {
+            Granularity::Day => day.day().to_string(),
+            Granularity::Week => time::day_month(tr.0, day),
         })
         .collect()
 }
@@ -339,13 +358,13 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
     let lines = intensity_lines(&reports);
     let intensity = intensity_chart(tr, &lines, &names, &readings, period, span, schedule);
 
-    let (label, events_key, other_key) = match period {
-        Period::Month(_) => (
+    let (label, events_key, other_key) = match period.granularity() {
+        Granularity::Day => (
             period.first_day().format("%m/%Y").to_string(),
             "graphs-events-day",
             "graphs-year",
         ),
-        Period::Year(_) => (
+        Granularity::Week => (
             period.first_day().year().to_string(),
             "graphs-events-week",
             "graphs-month",
@@ -357,8 +376,8 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
             tr,
             signed_in: SignedIn::of(&user, now, Tab::Graphs),
             label,
-            previous: address(period.previous()),
-            next: address(period.next()),
+            previous: address(step(period, false)),
+            next: address(step(period, true)),
             other: address(switched(period, today)),
             other_key,
             own_only: !can(&actor, Action::ViewAll, now),
@@ -404,16 +423,16 @@ mod tests {
         let today = date("2026-10-14");
         assert_eq!(
             period(&query(Some("2026-01"), None), today),
-            Period::Month(date("2026-01-01"))
+            Period::month(date("2026-01-01"))
         );
         assert_eq!(
             period(&query(Some("2026-01"), Some("2025")), today),
-            Period::Year(date("2025-01-01"))
+            Period::year(date("2025-01-01"))
         );
         for (month, year) in [(Some("2026-13"), None), (None, Some("99999")), (None, None)] {
             assert_eq!(
                 period(&query(month, year), today),
-                Period::Month(today),
+                Period::month(today),
                 "{month:?} {year:?}"
             );
         }
@@ -422,7 +441,7 @@ mod tests {
     #[test]
     fn ticks_sit_on_local_midnights_across_a_clock_change() {
         let schedule = DailySchedule::new(chrono_tz::Europe::Rome, 4).unwrap();
-        let ticks = tick_values(Period::Month(date("2026-10-01")), &schedule);
+        let ticks = tick_values(Period::month(date("2026-10-01")), &schedule);
         assert_eq!(ticks.len(), 31);
         let hour = 3_600_000;
         assert_eq!(ticks[24] - ticks[23], 24 * hour, "24 to 25 October");
@@ -432,7 +451,7 @@ mod tests {
             "the night of the 25th is an hour longer"
         );
         assert_eq!(ticks[26] - ticks[25], 24 * hour);
-        let year = tick_values(Period::Year(date("2026-01-01")), &schedule);
+        let year = tick_values(Period::year(date("2026-01-01")), &schedule);
         assert_eq!(year.len(), 12);
         assert_eq!(
             year[0],
@@ -444,15 +463,15 @@ mod tests {
     fn switching_keeps_the_year_and_prefers_this_month() {
         let today = date("2026-10-14");
         assert_eq!(
-            address(switched(Period::Month(date("2025-03-01")), today)),
+            address(switched(Period::month(date("2025-03-01")), today)),
             "year=2025"
         );
         assert_eq!(
-            address(switched(Period::Year(date("2026-01-01")), today)),
+            address(switched(Period::year(date("2026-01-01")), today)),
             "month=2026-10"
         );
         assert_eq!(
-            address(switched(Period::Year(date("2024-01-01")), today)),
+            address(switched(Period::year(date("2024-01-01")), today)),
             "month=2024-01"
         );
     }
