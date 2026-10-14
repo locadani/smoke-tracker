@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::repos::{ListRepo, UserRepo};
 use smoke_domain::types::{Locale, Role, RoomArea};
@@ -19,17 +20,17 @@ async fn the_settings_page_shows_the_language_and_password_forms() {
     app.add_user("guest", Role::Guest, Locale::It).await;
     let cookie = app.sign_in("guest").await;
     let html = text(app.send(get_with("/settings", &cookie)).await).await;
-    assert!(html.contains("<h1>Impostazioni</h1>"), "{html}");
-    assert!(
-        html.contains(
-            r#"value="it" lang="it" class="current" aria-pressed="true">Italiano</button>"#
-        ),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(page.text("h1"), "Impostazioni");
+    assert_eq!(
+        page.text(r#"form[action="/lang"] button[aria-current=true]"#),
+        "Italiano"
     );
-    assert!(html.contains(r#"action="/settings/password""#), "{html}");
-    assert!(
-        html.contains(r#"<a href="/settings">Impostazioni</a>"#),
-        "{html}"
+    assert_eq!(page.count(r#"form[action="/lang"] button[name=lang]"#), 3);
+    assert!(page.exists(r#"form[action="/settings/password"]"#));
+    assert_eq!(
+        page.text(r#"nav.tabbar a[aria-current=page]"#),
+        "Impostazioni"
     );
 }
 
@@ -177,7 +178,12 @@ async fn residents_add_rooms_and_symptoms_and_hide_them_from_the_forms() {
         ("Balcony", RoomArea::Common, None)
     );
     let log = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(log.contains("<span>Balcony</span>"), "{log}");
+    assert!(
+        Page::parse(&log)
+            .texts(".room-check")
+            .contains(&"Balcony".to_owned()),
+        "{log}"
+    );
     assert!(log.contains("Dizziness"), "{log}");
 
     let hide = format!("/settings/rooms/{}/hidden", balcony.id);
@@ -188,17 +194,26 @@ async fn residents_add_rooms_and_symptoms_and_hide_them_from_the_forms() {
     let log = text(app.send(get_with("/", &cookie)).await).await;
     assert!(!log.contains("Balcony"), "{log}");
     let settings = text(app.send(get_with("/settings?saved=lists", &cookie)).await).await;
-    assert!(settings.contains("Lists saved."), "{settings}");
-    assert!(
-        settings.contains("Balcony · Common areas · <em>hidden</em>"),
-        "{settings}"
+    let page = Page::parse(&settings);
+    assert_eq!(page.text(".notice[role=status]"), "Lists saved.");
+    let balcony_row = format!(r#".items form[action="{hide}"]"#);
+    assert_eq!(page.text(&format!("{balcony_row} s")), "Balcony");
+    assert_eq!(
+        page.text(&format!("{balcony_row} .row-text")),
+        "Balcony hidden Common areas"
     );
-    assert!(settings.contains(">Show again</button>"), "{settings}");
+    assert_eq!(page.text(&format!("{balcony_row} button")), "Show again");
+    assert!(page.exists(&format!("{balcony_row} input[name=hidden][value=false]")));
 
     app.send(post_form(&hide, "hidden=false", Some(&cookie)))
         .await;
     let log = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(log.contains("<span>Balcony</span>"), "{log}");
+    assert!(
+        Page::parse(&log)
+            .texts(".room-check")
+            .contains(&"Balcony".to_owned()),
+        "{log}"
+    );
 }
 
 #[tokio::test]

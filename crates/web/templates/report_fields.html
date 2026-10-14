@@ -1,22 +1,76 @@
-{# The room, level and symptom fields of the Log and correction forms. #}
-<fieldset class="rooms">
-  <legend>{{ tr.t("log-rooms") }}
-    <a href="/guide/rating" data-dialog="rating-guide" class="info">ⓘ {{ tr.t("log-how-to-rate") }}</a>
-  </legend>
-  <p class="group">{{ tr.t("log-inside") }}</p>
-  {% for choice in form.fields.inside %}
-  {% include "room_level.html" %}
-  {% endfor %}
-  {% if !form.fields.common.is_empty() %}
-  <p class="group">{{ tr.t("log-common") }}</p>
-  {% for choice in form.fields.common %}
-  {% include "room_level.html" %}
-  {% endfor %}
-  {% endif %}
-</fieldset>
-<fieldset class="checks">
-  <legend>{{ tr.t("log-symptoms") }}</legend>
-  {% for symptom in form.fields.symptoms %}
-  <label><input type="checkbox" name="symptom" value="{{ symptom.value }}"{% if symptom.checked %} checked{% endif %}> {{ symptom.label }}</label>
-  {% endfor %}
-</fieldset>
+{# The cards the Log form and the correction form share (spec §9 screens 1 and 4). Import with
+   {% import "report_fields.html" as f %}. #}
+{% import "components.html" as c %}
+
+{# One room: its line with a check square, and the level grid 0–10 it opens while selected.
+   Each level carries its name and description, shown under the grid once picked (CSS only). #}
+{% macro room(choice, levels, hint) %}
+<div class="room">
+  <label class="room-check"><input type="checkbox" name="room" value="{{ choice.room.value }}"{% if choice.room.checked %} checked{% endif %}><span class="box">{% call c::icon("check") %}{% endcall %}</span>{{ choice.room.label }}</label>
+  <fieldset class="levels">
+    <legend class="visually-hidden">{{ choice.legend }}</legend>
+    {% for level in levels.iter() %}
+    <label class="level"><input type="radio" name="level-{{ choice.room.value }}" value="{{ level.value }}"{% if choice.is_picked(level.value) %} checked{% endif %}><span>{{ level.value }}</span><span class="level-text"><strong>{{ level.name }}.</strong> {{ level.description }}</span></label>
+    {% endfor %}
+    <span class="level-hint">{{ hint }}</span>
+  </fieldset>
+</div>
+{% endmacro %}
+
+{# The Rooms card: "How to rate", then the rooms grouped Inside and Common areas. #}
+{% macro rooms(fields) %}
+<section class="card">
+  <div class="split">
+    <h2>{{ fields.texts.rooms }}</h2>
+    <a href="/guide/rating" data-dialog="rating-guide" class="info">{% call c::icon("info") %}{% endcall %}{{ fields.texts.how_to_rate }}</a>
+  </div>
+  <fieldset class="rooms">
+    <legend class="visually-hidden">{{ fields.texts.rooms }}</legend>
+    <p class="overline">{{ fields.texts.inside }}</p>
+    {% for choice in fields.inside %}{% call room(choice, fields.levels, fields.texts.level_hint) %}{% endcall %}{% endfor %}
+    {% if !fields.common.is_empty() %}
+    <p class="overline">{{ fields.texts.common }}</p>
+    {% for choice in fields.common %}{% call room(choice, fields.levels, fields.texts.level_hint) %}{% endcall %}{% endfor %}
+    {% endif %}
+  </fieldset>
+</section>
+{% endmacro %}
+
+{# The Symptoms card: one chip each. #}
+{% macro symptoms(fields) %}
+<section class="card">
+  <h2 id="symptoms-title">{{ fields.texts.symptoms }}</h2>
+  <fieldset class="cluster" aria-labelledby="symptoms-title">
+    {% for symptom in fields.symptoms %}{% call c::chip("checkbox", "symptom", symptom.value, symptom.label, symptom.checked) %}{% endcall %}{% endfor %}
+  </fieldset>
+</section>
+{% endmacro %}
+
+{# The cards the two forms share: Rooms, Symptoms, what the call block adds (the Log form's
+   PM2.5 card, empty on a correction) and the note, open when `note` is not empty. #}
+{% macro report_cards(fields, note) %}
+{% call rooms(fields) %}{% endcall %}
+{% call symptoms(fields) %}{% endcall %}
+{{ caller() }}
+{% call c::collapsible(fields.texts.note, fields.texts.optional, fields.texts.add, !note.is_empty()) %}
+<textarea name="note" rows="3" maxlength="2000" aria-label="{{ fields.texts.note }}">{{ note }}</textarea>
+{% endcall %}
+{% endmacro %}
+
+{# The compact intensity guide "How to rate" opens, as a bottom sheet (spec §5). Without
+   JavaScript the link leads to the full guide instead. #}
+{% macro rating_sheet(fields) %}
+<dialog id="rating-guide" class="sheet" aria-labelledby="rating-guide-title">
+  <div class="split">
+    <h2 id="rating-guide-title">{{ fields.texts.rating_title }}</h2>
+    <form method="dialog"><button type="submit" class="button" data-variant="quiet" aria-label="{{ fields.texts.close }}" autofocus>{% call c::icon("close") %}{% endcall %}</button></form>
+  </div>
+  <table class="scale">
+    {% for level in fields.levels.iter() %}
+    <tr><th scope="row"><span class="badge">{{ level.value }}</span></th><td>{{ level.name }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted">{{ fields.texts.rating_tip }}</p>
+  <a href="/guide/rating">{{ fields.texts.full_guide }}</a>
+</dialog>
+{% endmacro %}

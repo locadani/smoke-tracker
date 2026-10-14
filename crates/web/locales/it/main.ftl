@@ -11,10 +11,12 @@ login-locked = Troppi tentativi. Riprova tra 15 minuti.
 login-expired = Questo account è scaduto. Chiedi a un residente di riattivarlo.
 signed-in-as = Accesso effettuato come { $username }.
 logout = Esci
+account-menu = Account: { $username }
 
 log-title = Registra un odore
-event-none = Nessun evento di fumo in corso.
-event-open-since = Evento di fumo in corso dalle { $time }.
+event-banner-title = Evento di odore in corso
+event-banner-since = dalle { $time }
+event-banner-peak = livello massimo { $level } ({ $room })
 log-intensity = Intensità
 log-how-to-rate = Come valutare
 log-rooms = Stanze
@@ -22,14 +24,11 @@ log-level-in = Livello in { $room }
 log-inside = In casa
 log-common = Parti comuni
 log-symptoms = Sintomi
-log-pm25 = PM2.5 (µg/m³, facoltativo)
 log-time = Ora
 log-time-now = adesso
-log-time-change = cambia
-log-note = Nota (facoltativa)
-log-submit = Registra odore
+log-note = Nota
+log-submit = Registra
 log-update = Aggiorna: la situazione è cambiata
-log-pm25-only = Registra solo PM2.5
 log-no-smell = Nessun odore
 log-read-only = Puoi consultare i dati ma non registrare.
 
@@ -38,9 +37,9 @@ log-saved-pm25 = Lettura PM2.5 salvata.
 log-saved-no-smell = Salvato: nessun odore.
 log-error-rooms = Scegli almeno una stanza.
 log-error-level = Scegli un livello da 0 a 10 per ogni stanza selezionata.
-log-error-no-smell-level = Nessun odore registra le stanze selezionate a 0. Togli i livelli sopra 0, oppure usa Registra odore.
+log-error-no-smell-level = Nessun odore registra le stanze selezionate a 0. Togli i livelli sopra 0, oppure usa Registra.
 log-error-pm25 = Il PM2.5 deve essere un numero da 0 a 1000.
-log-error-pm25-missing = Inserisci un valore di PM2.5 per registrarlo da solo.
+log-error-empty = Scegli una stanza o inserisci un valore di PM2.5.
 log-error-time = Inserisci una data e un'ora valide.
 log-error-time-skipped = Quell'ora non esiste: è scattata l'ora legale.
 log-error-note = La nota può avere al massimo 2000 caratteri.
@@ -69,22 +68,30 @@ refused-future = L'ora non può essere nel futuro.
 refused-close-before-last-report = La fine non può essere prima dell'ultima segnalazione.
 refused-close-in-future = La fine non può essere nel futuro.
 
-summary-this-month = Questo mese:
-summary-events = { $count ->
-    [one] 1 evento
-   *[other] { $count } eventi
-}
 summary-reports = { $count ->
     [one] 1 segnalazione
    *[other] { $count } segnalazioni
 }
-summary-bedroom-days = { $count ->
-    [one] 1 giorno con fumo in camera da letto
-   *[other] { $count } giorni con fumo in camera da letto
+log-level-hint = Scegli un livello da 0 a 10.
+optional = facoltativo
+action-add = Aggiungi
+action-change = Cambia
+summary-caption = Questo mese
+tile-events = { $count ->
+    [one] evento
+   *[other] eventi
 }
-summary-checks = { $count ->
-    [one] 1 controllo pulito
-   *[other] { $count } controlli puliti
+tile-reports = { $count ->
+    [one] segnalazione
+   *[other] segnalazioni
+}
+tile-bedroom-days = { $count ->
+    [one] giorno con fumo in camera
+   *[other] giorni con fumo in camera
+}
+tile-checks = { $count ->
+    [one] controllo pulito
+   *[other] controlli puliti
 }
 
 rating-title = Come valutare
@@ -139,17 +146,22 @@ nav-events = Eventi
 nav-graphs = Grafici
 nav-people = Persone
 nav-settings = Impostazioni
+nav-label = Menu principale
 
 events-title = Eventi
 events-none = Nessun evento questo mese.
 events-check = nessun odore (controllo)
-events-previous = ← Precedente
-events-next = Successivo →
+events-previous = Mese precedente
+events-next = Mese successivo
+events-month = Mese
 events-in-progress = in corso
 events-max-intensity = max { $level }
 event-title = Evento del { $date }
 event-started-by = Iniziato da { $username }
+event-timeline = Cronologia
+event-close-title = Chiudi questo evento
 event-gap = Più di 3 ore dalla segnalazione precedente: è ancora lo stesso evento?
+event-gap-move = Sposta { $time } in un nuovo evento
 event-intensity = intensità { $level }
 event-pm25 = PM2.5 { $value } µg/m³
 event-close = Chiudi evento
@@ -203,6 +215,7 @@ settings-password-wrong = La password attuale non è corretta.
 settings-saved-language = Lingua salvata.
 settings-saved-password = Password cambiata. Gli altri dispositivi sono stati disconnessi.
 settings-guides = Guide
+settings-room-area = Zona
 settings-lists-hint = Le voci nascoste non sono più proposte nei moduli; le segnalazioni che le citano le mantengono.
 settings-list-hidden = nascosto
 settings-list-hide = Nascondi
@@ -262,6 +275,7 @@ expiry-date = alla fine di questo giorno:
 expiry-never = mai
 
 install-app = Installa l'app
+install-card-hint = Aprila dalla schermata Home, come ogni app.
 install-title = Aggiungi Smoke Tracker alla schermata Home
 install-welcome = Il tuo account è pronto.
 install-intro = Si aprirà come un'app, direttamente sulla schermata Registra: registrare richiede pochi secondi.
@@ -277,13 +291,43 @@ offline-text = Smoke Tracker ha bisogno di internet per salvare ciò che registr
 offline-retry = Riprova
 
 graphs-title = Grafici
-graphs-month = Mostra un mese
-graphs-year = Mostra l'intero anno
+graphs-filters = Filtri
+graphs-dates = Date
+graphs-range-month = Questo mese
+graphs-range-7d = Ultimi 7 giorni
+graphs-range-30d = Ultimi 30 giorni
+graphs-range-year = Quest'anno
+graphs-from = Dal
+graphs-to = Al
+graphs-where = Dove
+graphs-area-all = Tutto
+graphs-by = Segnalato da
+graphs-everyone = Tutti
+graphs-time = Ora del giorno
+graphs-time-any = Qualsiasi
+graphs-time-morning = Mattina
+graphs-time-afternoon = Pomeriggio
+graphs-time-evening = Sera
+graphs-time-night = Notte
+graphs-min-level = Livello minimo
+graphs-level-any = qualsiasi
+graphs-level-from = livello { $level }+
+graphs-hide-clean = Nascondi i controlli puliti
+graphs-no-clean = senza controlli puliti
+graphs-reset = Azzera
+graphs-show = Mostra i grafici
 graphs-own-only = Questi grafici mostrano solo le tue segnalazioni e misurazioni.
 graphs-none = Nessuna registrazione in questo periodo.
 graphs-needs-js = Questo grafico richiede JavaScript.
 graphs-intensity = Intensità dell'odore nel tempo
 graphs-pm25 = PM2.5 (µg/m³)
+graphs-series-both = Entrambi
+graphs-series-intensity = Intensità
+graphs-series-pm25 = PM2.5
+graphs-series-both-title = Intensità dell'odore e PM2.5
+graphs-series-pm25-title = PM2.5 nel tempo
+graphs-lines-person = Per persona
+graphs-search-people = Cerca persone
 graphs-events-day = Eventi al giorno
 graphs-events-week = Eventi alla settimana
 graphs-events-label = Eventi

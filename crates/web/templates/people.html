@@ -1,33 +1,30 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("people-title") }}{% endblock %}
 {% block content %}
-<h1>{{ tr.t("people-title") }}</h1>
-{% if let Some(saved) = saved %}
-<p class="notice" role="status">{{ tr.t(saved) }}</p>
-{% endif %}
-{% if let Some(error) = error %}
-<p class="notice" role="alert">{{ tr.t(error) }}</p>
-{% endif %}
-<p><a href="/people/invite">{{ tr.t("people-invite") }}</a></p>
-<ul class="people">
-  {% for person in people %}
-  <li>
-    <p><strong>{{ person.username }}</strong> · {{ tr.t(person.role) }} · {{ person.status }}{% if person.pending_setup %} · {{ tr.t("people-status-setup") }}{% endif %}</p>
-    <form method="post" action="/people/{{ person.id }}/link">
-      <button type="submit" class="secondary">{% if person.pending_setup %}{{ tr.t("people-new-setup-link") }}{% else %}{{ tr.t("people-reset-password") }}{% endif %}</button>
-    </form>
-    {% if person.can_expire %}
-    <form method="post" action="/people/{{ person.id }}/expire">
-      <button type="submit" class="secondary">{{ tr.t("people-expire") }}</button>
-    </form>
-    {% endif %}
-    {% if let Some(expiry) = person.reactivate %}
-    <form method="post" action="/people/{{ person.id }}/reactivate" class="stack">
-      {% include "expiry_fields.html" %}
-      <button type="submit" class="secondary">{{ tr.t("people-reactivate") }}</button>
-    </form>
-    {% endif %}
-  </li>
-  {% endfor %}
-</ul>
+<div class="split">
+  <h1>{{ tr.t("people-title") }}</h1>
+  <a href="/people/invite" class="button">{{ tr.t("people-invite") }}</a>
+</div>
+{% if let Some(saved) = saved %}{% call c::notice(tr.t(saved), false) %}{% endcall %}{% endif %}
+{% if let Some(error) = error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
+{% for person in people %}
+<section class="card">
+  <div class="person">
+    <span class="avatar" aria-hidden="true">{{ person.initial }}</span>
+    {% call c::row_text(person.username, person.status, "") %}{% endcall %}
+    <span class="tag"{% if let Some(tone) = person.tone %} data-tone="{{ tone }}"{% endif %}>{{ tr.t(person.role) }}</span>
+  </div>
+  <div class="cluster">
+    {% call c::post_button("/people/{}/link"|format(person.id), person.link_label, "secondary") %}{% endcall %}
+    {% if person.can_expire %}{% call c::post_button("/people/{}/expire"|format(person.id), tr.t("people-expire"), "danger") %}{% endcall %}{% endif %}
+  </div>
+  {% if let Some(expiry) = person.reactivate %}
+  <form method="post" action="/people/{{ person.id }}/reactivate" class="stack">
+    {% call c::expiry(expiry, tr.t("expiry-legend"), tr.t("expiry-date")) %}{% endcall %}
+    <button type="submit" class="button" data-variant="secondary">{{ tr.t("people-reactivate") }}</button>
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
 {% endblock %}

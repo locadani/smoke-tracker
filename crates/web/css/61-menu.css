@@ -1,0 +1,48 @@
+/* .menu: the avatar in the header and the small panel it opens (a <details>). */
+@layer components {
+  .menu {
+    position: relative;
+  }
+
+  summary.avatar {
+    list-style: none;
+    cursor: pointer;
+  }
+
+  summary.avatar::-webkit-details-marker {
+    display: none;
+  }
+
+  .menu-panel {
+    position: absolute;
+    inset-inline-end: 0;
+    inset-block-start: calc(var(--target) + var(--space-2));
+    z-index: 2;
+    inline-size: 14rem;
+    padding: var(--space-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-button);
+    background: var(--card);
+    box-shadow: var(--shadow);
+  }
+
+  .menu-panel > p {
+    padding: var(--space-2) var(--space-2) var(--space-3);
+    color: var(--muted);
+    font-size: var(--text-label);
+  }
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    inline-size: 100%;
+    min-block-size: var(--target);
+    padding-inline: var(--space-2);
+    border: 0;
+    border-radius: var(--radius-field);
+    background: transparent;
+    font-weight: 600;
+    text-align: start;
+  }
+}

@@ -1,0 +1,19 @@
+/* .items: the editable lists of Settings, one form per line. */
+@layer components {
+  .items {
+    list-style: none;
+  }
+
+  .items > li + li {
+    border-block-start: 1px solid var(--line);
+  }
+
+  .items .row {
+    min-block-size: var(--target);
+    padding-block: var(--space-1);
+  }
+
+  .items s {
+    color: var(--muted);
+  }
+}

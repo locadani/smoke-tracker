@@ -3,12 +3,32 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::{EventRepo, ReadingRepo, ReportRepo};
 use smoke_domain::types::{CloseReason, EventId, Locale, ReportId, Role};
 
 /// The value of the hidden `asked` field on a question page.
+/// The prompt's answers: the value each button posts, its label, and whether it is the
+/// primary one.
+fn answers(html: &str) -> Vec<(String, String, bool)> {
+    let page = Page::parse(html);
+    let buttons = "form[action='/log'] button[name=choice]";
+    let values = page.attrs(buttons, "value");
+    let labels = page.texts(buttons);
+    values
+        .into_iter()
+        .zip(labels)
+        .enumerate()
+        .map(|(index, (value, label))| {
+            let selector = format!("{buttons}:nth-of-type({})", index + 1);
+            let primary = !page.exists(&format!("{selector}[data-variant=secondary]"));
+            (value, label, primary)
+        })
+        .collect()
+}
+
 fn asked(html: &str) -> String {
     let start = html.find(r#"name="asked" value=""#).expect("a question") + 20;
     html[start..start + html[start..].find('"').unwrap()].to_owned()
@@ -23,7 +43,7 @@ async fn logging_with_nothing_open_saves_at_once_and_says_so() {
     let cookie = app.sign_in("daniele").await;
 
     let body = format!(
-        "room={0}&level-{0}=6&note=from+the+balcony&action=smell",
+        "room={0}&level-{0}=6&note=from+the+balcony&action=log",
         bedroom.0
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
@@ -59,7 +79,7 @@ async fn with_an_event_open_the_same_smell_question_comes_first() {
     let question = app
         .send(post_form(
             "/log",
-            "room=1&level-1=7&action=smell",
+            "room=1&level-1=7&action=log",
             Some(&cookie),
         ))
         .await;
@@ -69,11 +89,20 @@ async fn with_an_event_open_the_same_smell_question_comes_first() {
     assert!(html.contains("(started 19:05)"), "{html}");
     assert!(html.contains(r#"<input type="hidden" name="level-1" value="7">"#));
     let id = first.report.event_id.unwrap();
-    assert!(html.contains(&format!(r#"value="join-{id}">Yes, update</button>"#)));
-    assert!(html.contains(r#"value="new" class="secondary">No, it had stopped: new event"#));
+    assert_eq!(
+        answers(&html),
+        [
+            (format!("join-{id}"), "Yes, update".to_owned(), true),
+            (
+                "new".to_owned(),
+                "No, it had stopped: new event".to_owned(),
+                false
+            ),
+        ]
+    );
 
     let body = format!(
-        "room=1&level-1=7&action=smell&asked={}&choice=join-{id}",
+        "room=1&level-1=7&action=log&asked={}&choice=join-{id}",
         asked(&html)
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
@@ -97,7 +126,7 @@ async fn answering_no_closes_the_open_event_at_its_last_report() {
         .await;
     let cookie = app.sign_in("daniele").await;
     let body = format!(
-        "room=1&level-1=3&action=smell&asked=same-smell-{}&choice=new",
+        "room=1&level-1=3&action=log&asked=same-smell-{}&choice=new",
         first.report.event_id.unwrap()
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
@@ -150,7 +179,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
     let html = text(
         app.send(post_form(
             "/log",
-            "room=1&level-1=2&action=smell",
+            "room=1&level-1=2&action=log",
             Some(&cookie),
         ))
         .await,
@@ -167,7 +196,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
     let past = text(
         app.send(post_form(
             "/log",
-            "room=1&level-1=2&action=smell&observed_at=2026-01-15T11:30",
+            "room=1&level-1=2&action=log&observed_at=2026-01-15T11:30",
             Some(&cookie),
         ))
         .await,
@@ -176,9 +205,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
     assert!(past.contains("<h1>Which event was this?</h1>"), "{past}");
     let earlier = closed_earlier.report.event_id.unwrap();
     assert!(
-        past.contains(&format!(
-            r#"value="join-{earlier}" class="secondary">Started 11:00</button>"#
-        )),
+        answers(&past).contains(&(format!("join-{earlier}"), "Started 11:00".to_owned(), false)),
         "{past}"
     );
     assert!(
@@ -209,7 +236,7 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
     let question = text(
         app.send(post_form(
             "/log",
-            "room=1&level-1=7&action=smell",
+            "room=1&level-1=7&action=log",
             Some(&cookie),
         ))
         .await,
@@ -229,7 +256,7 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
         .await;
 
     let body = format!(
-        "room=1&level-1=7&action=smell&asked={}&choice=join-{}",
+        "room=1&level-1=7&action=log&asked={}&choice=join-{}",
         asked(&question),
         first.report.event_id.unwrap()
     );
@@ -281,7 +308,7 @@ async fn a_past_report_after_the_end_of_the_chosen_event_moves_its_end() {
     let html = text(
         app.send(post_form(
             "/log",
-            "room=1&level-1=5&action=smell&observed_at=2026-01-15T12:00",
+            "room=1&level-1=5&action=log&observed_at=2026-01-15T12:00",
             Some(&cookie),
         ))
         .await,
@@ -292,10 +319,10 @@ async fn a_past_report_after_the_end_of_the_chosen_event_moves_its_end() {
         !html.contains("Started 21:00"),
         "not started by then: {html}"
     );
-    assert!(html.contains(r#"value="new" class="secondary">New event</button>"#));
+    assert!(answers(&html).contains(&("new".to_owned(), "New event".to_owned(), false)));
 
     let body = format!(
-        "room=1&level-1=5&action=smell&observed_at=2026-01-15T12:00&asked=which-event&choice=join-{id}"
+        "room=1&level-1=5&action=log&observed_at=2026-01-15T12:00&asked=which-event&choice=join-{id}"
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(location(&response), Some("/?saved=report"));
@@ -325,7 +352,7 @@ async fn after_an_auto_close_the_next_log_offers_a_continuation() {
     let html = text(
         app.send(post_form(
             "/log",
-            "room=1&level-1=5&action=smell",
+            "room=1&level-1=5&action=log",
             Some(&cookie),
         ))
         .await,
@@ -336,7 +363,7 @@ async fn after_an_auto_close_the_next_log_offers_a_continuation() {
         "{html}"
     );
     assert_eq!(asked(&html), format!("auto-closed-{id}"));
-    let body = format!("room=1&level-1=5&action=smell&asked=auto-closed-{id}&choice=continue-{id}");
+    let body = format!("room=1&level-1=5&action=log&asked=auto-closed-{id}&choice=continue-{id}");
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(location(&response), Some("/?saved=report"));
     let event = app.store.event(id).await.unwrap().unwrap();
@@ -406,7 +433,7 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
         .await;
     let cookie = app.sign_in("daniele").await;
     let response = app
-        .send(post_form("/log", "pm25=35.5&action=pm25", Some(&cookie)))
+        .send(post_form("/log", "pm25=35.5&action=log", Some(&cookie)))
         .await;
     assert_eq!(location(&response), Some("/?saved=pm25"));
     let readings = app
@@ -418,7 +445,7 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
     assert_eq!(readings[0].value.ugm3(), 35.5);
 
     let with_smell = format!(
-        "room=1&level-1=6&pm25=40&action=smell&asked=same-smell-{0}&choice=join-{0}",
+        "room=1&level-1=6&pm25=40&action=log&asked=same-smell-{0}&choice=join-{0}",
         open.report.event_id.unwrap()
     );
     app.send(post_form("/log", &with_smell, Some(&cookie)))
@@ -433,13 +460,67 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
     );
 }
 
+/// The Log button's decision table (look-and-feel spec §6.1) through the route.
+#[tokio::test]
+async fn the_log_button_saves_what_the_form_holds() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let bedroom = app.room("room-bedroom").await;
+    let cough = app.symptom("symptom-cough").await;
+    let cookie = app.sign_in("daniele").await;
+    let post = async |body: String| app.send(post_form("/log", &body, Some(&cookie))).await;
+
+    for (body, message) in [
+        (
+            format!("symptom={}&action=log", cough.0),
+            "Pick at least one room.",
+        ),
+        (
+            "note=acrid&pm25=12&action=log".to_owned(),
+            "Pick at least one room.",
+        ),
+        (
+            "action=log".to_owned(),
+            "Pick a room, or enter a PM2.5 value.",
+        ),
+    ] {
+        let response = post(body.clone()).await;
+        assert_eq!(
+            response.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{body}"
+        );
+        assert!(text(response).await.contains(message), "{body}");
+    }
+
+    let reading = post("pm25=21&action=log".to_owned()).await;
+    assert_eq!(location(&reading), Some("/?saved=pm25"));
+    let clean = post(format!("room={0}&level-{0}=0&action=log", bedroom.0)).await;
+    assert_eq!(location(&clean), Some("/?saved=no-smell"));
+    assert_eq!(
+        app.store.open_event().await.unwrap(),
+        None,
+        "a check opens no event"
+    );
+    let smell = post(format!(
+        "room={0}&level-{0}=4&pm25=30&action=log",
+        bedroom.0
+    ))
+    .await;
+    assert_eq!(location(&smell), Some("/?saved=report"));
+    let event = app.store.open_event().await.unwrap().expect("an event");
+    let readings = app.store.readings_for_event(event.id).await.unwrap();
+    assert_eq!(readings.len(), 1, "PM2.5 saved alongside the report");
+}
+
 #[tokio::test]
 async fn invalid_input_shows_the_form_again_with_what_was_typed() {
     let app = TestApp::new().await;
     app.add_user("daniele", Role::Resident, Locale::En).await;
     let bedroom = app.room("room-bedroom").await;
     let cookie = app.sign_in("daniele").await;
-    let body = format!("room={}&note=kept+as+typed&action=smell", bedroom.0);
+    let body = format!("room={}&note=kept+as+typed&action=log", bedroom.0);
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let html = text(response).await;
@@ -447,18 +528,22 @@ async fn invalid_input_shows_the_form_again_with_what_was_typed() {
         html.contains("Pick a level from 0 to 10 for each selected room."),
         "{html}"
     );
-    assert!(html.contains(">kept as typed</textarea>"), "{html}");
-    assert!(
-        html.contains(&format!(r#"value="{}" checked><span>Bedroom"#, bedroom.0)),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.text("details.collapsible[open] textarea[name=note]"),
+        "kept as typed"
+    );
+    assert_eq!(
+        page.texts(".room-check:has(input[name=room][checked])"),
+        ["Bedroom"]
     );
     let missing = app
-        .send(post_form("/log", "action=pm25", Some(&cookie)))
+        .send(post_form("/log", "action=log", Some(&cookie)))
         .await;
     assert!(
         text(missing)
             .await
-            .contains("Enter a PM2.5 value to log it on its own.")
+            .contains("Pick a room, or enter a PM2.5 value.")
     );
     assert_eq!(app.store.open_event().await.unwrap(), None);
 }
@@ -471,7 +556,7 @@ async fn viewers_cannot_log() {
     let response = app
         .send(post_form(
             "/log",
-            "room=1&level-1=5&action=smell",
+            "room=1&level-1=5&action=log",
             Some(&cookie),
         ))
         .await;
@@ -497,7 +582,15 @@ async fn no_smell_with_nothing_open_saves_a_check_without_asking() {
     assert!(check.values.rooms().is_empty(), "the whole home");
     let html = text(app.send(get_with("/?saved=no-smell", &cookie)).await).await;
     assert!(html.contains("Saved: no smell."), "{html}");
-    assert!(html.contains(" · 1 clean check"), "{html}");
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.texts(".stats dt").last().map(String::as_str),
+        Some("clean check")
+    );
+    assert_eq!(
+        page.texts(".stats dd").last().map(String::as_str),
+        Some("1")
+    );
 }
 
 #[tokio::test]
@@ -518,7 +611,7 @@ async fn no_smell_with_an_event_open_joins_it_without_the_question() {
     let cookie = app.sign_in("guest").await;
     let bedroom = app.room("room-bedroom").await;
 
-    let body = format!("room={0}&level-{0}=0&action=smell", bedroom.0);
+    let body = format!("room={0}&level-{0}=0&action=log", bedroom.0);
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(location(&response), Some("/?saved=no-smell"));
     let open = app.store.open_event().await.unwrap().unwrap();

@@ -1,0 +1,36 @@
+/* .stats: the month's numbers as small tiles, number above its label. */
+@layer components {
+  .stats {
+    display: grid;
+    grid-auto-columns: minmax(0, 1fr);
+    grid-auto-flow: column;
+    gap: var(--space-2);
+  }
+
+  .stats > div {
+    display: flex;
+    flex-direction: column-reverse;
+    padding: var(--space-3) var(--space-2);
+    border-radius: var(--radius-field);
+    background: var(--card);
+    text-align: center;
+  }
+
+  .stats dd {
+    font-size: var(--text-brand);
+    font-weight: 700;
+  }
+
+  .stats dt {
+    color: var(--muted);
+    font-size: var(--text-tiny);
+    line-height: 1.25;
+  }
+
+  .stats-caption {
+    margin-block-start: calc(-1 * var(--space-2));
+    padding-inline: var(--space-1);
+    color: var(--muted);
+    font-size: var(--text-small);
+  }
+}

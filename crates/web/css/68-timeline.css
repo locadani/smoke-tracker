@@ -1,0 +1,65 @@
+/* .timeline: an event's reports and readings down a line of dots, times on the left; PM2.5
+   readings are hollow dots; a .gap note marks a long silence. */
+@layer components {
+  .timeline {
+    --time-column: 3.25rem;
+    list-style: none;
+  }
+
+  .timeline > li {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--time-column) 1fr;
+    gap: var(--space-3);
+    padding-block: var(--space-2);
+  }
+
+  .timeline > li:not(.gap)::before {
+    content: "";
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: calc(var(--time-column) + var(--space-1));
+    border-inline-start: 2px solid var(--line);
+  }
+
+  .timeline > li:not(.gap)::after {
+    content: "";
+    position: absolute;
+    inset-block-start: calc(var(--space-2) + 0.4rem);
+    inset-inline-start: calc(var(--time-column) + 0.0625rem);
+    inline-size: 0.75rem;
+    block-size: 0.75rem;
+    border: 2px solid var(--accent);
+    border-radius: var(--radius-pill);
+    background: var(--accent);
+  }
+
+  .timeline > li[data-kind="reading"]::after {
+    background: var(--card);
+  }
+
+  .timeline .at {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .timeline .entry {
+    display: flex;
+    flex-direction: column;
+    padding-inline-start: var(--space-4);
+  }
+
+  .timeline .entry > .muted {
+    font-size: var(--text-label);
+  }
+
+  .timeline > .gap {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    margin-block: var(--space-1);
+    padding: var(--space-3);
+    border-radius: var(--radius-field);
+    font-size: var(--text-label);
+  }
+}

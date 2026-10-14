@@ -2,11 +2,18 @@
 // static assets and an offline page. Pages and form posts always go to the network: there is
 // no offline logging. Assets are fetched first and the cached copy is the fallback, so a new
 // deploy is never hidden behind an old cache.
-const CACHE = "smoke-tracker-v1";
+const CACHE = "smoke-tracker-v2";
 const PRECACHE = [
   "/offline",
   "/static/app.css",
-  "/static/app.js",
+  "/static/icons.svg",
+  "/static/js/app.js",
+  "/static/js/date-picks.js",
+  "/static/js/dialog.js",
+  "/static/js/install.js",
+  "/static/js/menu.js",
+  "/static/js/range-output.js",
+  "/static/js/service-worker.js",
   "/static/htmx-2.0.11.min.js",
   "/static/favicon.svg",
   "/static/icon-192.png",
@@ -25,7 +32,9 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches
       .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then((keys) =>
+        Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))),
+      )
       .then(() => self.clients.claim()),
   );
 });

@@ -23,9 +23,31 @@ pub(crate) struct ListItem {
     pub(crate) label: String,
     /// Where its Hide / Show button posts.
     pub(crate) action: String,
-    /// The translation key of a room's area; `None` for symptoms.
-    pub(crate) area: Option<&'static str>,
+    /// A room's area; empty for symptoms.
+    pub(crate) detail: String,
     pub(crate) hidden: bool,
+    /// "Hidden" for screen readers beside a struck-through label; empty while shown.
+    pub(crate) gone: String,
+    /// The Hide or Show button's text.
+    pub(crate) toggle: String,
+}
+
+impl ListItem {
+    fn new(tr: Tr, action: String, label: String, detail: String, hidden: bool) -> Self {
+        let (gone, toggle) = if hidden {
+            (tr.t("settings-list-hidden"), tr.t("settings-list-show"))
+        } else {
+            (String::new(), tr.t("settings-list-hide"))
+        };
+        Self {
+            label,
+            action,
+            detail,
+            hidden,
+            gone,
+            toggle,
+        }
+    }
 }
 
 pub(crate) struct ListsView {
@@ -47,20 +69,26 @@ pub(crate) async fn view<S: Store>(state: &AppState<S>, tr: Tr) -> Result<ListsV
     Ok(ListsView {
         rooms: rooms
             .iter()
-            .map(|room| ListItem {
-                action: format!("/settings/rooms/{}/hidden", room.id),
-                label: labels::room(tr, room),
-                area: Some(area_key(room.area)),
-                hidden: room.hidden_at.is_some(),
+            .map(|room| {
+                ListItem::new(
+                    tr,
+                    format!("/settings/rooms/{}/hidden", room.id),
+                    labels::room(tr, room),
+                    tr.t(area_key(room.area)),
+                    room.hidden_at.is_some(),
+                )
             })
             .collect(),
         symptoms: symptoms
             .iter()
-            .map(|symptom| ListItem {
-                action: format!("/settings/symptoms/{}/hidden", symptom.id),
-                label: labels::symptom(tr, symptom),
-                area: None,
-                hidden: symptom.hidden_at.is_some(),
+            .map(|symptom| {
+                ListItem::new(
+                    tr,
+                    format!("/settings/symptoms/{}/hidden", symptom.id),
+                    labels::symptom(tr, symptom),
+                    String::new(),
+                    symptom.hidden_at.is_some(),
+                )
             })
             .collect(),
     })

@@ -11,7 +11,7 @@ use smoke_domain::types::Level;
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::state::AppState;
 
@@ -91,7 +91,7 @@ pub(crate) async fn rating<S: Store + Clone + 'static>(
         StatusCode::OK,
         &GuidePage {
             tr,
-            signed_in: SignedIn::of(&user, state.clock.now()),
+            signed_in: SignedIn::of(&user, state.clock.now(), Tab::Settings),
             levels: levels(tr),
         },
     )
@@ -115,7 +115,7 @@ pub(crate) async fn logging<S: Store + Clone + 'static>(
         StatusCode::OK,
         &LoggingPage {
             tr,
-            signed_in: SignedIn::of(&user, state.clock.now()),
+            signed_in: SignedIn::of(&user, state.clock.now(), Tab::Settings),
             situations: situations(tr),
             rules: rules(tr, state.config.schedule.hour()),
         },

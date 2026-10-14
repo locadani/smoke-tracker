@@ -1,0 +1,108 @@
+/* Design tokens (look-and-feel spec §3.1). The only file with colour values: every other file
+   uses these custom properties. Dark values follow the system setting. */
+@layer tokens {
+  :root {
+    color-scheme: light dark;
+
+    --bg: #f2f3f0;
+    --card: #ffffff;
+    --field: #ffffff;
+    --text: #1b1f1d;
+    --muted: #5c6560;
+    --line: #dfe3df;
+    --accent: #2f6b5e;
+    --accent-soft: #e2eeea;
+    --on-accent: #ffffff;
+    --warn-bg: #fbefd9;
+    --warn-text: #6a4710;
+    --amber: #b7791f;
+    --danger: #a33a2a;
+    --control-border: #7f8984;
+    --shadow: 0 8px 24px rgb(0 0 0 / 12%);
+    --backdrop: rgb(0 0 0 / 45%);
+
+    /* Chart lines after the first person's (which uses --accent). */
+    --series-2: #3a5ba0;
+    --series-3: #8a4f9e;
+    --series-4: #4d7a1f;
+
+    /* The heatmap ramp: dark text on 0–5, --on-accent text on 6–10. */
+    --heat-0: var(--accent-soft);
+    --heat-1: #d1e1dc;
+    --heat-2: #c1d4ce;
+    --heat-3: #b0c8c0;
+    --heat-4: #a0bbb2;
+    --heat-5: #8faea4;
+    --heat-6: #4f776c;
+    --heat-7: #41685e;
+    --heat-8: #335a50;
+    --heat-9: #254c41;
+    --heat-10: #173d33;
+
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --text-title: 1.875rem;
+    --text-brand: 1.375rem;
+    --text-card: 1.125rem;
+    --text-label: 0.875rem;
+    --text-small: 0.8125rem;
+    --text-tiny: 0.75rem;
+    --text-control: 0.9375rem;
+
+    --radius-card: 20px;
+    --radius-button: 16px;
+    --radius-field: 12px;
+    --radius-pill: 999px;
+    --radius-room: 14px;
+    --radius-tile: 10px;
+    --radius-box: 8px;
+
+    --space-1: 0.25rem;
+    --space-2: 0.5rem;
+    --space-3: 0.75rem;
+    --space-4: 1rem;
+    --space-5: 1.5rem;
+    --gutter: 1rem;
+    --column: 32rem;
+    --target: 44px;
+    --target-large: 3.25rem;
+    --field-height: 48px;
+    --tabbar-height: 4rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111513;
+      --card: #1b201e;
+      --field: #151917;
+      --text: #e7ece9;
+      --muted: #a2aca6;
+      --line: #2d3431;
+      --accent: #74c2ac;
+      --accent-soft: #21332e;
+      --on-accent: #0c1311;
+      --warn-bg: #332812;
+      --warn-text: #f2d9a2;
+      --amber: #e0a84a;
+      --danger: #f09a8a;
+      --control-border: #6f7a74;
+      --shadow: 0 8px 24px rgb(0 0 0 / 50%);
+      --backdrop: rgb(0 0 0 / 60%);
+
+      --series-2: #8fb0f0;
+      --series-3: #d3a2e3;
+      --series-4: #b8d98a;
+
+      --heat-0: var(--accent-soft);
+      --heat-1: #273c37;
+      --heat-2: #2d4640;
+      --heat-3: #344f48;
+      --heat-4: #3a5951;
+      --heat-5: #40625a;
+      --heat-6: #86b5a7;
+      --heat-7: #98c3b6;
+      --heat-8: #aad1c6;
+      --heat-9: #bddfd5;
+      --heat-10: #cfede4;
+    }
+  }
+}

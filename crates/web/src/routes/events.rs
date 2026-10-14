@@ -5,11 +5,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
-use serde::Deserialize;
 use smoke_domain::events::{FUTURE_TOLERANCE, large_gap_indices};
 use smoke_domain::logbook::{close_event, reopen_event};
 use smoke_domain::permissions::{Action, Actor, can, can_see};
@@ -20,8 +19,8 @@ use smoke_domain::types::{EventId, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::forms::{Pairs, QueryPairs};
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::labels;
 use crate::routes::entries::read_time;
@@ -29,17 +28,13 @@ use crate::routes::{can_open, refusal};
 use crate::state::AppState;
 use crate::time;
 
-#[derive(Deserialize)]
-pub(crate) struct ListQuery {
-    /// `YYYY-MM`; the current month when absent or invalid.
-    month: Option<String>,
-}
-
 struct EventRow {
     id: i64,
     span: String,
-    reports: usize,
-    max_intensity: Option<String>,
+    /// "3 reports · max 6".
+    detail: String,
+    /// The highest intensity among the reports, or a dash when there is none to show.
+    badge: String,
 }
 
 struct ReadingRow {
@@ -94,7 +89,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ListQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     auto_close(&state.store, &state.config.schedule, now).await?;
@@ -102,8 +97,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
     let tz = schedule.tz();
     let actor = user.actor();
     let first = query
-        .month
-        .as_deref()
+        .get("month")
         .and_then(time::parse_month)
         .unwrap_or_else(|| schedule.local_date(now));
     let (from, to) = schedule.month_span(first);
@@ -143,15 +137,17 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         if local < schedule.local_date(from) {
             continue;
         }
+        let max = visible.iter().map(|r| r.values.intensity().get()).max();
+        let detail = labels::reports_with(
+            tr,
+            visible.len(),
+            max.map(|max| tr.t1("events-max-intensity", "level", &max.to_string())),
+        );
         day(&mut days, tr, local).events.push(EventRow {
             id: event.id.0,
             span: span(tr, event, tz),
-            reports: visible.len(),
-            max_intensity: visible
-                .iter()
-                .map(|r| r.values.intensity().get())
-                .max()
-                .map(|max| max.to_string()),
+            detail,
+            badge: max.map_or_else(|| "–".to_owned(), |max| max.to_string()),
         });
     }
     for check in checks.iter().rev() {
@@ -182,7 +178,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         StatusCode::OK,
         &ListPage {
             tr,
-            signed_in: SignedIn::of(&user, now),
+            signed_in: SignedIn::of(&user, now, Tab::Events),
             month: first_of_month.format("%m/%Y").to_string(),
             previous: month_param(first_of_month - Months::new(1)),
             next: month_param(first_of_month + Months::new(1)),
@@ -200,7 +196,14 @@ struct Entry {
     /// Shown to people who see everyone's data.
     by: Option<String>,
     /// More than three hours after the previous report (spec §7.7).
-    gap_before: bool,
+    gap: Option<Gap>,
+}
+
+/// The large-gap warning before a report.
+struct Gap {
+    /// The report after the gap, when the viewer may move it to a new event (look-and-feel
+    /// spec §6.4). A no-smell report cannot start an event, so it is never offered.
+    movable: Option<i64>,
 }
 
 #[derive(Template)]
@@ -310,7 +313,17 @@ async fn detail<S: Store>(
                     .collect::<Vec<_>>()
                     .join(" · "),
                 by: names.get(&report.user_id).cloned(),
-                gap_before: gaps.contains(&index),
+                gap: gaps.contains(&index).then(|| Gap {
+                    movable: (!report.values.is_no_smell()
+                        && can(
+                            &actor,
+                            Action::EditEntry {
+                                owner: report.user_id,
+                            },
+                            now,
+                        ))
+                    .then_some(report.id.0),
+                }),
             },
         ));
     }
@@ -322,7 +335,7 @@ async fn detail<S: Store>(
                 report: None,
                 text: tr.t1("event-pm25", "value", &reading.value.ugm3().to_string()),
                 by: names.get(&reading.user_id).cloned(),
-                gap_before: false,
+                gap: None,
             },
         ));
     }
@@ -341,7 +354,7 @@ async fn detail<S: Store>(
     };
     Ok(DetailPage {
         tr,
-        signed_in: SignedIn::of(user, now),
+        signed_in: SignedIn::of(user, now, Tab::Events),
         id: id.0,
         date: time::date(tr.0, state.config.schedule.local_date(event.opened_at)),
         span: span(tr, &event, tz),

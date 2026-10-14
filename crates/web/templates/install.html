@@ -1,18 +1,20 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("install-title") }}{% endblock %}
 {% block content %}
-{% if welcome %}
-<p class="notice" role="status">{{ tr.t("install-welcome") }}</p>
-{% endif %}
+{% if welcome %}{% call c::notice(tr.t("install-welcome"), false) %}{% endcall %}{% endif %}
 <h1>{{ tr.t("install-title") }}</h1>
-<p>{{ tr.t("install-intro") }}</p>
-<p><button type="button" data-install hidden>{{ tr.t("install-button") }}</button></p>
-<h2>{{ tr.t("install-ios-title") }}</h2>
+<section class="card">
+  <p>{{ tr.t("install-intro") }}</p>
+  <button type="button" class="button" data-install hidden>{{ tr.t("install-button") }}</button>
+</section>
+{% call c::card(tr.t("install-ios-title")) %}
 <ol class="steps">
-  <li>{{ tr.t("install-ios-share") }} <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3m-4 4 4-4 4 4M6 10H5v11h14V10h-1" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
-  <li>{{ tr.t("install-ios-add") }} <svg class="glyph" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8m-4-4h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></li>
+  <li>{{ tr.t("install-ios-share") }} {% call c::icon("share") %}{% endcall %}</li>
+  <li>{{ tr.t("install-ios-add") }} {% call c::icon("add-square") %}{% endcall %}</li>
   <li>{{ tr.t("install-ios-confirm") }}</li>
 </ol>
 <p class="hint">{{ tr.t("install-other") }}</p>
-<p><a href="/">{{ tr.t("install-continue") }}</a></p>
+{% endcall %}
+<a href="/" class="button" data-variant="secondary">{{ tr.t("install-continue") }}</a>
 {% endblock %}

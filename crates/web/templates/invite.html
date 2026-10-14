@@ -1,24 +1,18 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("invite-title") }}{% endblock %}
 {% block content %}
+{% call c::back("/people", tr.t("people-title")) %}{% endcall %}
 <h1>{{ tr.t("invite-title") }}</h1>
-{% if let Some(error) = error %}
-<p class="notice" role="alert">{{ tr.t(error) }}</p>
-{% endif %}
-<form method="post" action="/people/invite" class="stack invite">
-  <label>{{ tr.t("login-username") }}
-    <input name="username" value="{{ username }}" autocomplete="off" autocapitalize="none"
-           autocorrect="off" spellcheck="false" maxlength="32" required>
-  </label>
+{% if let Some(error) = error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
+<form method="post" action="/people/invite" class="card invite">
+  {% call c::field(tr.t("login-username")) %}<input name="username" value="{{ username }}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" required>{% endcall %}
   <p class="hint">{{ tr.t("invite-username-hint") }}</p>
-  <fieldset class="choices">
-    <legend>{{ tr.t("invite-role") }}</legend>
-    {% for role in roles %}
-    <label class="chip"><input type="radio" name="role" value="{{ role.value }}"{% if role.checked %} checked{% endif %}><span>{{ tr.t(role.key) }}</span></label>
-    {% endfor %}
-  </fieldset>
-  {% if let Some(expiry) = guest %}{% include "expiry_fields.html" %}{% endif %}
-  {% if let Some(expiry) = viewer %}{% include "expiry_fields.html" %}{% endif %}
-  <button type="submit">{{ tr.t("invite-submit") }}</button>
+  {% call c::segmented(tr.t("invite-role")) %}
+  {% for role in roles %}{% call c::chip("radio", "role", role.value, tr.t(role.key), role.checked) %}{% endcall %}{% endfor %}
+  {% endcall %}
+  {% if let Some(expiry) = guest %}{% call c::expiry(expiry, tr.t("expiry-legend"), tr.t("expiry-date")) %}{% endcall %}{% endif %}
+  {% if let Some(expiry) = viewer %}{% call c::expiry(expiry, tr.t("expiry-legend"), tr.t("expiry-date")) %}{% endcall %}{% endif %}
+  <button type="submit" class="button">{{ tr.t("invite-submit") }}</button>
 </form>
 {% endblock %}

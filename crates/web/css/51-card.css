@@ -1,0 +1,51 @@
+/* .card, and .collapsible: a card built on <details> whose summary is the whole tap target. */
+@layer components {
+  .card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-4);
+    border-radius: var(--radius-card);
+    background: var(--card);
+  }
+
+  .collapsible {
+    display: block;
+    padding-block: var(--space-1);
+  }
+
+  .collapsible > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-3);
+    min-block-size: var(--target-large);
+    list-style: none;
+    cursor: pointer;
+  }
+
+  .collapsible > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .collapsible .action {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    color: var(--accent);
+    font-size: var(--text-control);
+    font-weight: 600;
+  }
+
+  .collapsible[open] .action .icon {
+    transform: rotate(180deg);
+  }
+
+  .collapsible > .stack {
+    padding-block-end: var(--space-3);
+  }
+
+  .card h1 {
+    font-size: var(--text-brand);
+  }
+}

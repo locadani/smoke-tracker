@@ -1,0 +1,96 @@
+/* The Graphs screen: the filter form, the charts' frames and the room × hour table, whose
+   cells take the heatmap ramp of the tokens (dark text on 0–5, light on 6–10). */
+@layer components {
+  .filters legend {
+    margin-block-end: var(--space-2);
+  }
+
+  .filters .split > * {
+    flex: 1 1 0;
+    min-inline-size: 0;
+  }
+
+  .filters input[type="range"] {
+    inline-size: 100%;
+    min-block-size: var(--target);
+  }
+
+  person-filter {
+    display: block;
+  }
+
+  person-filter > .button {
+    inline-size: 100%;
+    justify-content: space-between;
+  }
+
+  .chart {
+    position: relative;
+    block-size: 16rem;
+  }
+
+  .scroll {
+    overflow-x: auto;
+  }
+
+  .heatmap {
+    inline-size: auto;
+    font-size: var(--text-tiny);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .heatmap th,
+  .heatmap td {
+    min-inline-size: 1.5rem;
+    padding: var(--space-1) 0.125rem;
+    text-align: center;
+  }
+
+  .heatmap tbody th {
+    padding-inline-end: var(--space-2);
+    text-align: start;
+    white-space: nowrap;
+  }
+
+  .heat-0 {
+    background: var(--heat-0);
+  }
+  .heat-1 {
+    background: var(--heat-1);
+  }
+  .heat-2 {
+    background: var(--heat-2);
+  }
+  .heat-3 {
+    background: var(--heat-3);
+  }
+  .heat-4 {
+    background: var(--heat-4);
+  }
+  .heat-5 {
+    background: var(--heat-5);
+  }
+  .heat-6 {
+    background: var(--heat-6);
+  }
+  .heat-7 {
+    background: var(--heat-7);
+  }
+  .heat-8 {
+    background: var(--heat-8);
+  }
+  .heat-9 {
+    background: var(--heat-9);
+  }
+  .heat-10 {
+    background: var(--heat-10);
+  }
+
+  .heat-6,
+  .heat-7,
+  .heat-8,
+  .heat-9,
+  .heat-10 {
+    color: var(--on-accent);
+  }
+}

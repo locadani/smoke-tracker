@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+pub mod page;
+
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
@@ -170,7 +172,7 @@ impl TestApp {
         logged
     }
 
-    /// Logs a PM2.5 reading on its own, as "Log PM2.5 only" would.
+    /// Logs a PM2.5 reading on its own, as the Log button does with only a PM2.5 value.
     pub async fn log_pm25(&self, user: &User, at: &str, value: f64) -> Pm25Reading {
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();
         let reading = log_reading(

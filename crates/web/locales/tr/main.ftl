@@ -11,10 +11,12 @@ login-locked = Çok fazla deneme. 15 dakika sonra tekrar deneyin.
 login-expired = Bu hesabın süresi doldu. Yeniden etkinleştirmesi için bir ev sakinine başvurun.
 signed-in-as = { $username } olarak giriş yapıldı.
 logout = Çıkış yap
+account-menu = Hesap: { $username }
 
 log-title = Koku kaydet
-event-none = Devam eden bir koku olayı yok.
-event-open-since = { $time } saatinden beri süren bir koku olayı var.
+event-banner-title = Koku olayı sürüyor
+event-banner-since = { $time } itibarıyla
+event-banner-peak = en yüksek seviye { $level } ({ $room })
 log-intensity = Yoğunluk
 log-how-to-rate = Nasıl puanlanır
 log-rooms = Odalar
@@ -22,14 +24,11 @@ log-level-in = { $room } seviyesi
 log-inside = Ev içi
 log-common = Ortak alanlar
 log-symptoms = Belirtiler
-log-pm25 = PM2.5 (µg/m³, isteğe bağlı)
 log-time = Saat
 log-time-now = şimdi
-log-time-change = değiştir
-log-note = Not (isteğe bağlı)
-log-submit = Kokuyu kaydet
+log-note = Not
+log-submit = Kaydet
 log-update = Güncelle: durum değişti
-log-pm25-only = Yalnızca PM2.5 kaydet
 log-no-smell = Koku yok
 log-read-only = Verilere bakabilirsin ama kayıt yapamazsın.
 
@@ -38,9 +37,9 @@ log-saved-pm25 = PM2.5 ölçümü kaydedildi.
 log-saved-no-smell = Kaydedildi: koku yok.
 log-error-rooms = En az bir oda seç.
 log-error-level = Seçtiğin her oda için 0 ile 10 arasında bir seviye seç.
-log-error-no-smell-level = Koku yok, seçili odaları 0 olarak kaydeder. 0'dan büyük seviyeleri kaldır ya da Kokuyu kaydet'i kullan.
+log-error-no-smell-level = Koku yok, seçili odaları 0 olarak kaydeder. 0'dan büyük seviyeleri kaldır ya da Kaydet'i kullan.
 log-error-pm25 = PM2.5, 0 ile 1000 arasında bir sayı olmalı.
-log-error-pm25-missing = Tek başına kaydetmek için bir PM2.5 değeri gir.
+log-error-empty = Bir oda seç ya da bir PM2.5 değeri gir.
 log-error-time = Geçerli bir tarih ve saat gir.
 log-error-time-skipped = Bu saat yok: saatler ileri alındı.
 log-error-note = Not en fazla 2000 karakter olabilir.
@@ -69,22 +68,30 @@ refused-future = Saat gelecekte olamaz.
 refused-close-before-last-report = Bitiş, son bildirimden önce olamaz.
 refused-close-in-future = Bitiş gelecekte olamaz.
 
-summary-this-month = Bu ay:
-summary-events = { $count ->
-    [one] 1 olay
-   *[other] { $count } olay
-}
 summary-reports = { $count ->
     [one] 1 bildirim
    *[other] { $count } bildirim
 }
-summary-bedroom-days = { $count ->
-    [one] yatak odasında duman olan 1 gün
-   *[other] yatak odasında duman olan { $count } gün
+log-level-hint = 0 ile 10 arasında bir seviye seç.
+optional = isteğe bağlı
+action-add = Ekle
+action-change = Değiştir
+summary-caption = Bu ay
+tile-events = { $count ->
+    [one] olay
+   *[other] olay
 }
-summary-checks = { $count ->
-    [one] 1 temiz kontrol
-   *[other] { $count } temiz kontrol
+tile-reports = { $count ->
+    [one] bildirim
+   *[other] bildirim
+}
+tile-bedroom-days = { $count ->
+    [one] yatak odasında dumanlı gün
+   *[other] yatak odasında dumanlı gün
+}
+tile-checks = { $count ->
+    [one] temiz kontrol
+   *[other] temiz kontrol
 }
 
 rating-title = Nasıl puanlanır
@@ -139,17 +146,22 @@ nav-events = Olaylar
 nav-graphs = Grafikler
 nav-people = Kişiler
 nav-settings = Ayarlar
+nav-label = Ana menü
 
 events-title = Olaylar
 events-none = Bu ay olay yok.
 events-check = koku yok (kontrol)
-events-previous = ← Önceki
-events-next = Sonraki →
+events-previous = Önceki ay
+events-next = Sonraki ay
+events-month = Ay
 events-in-progress = sürüyor
 events-max-intensity = en fazla { $level }
 event-title = { $date } tarihli olay
 event-started-by = Başlatan: { $username }
+event-timeline = Zaman çizelgesi
+event-close-title = Bu olayı kapat
 event-gap = Önceki bildirimden bu yana 3 saatten fazla geçti: hâlâ aynı olay mı?
+event-gap-move = { $time } kaydını yeni bir olaya taşı
 event-intensity = yoğunluk { $level }
 event-pm25 = PM2.5 { $value } µg/m³
 event-close = Olayı kapat
@@ -203,6 +215,7 @@ settings-password-wrong = Mevcut şifre doğru değil.
 settings-saved-language = Dil kaydedildi.
 settings-saved-password = Şifre değiştirildi. Diğer cihazlarınızda oturum kapatıldı.
 settings-guides = Kılavuzlar
+settings-room-area = Alan
 settings-lists-hint = Gizlenen öğeler artık formlarda sunulmaz; onları içeren kayıtlar korunur.
 settings-list-hidden = gizli
 settings-list-hide = Gizle
@@ -262,6 +275,7 @@ expiry-date = bu günün sonunda:
 expiry-never = hiçbir zaman
 
 install-app = Uygulamayı yükle
+install-card-hint = Her uygulama gibi ana ekrandan açın.
 install-title = Smoke Tracker'ı ana ekranınıza ekleyin
 install-welcome = Hesabınız hazır.
 install-intro = Böylece doğrudan Kaydet ekranında bir uygulama gibi açılır ve kayıt birkaç saniye sürer.
@@ -277,13 +291,43 @@ offline-text = Smoke Tracker'ın kaydettiklerinizi saklamak için internete ihti
 offline-retry = Tekrar dene
 
 graphs-title = Grafikler
-graphs-month = Tek bir ayı göster
-graphs-year = Tüm yılı göster
+graphs-filters = Filtreler
+graphs-dates = Tarihler
+graphs-range-month = Bu ay
+graphs-range-7d = Son 7 gün
+graphs-range-30d = Son 30 gün
+graphs-range-year = Bu yıl
+graphs-from = Başlangıç
+graphs-to = Bitiş
+graphs-where = Nerede
+graphs-area-all = Tümü
+graphs-by = Bildiren
+graphs-everyone = Herkes
+graphs-time = Günün saati
+graphs-time-any = Herhangi
+graphs-time-morning = Sabah
+graphs-time-afternoon = Öğleden sonra
+graphs-time-evening = Akşam
+graphs-time-night = Gece
+graphs-min-level = En düşük seviye
+graphs-level-any = herhangi
+graphs-level-from = seviye { $level }+
+graphs-hide-clean = Temiz kontrolleri gizle
+graphs-no-clean = temiz kontroller yok
+graphs-reset = Sıfırla
+graphs-show = Grafikleri göster
 graphs-own-only = Bu grafikler yalnızca kendi bildirimlerinizi ve ölçümlerinizi gösterir.
 graphs-none = Bu dönemde hiçbir kayıt yok.
 graphs-needs-js = Bu grafik için JavaScript gerekir.
 graphs-intensity = Zaman içinde koku yoğunluğu
 graphs-pm25 = PM2.5 (µg/m³)
+graphs-series-both = İkisi
+graphs-series-intensity = Yoğunluk
+graphs-series-pm25 = PM2.5
+graphs-series-both-title = Koku yoğunluğu ve PM2.5
+graphs-series-pm25-title = Zaman içinde PM2.5
+graphs-lines-person = Kişiye göre
+graphs-search-people = Kişi ara
 graphs-events-day = Günlük olay sayısı
 graphs-events-week = Haftalık olay sayısı
 graphs-events-label = Olaylar

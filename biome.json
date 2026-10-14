@@ -1,0 +1,18 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "vcs": { "enabled": true, "clientKind": "git", "useIgnoreFile": true },
+  "files": {
+    "includes": [
+      "crates/web/static/**/*.js",
+      "crates/web/css/**/*.css",
+      "tests/e2e/**/*.js",
+      "!**/*.min.js",
+      "!**/node_modules"
+    ]
+  },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 100 },
+  "javascript": { "formatter": { "quoteStyle": "double" }, "globals": ["Chart"] },
+  "css": { "formatter": { "enabled": true }, "linter": { "enabled": true } },
+  "linter": { "enabled": true },
+  "assist": { "enabled": false }
+}

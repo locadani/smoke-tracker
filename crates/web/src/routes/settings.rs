@@ -3,7 +3,7 @@
 
 use askama::Template;
 use axum::Form;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
@@ -11,31 +11,19 @@ use smoke_domain::people::change_password;
 use smoke_domain::permissions::{Action, can};
 use smoke_domain::records::User;
 use smoke_domain::repos::{Commit, Store};
-use smoke_domain::types::{Locale, NewPassword};
+use smoke_domain::types::NewPassword;
 use tower_sessions::Session;
 
 use crate::auth::client_ip::ClientIp;
 use crate::auth::limiter::LoginLimiter;
 use crate::auth::{self, CurrentUser, password};
 use crate::error::{AppError, page};
-use crate::header::SignedIn;
+use crate::forms::QueryPairs;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::lists::{self, ListsView};
 use crate::routes::people_refusal;
 use crate::state::AppState;
-
-/// The languages, each named in itself.
-pub(crate) const LANGUAGES: [(Locale, &str); 3] = [
-    (Locale::En, "English"),
-    (Locale::It, "Italiano"),
-    (Locale::Tr, "Türkçe"),
-];
-
-pub(crate) struct LanguageChoice {
-    pub(crate) value: &'static str,
-    pub(crate) name: &'static str,
-    pub(crate) current: bool,
-}
 
 /// The messages above the page's sections: what was just saved, or why a form was refused.
 #[derive(Debug, Clone, Copy, Default)]
@@ -52,7 +40,6 @@ struct SettingsPage {
     signed_in: Option<SignedIn>,
     /// For password managers, which file the new password under this name.
     username: String,
-    languages: Vec<LanguageChoice>,
     notices: Notices,
     /// `None` for people who may not edit the lists.
     lists: Option<ListsView>,
@@ -75,34 +62,21 @@ pub(crate) async fn settings_page<S: Store>(
         status,
         &SettingsPage {
             tr,
-            signed_in: SignedIn::of(user, now),
+            signed_in: SignedIn::of(user, now, Tab::Settings),
             username: user.username.to_string(),
-            languages: LANGUAGES
-                .iter()
-                .map(|&(locale, name)| LanguageChoice {
-                    value: locale.as_str(),
-                    name,
-                    current: locale == user.locale,
-                })
-                .collect(),
             notices,
             lists,
         },
     )
 }
 
-#[derive(Deserialize)]
-pub(crate) struct ShowQuery {
-    saved: Option<String>,
-}
-
 pub(crate) async fn show<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ShowQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
-    let saved = match query.saved.as_deref() {
+    let saved = match query.get("saved") {
         Some("language") => Some("settings-saved-language"),
         Some("password") => Some("settings-saved-password"),
         Some("lists") => Some("settings-saved-lists"),

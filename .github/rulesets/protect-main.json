@@ -33,7 +33,9 @@
           { "context": "sqlx offline data", "integration_id": 15368 },
           { "context": "cargo-deny", "integration_id": 15368 },
           { "context": "gitleaks", "integration_id": 15368 },
-          { "context": "trivy", "integration_id": 15368 }
+          { "context": "trivy", "integration_id": 15368 },
+          { "context": "biome (JavaScript and CSS)", "integration_id": 15368 },
+          { "context": "accessibility (axe, light and dark)", "integration_id": 15368 }
         ]
       }
     }

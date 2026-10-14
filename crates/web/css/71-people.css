@@ -1,0 +1,32 @@
+/* People: one card per person, led by the avatar, name, status and role tag; the invite form
+   shows the expiry fields of the role picked (CSS :has, no script). */
+@layer components {
+  .person {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+  }
+
+  .invite:has(input[name="role"]:checked) .expiry {
+    display: none;
+  }
+
+  .invite:has(input[name="role"][value="guest"]:checked) .expiry[data-role="guest"],
+  .invite:has(input[name="role"][value="viewer"]:checked) .expiry[data-role="viewer"] {
+    display: flex;
+  }
+
+  .qr-code {
+    inline-size: 100%;
+    max-inline-size: 18rem;
+    margin-inline: auto;
+    padding: var(--space-3);
+    border-radius: var(--radius-field);
+    background: var(--field);
+  }
+
+  .qr {
+    inline-size: 100%;
+    block-size: auto;
+  }
+}

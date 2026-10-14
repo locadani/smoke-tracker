@@ -1,24 +1,21 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
+{% import "report_fields.html" as f %}
 {% block title %}{{ tr.t("report-correct") }}{% endblock %}
 {% block content %}
+{% call c::back("/reports/{}"|format(id), tr.t("report-title")) %}{% endcall %}
 <h1>{{ tr.t("report-correct") }}</h1>
-<p>{{ tr.t("correct-hint") }}</p>
-{% if check %}
-<p>{{ tr.t("correct-check-hint") }}</p>
-{% endif %}
-{% if let Some(error) = form.error %}
-<p class="notice" role="alert">{{ tr.t(error) }}</p>
-{% endif %}
+<p class="muted">{{ tr.t("correct-hint") }}{% if check %} {{ tr.t("correct-check-hint") }}{% endif %}</p>
+{% if let Some(error) = form.error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <form method="post" action="/reports/{{ id }}/correct" class="stack">
-  {% include "report_fields.html" %}
-  <label>{{ tr.t("correct-time") }}
-    <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" required>
-  </label>
-  <label>{{ tr.t("report-note") }}
-    <textarea name="note" rows="2" maxlength="2000">{{ form.note }}</textarea>
-  </label>
-  <button type="submit">{{ tr.t("correct-submit") }}</button>
+  {% call c::card("") %}
+  {% call c::field(tr.t("correct-time")) %}<input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" required>{% endcall %}
+  {% endcall %}
+  {% call f::report_cards(form.fields, form.note) %}{% endcall %}
+  <div class="actions">
+    <a href="/reports/{{ id }}" class="button" data-variant="secondary">{{ tr.t("prompt-cancel") }}</a>
+    <button type="submit" class="button">{{ tr.t("correct-submit") }}</button>
+  </div>
 </form>
-<p><a href="/reports/{{ id }}">{{ tr.t("prompt-cancel") }}</a></p>
-{% include "rating_dialog.html" %}
+{% call f::rating_sheet(form.fields) %}{% endcall %}
 {% endblock %}

@@ -1,6 +1,6 @@
 # 01 — Foundation and domain
 
-> Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
+> Written against commit `eda7a09` (milestone 7b, look and feel). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
 > search the file for the old name. Exercises for this note: 1 (newtypes), 2 (permissions), 3 (macro), 4 (audit chain). Reading time: about
 > 45 minutes, plus the exercises.

@@ -5,11 +5,10 @@ pub(crate) mod expiry;
 pub(crate) mod links;
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
 use smoke_domain::DomainError;
 use smoke_domain::people::{PeopleError, expire, reactivate};
 use smoke_domain::permissions::{Action, can};
@@ -19,8 +18,8 @@ use smoke_domain::types::{Role, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::forms::{Pairs, QueryPairs};
+use crate::header::{SignedIn, Tab, initial};
 use crate::i18n::Tr;
 use crate::routes::people::expiry::{ExpiryDraft, ExpiryFields};
 use crate::routes::people_refusal;
@@ -31,11 +30,16 @@ use crate::time;
 pub(crate) struct PersonRow {
     pub(crate) id: i64,
     pub(crate) username: String,
+    /// The avatar's letter.
+    pub(crate) initial: String,
     pub(crate) role: &'static str,
-    /// "until 22/01/2026 19:05", "expired 15/01/2026 20:00" or "no end date".
+    /// The role tag's colour: guests amber, viewers grey; residents keep the default.
+    pub(crate) tone: Option<&'static str>,
+    /// "until 22/01/2026 19:05", "expired 15/01/2026 20:00" or "no end date", then "· setup
+    /// pending" while the person has not chosen a password yet.
     pub(crate) status: String,
-    /// Invited but has not chosen a password yet.
-    pub(crate) pending_setup: bool,
+    /// The button that issues a link: a new setup link, or a password reset.
+    pub(crate) link_label: String,
     pub(crate) can_expire: bool,
     /// The reactivation form, for expired accounts.
     pub(crate) reactivate: Option<ExpiryFields>,
@@ -49,6 +53,14 @@ struct PeoplePage {
     saved: Option<&'static str>,
     error: Option<&'static str>,
     people: Vec<PersonRow>,
+}
+
+fn role_tone(role: Role) -> Option<&'static str> {
+    match role {
+        Role::Resident => None,
+        Role::Guest => Some("warn"),
+        Role::Viewer => Some("muted"),
+    }
 }
 
 pub(crate) fn role_key(role: Role) -> &'static str {
@@ -117,15 +129,28 @@ async fn people_page<S: Store>(
                 .filter(|(id, _)| *id == person.id)
                 .map(|(_, typed)| typed.clone())
                 .unwrap_or_default();
+            let pending_setup = person.password_hash.is_none();
+            let mut status = status(tr, person, now, tz);
+            if pending_setup {
+                status.push_str(" · ");
+                status.push_str(&tr.t("people-status-setup"));
+            }
+            let link_label = if pending_setup {
+                tr.t("people-new-setup-link")
+            } else {
+                tr.t("people-reset-password")
+            };
             PersonRow {
                 id: person.id.0,
                 username: person.username.to_string(),
+                initial: initial(person.username.as_str()),
                 role: role_key(person.role),
-                status: status(tr, person, now, tz),
-                pending_setup: person.password_hash.is_none(),
+                tone: role_tone(person.role),
+                status,
+                link_label,
                 can_expire: person.role != Role::Resident && !expired,
                 reactivate: expired
-                    .then(|| expiry::fields(person.role, "", &typed))
+                    .then(|| expiry::fields(tr, person.role, "", &typed))
                     .flatten(),
             }
         })
@@ -135,7 +160,7 @@ async fn people_page<S: Store>(
         status_code,
         &PeoplePage {
             tr,
-            signed_in: SignedIn::of(user, now),
+            signed_in: SignedIn::of(user, now, Tab::People),
             saved,
             error,
             people,
@@ -143,19 +168,14 @@ async fn people_page<S: Store>(
     )
 }
 
-#[derive(Deserialize)]
-pub(crate) struct ListQuery {
-    saved: Option<String>,
-}
-
 pub(crate) async fn list<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ListQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     require_manager(&user, state.clock.now())?;
-    let saved = match query.saved.as_deref() {
+    let saved = match query.get("saved") {
         Some("expired") => Some("people-saved-expired"),
         Some("reactivated") => Some("people-saved-reactivated"),
         _ => None,

@@ -1,23 +1,23 @@
 //! The Log screen (spec §9, screen 1): the event status, the month's summary card and the form.
 
 use askama::Template;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use chrono_tz::Tz;
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{Room, Symptom, User};
+use smoke_domain::records::{Event, Room, RoomLevel, SmellReport, Symptom, User};
 use smoke_domain::repos::Store;
 use smoke_domain::starter::BEDROOM_KEY;
 use smoke_domain::summary::{MonthSummary, summarise};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Level, RoomArea, RoomId, SymptomId};
+use smoke_domain::types::{RoomArea, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::forms::{Pairs, QueryPairs};
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::entries::level_field;
 use crate::routes::guide::{GuideRow, levels};
@@ -66,25 +66,74 @@ impl Draft {
     }
 }
 
-/// A radio button, chip or checkbox.
-pub(crate) struct Choice {
-    pub(crate) value: i64,
+/// A radio button, chip or checkbox; `value` is an id or a word of the address.
+pub(crate) struct Choice<V = i64> {
+    pub(crate) value: V,
     pub(crate) label: String,
     pub(crate) checked: bool,
 }
 
-/// A room chip and the row of levels it shows while selected.
+/// A room's line and the level grid it opens while selected.
 pub(crate) struct RoomChoice {
     pub(crate) room: Choice,
-    pub(crate) levels: Vec<Choice>,
+    /// "Level in Bedroom", for screen readers.
+    pub(crate) legend: String,
+    pub(crate) picked: Option<u8>,
+}
+
+impl RoomChoice {
+    pub(crate) fn is_picked(&self, level: &u8) -> bool {
+        self.picked == Some(*level)
+    }
+}
+
+/// The translated headings and hints of the shared report fields, so the two forms and the
+/// rating sheet read them from one place.
+pub(crate) struct FieldTexts {
+    pub(crate) rooms: String,
+    pub(crate) how_to_rate: String,
+    pub(crate) inside: String,
+    pub(crate) common: String,
+    pub(crate) level_hint: String,
+    pub(crate) symptoms: String,
+    pub(crate) note: String,
+    pub(crate) optional: String,
+    pub(crate) add: String,
+    pub(crate) rating_title: String,
+    pub(crate) close: String,
+    pub(crate) rating_tip: String,
+    pub(crate) full_guide: String,
+}
+
+impl FieldTexts {
+    fn new(tr: Tr) -> Self {
+        Self {
+            rooms: tr.t("log-rooms"),
+            how_to_rate: tr.t("log-how-to-rate"),
+            inside: tr.t("log-inside"),
+            common: tr.t("log-common"),
+            level_hint: tr.t("log-level-hint"),
+            symptoms: tr.t("log-symptoms"),
+            note: tr.t("log-note"),
+            optional: tr.t("optional"),
+            add: tr.t("action-add"),
+            rating_title: tr.t("rating-title"),
+            close: tr.t("close"),
+            rating_tip: tr.t("rating-tip"),
+            full_guide: tr.t("rating-full-guide"),
+        }
+    }
 }
 
 /// The room, level and symptom fields shared by the Log form and the correction form
 /// (`templates/report_fields.html`).
 pub(crate) struct Fields {
+    pub(crate) texts: FieldTexts,
     pub(crate) inside: Vec<RoomChoice>,
     pub(crate) common: Vec<RoomChoice>,
     pub(crate) symptoms: Vec<Choice>,
+    /// The levels 0–10 with their names and descriptions, offered for each room.
+    pub(crate) levels: Vec<GuideRow>,
 }
 
 /// The choices for `draft`. Hidden rooms and symptoms are offered only if listed in `keep`
@@ -101,29 +150,25 @@ pub(crate) fn fields(
             .iter()
             .filter(|r| r.area == area && (r.hidden_at.is_none() || keep.0.contains(&r.id)))
             .map(|r| {
-                let picked = draft
-                    .levels
-                    .iter()
-                    .find(|(room, _)| *room == r.id)
-                    .map(|&(_, level)| level);
+                let label = labels::room(tr, r);
                 RoomChoice {
+                    legend: tr.t1("log-level-in", "room", &label),
+                    picked: draft
+                        .levels
+                        .iter()
+                        .find(|(room, _)| *room == r.id)
+                        .map(|&(_, level)| level),
                     room: Choice {
                         value: r.id.0,
-                        label: labels::room(tr, r),
+                        label,
                         checked: draft.rooms.contains(&r.id),
                     },
-                    levels: (Level::MIN..=Level::MAX)
-                        .map(|value| Choice {
-                            value: value.into(),
-                            label: value.to_string(),
-                            checked: picked == Some(value),
-                        })
-                        .collect(),
                 }
             })
             .collect()
     };
     Fields {
+        texts: FieldTexts::new(tr),
         inside: room_choices(RoomArea::Inside),
         common: room_choices(RoomArea::Common),
         symptoms: symptoms
@@ -135,17 +180,50 @@ pub(crate) fn fields(
                 checked: draft.symptoms.contains(&s.id),
             })
             .collect(),
+        levels: levels(tr),
     }
 }
 
-/// What the Log screen says about the open event.
-pub(crate) enum Status {
-    /// No event is open.
-    None,
-    /// The viewer may see the open event, which started at this time.
-    Open(String),
-    /// An event is open but the viewer may not know about it, so the screen says nothing.
-    Hidden,
+/// The banner of the open event (look-and-feel spec §5, §6.2), for those who may open it.
+pub(crate) struct Banner {
+    /// When the event started.
+    since: String,
+    /// "3 reports · highest level 6 (Bedroom)", over the reports the viewer may see.
+    detail: String,
+}
+
+/// The highest level any room reached in `reports`, with that room. On a tie the room of the
+/// most recent report wins (by observed time, then recorded time), and within one report the
+/// later room. `None` while every level is 0.
+pub(crate) fn peak<'a>(reports: impl IntoIterator<Item = &'a SmellReport>) -> Option<RoomLevel> {
+    reports
+        .into_iter()
+        .flat_map(|report| {
+            let when = (report.observed_at, report.recorded_at);
+            report.values.rooms().iter().map(move |&room| (room, when))
+        })
+        .filter(|(room, _)| !room.level.is_clean())
+        .max_by_key(|&(room, when)| (room.level, when))
+        .map(|(room, _)| room)
+}
+
+fn banner(
+    tr: Tr,
+    event: &Event,
+    visible: &[&SmellReport],
+    rooms: &[Room],
+    now: DateTime<Utc>,
+    tz: Tz,
+) -> Banner {
+    let top_room = peak(visible.iter().copied()).map(|top| {
+        let room = labels::room_by_id(tr, rooms, top.room);
+        let level = top.level.get().to_string();
+        tr.t2("event-banner-peak", ("level", &level), ("room", &room))
+    });
+    Banner {
+        since: time::since(tr.0, event.opened_at, now, tz),
+        detail: labels::reports_with(tr, visible.len(), top_room),
+    }
 }
 
 /// The ids a submitted form may name: every visible room and symptom, plus those in `keep` (a
@@ -179,12 +257,24 @@ pub(crate) struct FormView {
     error: Option<&'static str>,
 }
 
+impl FormView {
+    /// "now" beside "Time" while no time is typed.
+    fn time_hint(&self, tr: &Tr) -> String {
+        if self.observed_at.is_empty() {
+            tr.t("log-time-now")
+        } else {
+            String::new()
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "log.html")]
 pub(crate) struct LogPage {
     tr: Tr,
     signed_in: Option<SignedIn>,
-    status: Status,
+    /// `None` when no event is open, or the viewer may not know about it.
+    banner: Option<Banner>,
     /// The open event, when the user may close it.
     close_event: Option<i64>,
     /// "The event from … was auto-closed", shown while another event is open (spec §7.4).
@@ -192,25 +282,19 @@ pub(crate) struct LogPage {
     /// A translation key confirming what was just saved.
     saved: Option<&'static str>,
     summary: MonthSummary,
-    levels: Vec<GuideRow>,
     /// `None` for people who may not log (viewers, expired guests).
     form: Option<FormView>,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct ShowQuery {
-    saved: Option<String>,
 }
 
 pub(crate) async fn show<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ShowQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     auto_close(&state.store, &state.config.schedule, now).await?;
-    let saved = match query.saved.as_deref() {
+    let saved = match query.get("saved") {
         Some("report") => Some("log-saved-report"),
         Some("pm25") => Some("log-saved-pm25"),
         Some("no-smell") => Some("log-saved-no-smell"),
@@ -293,19 +377,102 @@ pub(crate) async fn log_page<S: Store>(
 
     Ok(LogPage {
         tr,
-        signed_in: SignedIn::of(user, now),
+        signed_in: SignedIn::of(user, now, Tab::Log),
         close_event: shown
             .filter(|e| can(&actor, Action::ManageEvent { owner: e.owner_id }, now))
             .map(|e| e.id.0),
-        status: match (&open, shown) {
-            (None, _) => Status::None,
-            (Some(_), Some(e)) => Status::Open(time::since(tr.0, e.opened_at, now, schedule.tz())),
-            (Some(_), None) => Status::Hidden,
-        },
+        banner: shown.map(|event| {
+            let visible: Vec<&SmellReport> = open_reports
+                .iter()
+                .filter(|r| can_see(&actor, r.user_id, now))
+                .collect();
+            banner(tr, event, &visible, &rooms, now, schedule.tz())
+        }),
         notice,
         saved,
         summary,
-        levels: levels(tr),
         form,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use smoke_domain::records::ReportValues;
+    use smoke_domain::types::{EventId, Level, ReportId, UserId};
+
+    use super::*;
+
+    fn report(observed: &str, recorded: &str, rooms: &[(i64, u8)]) -> SmellReport {
+        SmellReport {
+            id: ReportId(1),
+            event_id: Some(EventId(1)),
+            user_id: UserId(1),
+            observed_at: observed.parse().unwrap(),
+            recorded_at: recorded.parse().unwrap(),
+            values: ReportValues::new(
+                rooms
+                    .iter()
+                    .map(|&(room, level)| RoomLevel {
+                        room: RoomId(room),
+                        level: Level::new(level).unwrap(),
+                    })
+                    .collect(),
+                vec![],
+                None,
+            )
+            .unwrap(),
+            deleted_at: None,
+        }
+    }
+
+    fn top(reports: &[SmellReport]) -> Option<(i64, u8)> {
+        peak(reports).map(|room| (room.room.0, room.level.get()))
+    }
+
+    #[test]
+    fn the_peak_is_the_highest_room_level_of_the_event() {
+        let reports = [
+            report(
+                "2026-01-15T18:00:00Z",
+                "2026-01-15T18:00:00Z",
+                &[(1, 3), (2, 6)],
+            ),
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(3, 4)]),
+        ];
+        assert_eq!(top(&reports), Some((2, 6)));
+    }
+
+    #[test]
+    fn on_a_tie_the_most_recently_reported_room_wins() {
+        let reports = [
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(2, 6)]),
+            report("2026-01-15T18:00:00Z", "2026-01-15T20:00:00Z", &[(1, 6)]),
+        ];
+        assert_eq!(
+            top(&reports),
+            Some((2, 6)),
+            "by observed time, not list order"
+        );
+        let same_time = [
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(1, 6)]),
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:30:00Z", &[(3, 6)]),
+        ];
+        assert_eq!(top(&same_time), Some((3, 6)), "then by recorded time");
+        let one_report = [report(
+            "2026-01-15T19:00:00Z",
+            "2026-01-15T19:00:00Z",
+            &[(1, 6), (4, 6)],
+        )];
+        assert_eq!(top(&one_report), Some((4, 6)), "then the later room");
+    }
+
+    #[test]
+    fn an_event_at_zero_or_without_rooms_has_no_peak() {
+        let reports = [
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(1, 0)]),
+            report("2026-01-15T19:10:00Z", "2026-01-15T19:10:00Z", &[]),
+        ];
+        assert_eq!(top(&reports), None);
+        assert_eq!(top(&[]), None);
+    }
 }

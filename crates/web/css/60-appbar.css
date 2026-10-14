@@ -1,0 +1,34 @@
+/* The header (app name and avatar) and, on signed-out pages, the footer with the languages. */
+@layer components {
+  .appbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    inline-size: 100%;
+    max-inline-size: var(--column);
+    margin-inline: auto;
+    padding: calc(var(--space-4) + env(safe-area-inset-top)) var(--gutter) var(--space-1);
+  }
+
+  .brand {
+    font-size: var(--text-brand);
+    font-weight: 750;
+    letter-spacing: -0.01em;
+  }
+
+  .footer {
+    inline-size: 100%;
+    max-inline-size: var(--column);
+    margin-inline: auto;
+    padding: var(--space-4) var(--gutter) calc(var(--space-5) + env(safe-area-inset-bottom));
+  }
+
+  .footer .segmented {
+    border: 0;
+    background: transparent;
+  }
+
+  .footer .segmented > [aria-current="true"] {
+    box-shadow: none;
+  }
+}

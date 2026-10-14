@@ -1,0 +1,12 @@
+@layer components {
+  .icon {
+    inline-size: 1.25em;
+    block-size: 1.25em;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}

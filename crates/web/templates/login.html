@@ -1,18 +1,19 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("login-title") }}{% endblock %}
+{% block header %}{% endblock %}
 {% block content %}
-<h1>{{ tr.t("login-title") }}</h1>
-{% if let Some(notice) = notice %}
-<p class="notice" role="alert">{{ tr.t(notice.key()) }}</p>
-{% endif %}
-<form method="post" action="/login" class="stack">
-  <label>{{ tr.t("login-username") }}
-    <input name="username" value="{{ username }}" autocomplete="username"
-           autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required>
-  </label>
-  <label>{{ tr.t("login-password") }}
-    <input type="password" name="password" autocomplete="current-password" maxlength="128" required>
-  </label>
-  <button type="submit">{{ tr.t("login-submit") }}</button>
-</form>
+<div class="welcome">
+  <img src="/static/icon.svg" alt="" width="64" height="64">
+  <span class="brand">{{ tr.t("app-name") }}</span>
+</div>
+<section class="card">
+  <h1>{{ tr.t("login-title") }}</h1>
+  {% if let Some(notice) = notice %}{% call c::notice(tr.t(notice.key()), true) %}{% endcall %}{% endif %}
+  <form method="post" action="/login" class="stack">
+    {% call c::field(tr.t("login-username")) %}<input name="username" value="{{ username }}" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="64" required>{% endcall %}
+    {% call c::field(tr.t("login-password")) %}<input type="password" name="password" autocomplete="current-password" maxlength="128" required>{% endcall %}
+    <button type="submit" class="button">{{ tr.t("login-submit") }}</button>
+  </form>
+</section>
 {% endblock %}

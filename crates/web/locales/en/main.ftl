@@ -11,10 +11,12 @@ login-locked = Too many attempts. Try again in 15 minutes.
 login-expired = This account has expired. Ask a resident to reactivate it.
 signed-in-as = Signed in as { $username }.
 logout = Sign out
+account-menu = Account: { $username }
 
 log-title = Log a smell
-event-none = No smell event in progress.
-event-open-since = Smell event in progress since { $time }.
+event-banner-title = Smell event in progress
+event-banner-since = since { $time }
+event-banner-peak = highest level { $level } ({ $room })
 log-intensity = Intensity
 log-how-to-rate = How to rate
 log-rooms = Rooms
@@ -22,14 +24,11 @@ log-level-in = Level in { $room }
 log-inside = Inside
 log-common = Common areas
 log-symptoms = Symptoms
-log-pm25 = PM2.5 (µg/m³, optional)
 log-time = Time
 log-time-now = now
-log-time-change = change
-log-note = Note (optional)
-log-submit = Log smell
+log-note = Note
+log-submit = Log
 log-update = Update: situation changed
-log-pm25-only = Log PM2.5 only
 log-no-smell = No smell
 log-read-only = You can look at the data but not log.
 
@@ -38,9 +37,9 @@ log-saved-pm25 = PM2.5 reading saved.
 log-saved-no-smell = Saved: no smell.
 log-error-rooms = Pick at least one room.
 log-error-level = Pick a level from 0 to 10 for each selected room.
-log-error-no-smell-level = No smell records the selected rooms at 0. Remove the levels above 0, or use Log smell.
+log-error-no-smell-level = No smell records the selected rooms at 0. Remove the levels above 0, or use Log.
 log-error-pm25 = PM2.5 must be a number from 0 to 1000.
-log-error-pm25-missing = Enter a PM2.5 value to log it on its own.
+log-error-empty = Pick a room, or enter a PM2.5 value.
 log-error-time = Enter a valid date and time.
 log-error-time-skipped = That time does not exist: the clocks moved forward.
 log-error-note = The note can be at most 2000 characters.
@@ -69,22 +68,30 @@ refused-future = The time cannot be in the future.
 refused-close-before-last-report = The end cannot be before the last report.
 refused-close-in-future = The end cannot be in the future.
 
-summary-this-month = This month:
-summary-events = { $count ->
-    [one] 1 event
-   *[other] { $count } events
-}
 summary-reports = { $count ->
     [one] 1 report
    *[other] { $count } reports
 }
-summary-bedroom-days = { $count ->
-    [one] 1 day with bedroom smoke
-   *[other] { $count } days with bedroom smoke
+log-level-hint = Pick a level from 0 to 10.
+optional = optional
+action-add = Add
+action-change = Change
+summary-caption = This month
+tile-events = { $count ->
+    [one] event
+   *[other] events
 }
-summary-checks = { $count ->
-    [one] 1 clean check
-   *[other] { $count } clean checks
+tile-reports = { $count ->
+    [one] report
+   *[other] reports
+}
+tile-bedroom-days = { $count ->
+    [one] bedroom day
+   *[other] bedroom days
+}
+tile-checks = { $count ->
+    [one] clean check
+   *[other] clean checks
 }
 
 rating-title = How to rate
@@ -139,17 +146,22 @@ nav-events = Events
 nav-graphs = Graphs
 nav-people = People
 nav-settings = Settings
+nav-label = Main menu
 
 events-title = Events
 events-none = No events this month.
 events-check = no smell (check)
-events-previous = ← Previous
-events-next = Next →
+events-previous = Previous month
+events-next = Next month
+events-month = Month
 events-in-progress = in progress
 events-max-intensity = max { $level }
 event-title = Event of { $date }
 event-started-by = Started by { $username }
+event-timeline = Timeline
+event-close-title = Close this event
 event-gap = More than 3 hours since the previous report: is this still the same event?
+event-gap-move = Move { $time } to a new event
 event-intensity = intensity { $level }
 event-pm25 = PM2.5 { $value } µg/m³
 event-close = Close event
@@ -203,6 +215,7 @@ settings-password-wrong = The current password is not correct.
 settings-saved-language = Language saved.
 settings-saved-password = Password changed. Your other devices are signed out.
 settings-guides = Guides
+settings-room-area = Area
 settings-lists-hint = Hidden items are no longer offered on the forms; reports that name them keep them.
 settings-list-hidden = hidden
 settings-list-hide = Hide
@@ -262,6 +275,7 @@ expiry-date = at the end of this day:
 expiry-never = never
 
 install-app = Install app
+install-card-hint = Open it from your home screen, like any app.
 install-title = Add Smoke Tracker to your home screen
 install-welcome = Your account is ready.
 install-intro = It then opens like an app, straight on the Log screen, so logging takes a few seconds.
@@ -277,13 +291,43 @@ offline-text = Smoke Tracker needs the internet to save what you log. Try again 
 offline-retry = Try again
 
 graphs-title = Graphs
-graphs-month = Show one month
-graphs-year = Show the whole year
+graphs-filters = Filters
+graphs-dates = Dates
+graphs-range-month = This month
+graphs-range-7d = Last 7 days
+graphs-range-30d = Last 30 days
+graphs-range-year = This year
+graphs-from = From
+graphs-to = To
+graphs-where = Where
+graphs-area-all = All
+graphs-by = Reported by
+graphs-everyone = Everyone
+graphs-time = Time of day
+graphs-time-any = Any
+graphs-time-morning = Morning
+graphs-time-afternoon = Afternoon
+graphs-time-evening = Evening
+graphs-time-night = Night
+graphs-min-level = Minimum level
+graphs-level-any = any
+graphs-level-from = level { $level }+
+graphs-hide-clean = Hide clean checks
+graphs-no-clean = no clean checks
+graphs-reset = Reset
+graphs-show = Show graphs
 graphs-own-only = These graphs show only your own reports and readings.
 graphs-none = Nothing was logged in this period.
 graphs-needs-js = This graph needs JavaScript.
 graphs-intensity = Smell intensity over time
 graphs-pm25 = PM2.5 (µg/m³)
+graphs-series-both = Both
+graphs-series-intensity = Intensity
+graphs-series-pm25 = PM2.5
+graphs-series-both-title = Smell intensity and PM2.5
+graphs-series-pm25-title = PM2.5 over time
+graphs-lines-person = By person
+graphs-search-people = Search people
 graphs-events-day = Events per day
 graphs-events-week = Events per week
 graphs-events-label = Events

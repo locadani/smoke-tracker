@@ -285,7 +285,7 @@ only as a dismissable banner.
 
 ### 7.6 PM2.5 readings
 - They can be logged together with a smell report (one form, one transaction, two records) or alone
-  (**"Log PM2.5 only"**).
+  (**Log** with only PM2.5 filled in).
 - A reading is linked automatically to the event whose span contains its observed time, or to the
   open event. Otherwise it is standalone.
 - PM2.5 readings never open, extend, or close events.
@@ -294,7 +294,8 @@ only as a dismissable banner.
 - **Correct a mistake:** edits a report's values. Audited (before/after).
 - **Move to another event** (residents; guests for their own reports): moves a report to an existing event or a new one. Audited.
 - The event page shows a **large-gap warning** when consecutive reports are more than 3 hours apart.
-  This makes it easy to spot a guest report that joined a forgotten event.
+  This makes it easy to spot a guest report that joined a forgotten event. The warning offers
+  **Move to a new event** for the report after the gap (same rules as Move).
 
 ---
 
@@ -343,8 +344,9 @@ QR code. There is no email.
 ## 9. Screens (mobile-first PWA)
 
 1. **Log (home screen; the icon opens here)**
-   - Event status bar
-   - **Rooms as toggle chips**, grouped *Inside / Common*, pre-selected from your last report in
+   - Event status bar: since when, the number of reports, and the highest level reported in the
+     event with its room
+   - **Rooms as toggle rows**, grouped *Inside / Common*, pre-selected from your last report in
      the open event. Each selected room shows its own level row: **0** (clean) and **1–10**, with
      ⓘ *How to rate* (popup, then a link to the full page; see §5). Every selected room needs a
      level; at least one room is required, except for *No smell*.
@@ -352,10 +354,11 @@ QR code. There is no email.
    - Optional PM2.5 field
    - Time ("now", with a *change* link)
    - Optional note
-   - Main button: **Log smell** / **Update: situation changed**; **Close event**
+   - Main button: **Log** / **Update: situation changed**. It logs a smell report when rooms are
+     selected (a clean check when all are 0) and a PM2.5 reading alone when only PM2.5 is filled
+     in; symptoms or a note without a room is an error. **Close event** is in the event status bar.
    - **No smell**: one tap records the whole home as clean; with rooms selected (all at 0) it
      records those rooms. Guests can use it too.
-   - Secondary: **Log PM2.5 only**
 2. **Summary card** on the home screen, e.g. *"This month: 14 events · 41 reports · 9 days with
    bedroom smoke · 6 clean checks."*
 3. **Events:** list grouped by day, with that day's no-smell checks. The event detail shows a timeline of reports and PM2.5
@@ -371,10 +374,16 @@ QR code. There is no email.
    - symptom frequency
    - inside vs common-area comparison
 
-   Graphs cover one local month (per day) or one local year (per Monday-to-Sunday week). The
-   heatmap shows each room's average level per local hour; inside vs common shows each area's
-   highest level; an event counts once, on the day of its earliest report the viewer may see
-   (decision #123).
+   Filters for all graphs, kept in the URL: dates (quick picks or from–to), area or rooms, person
+   who reported (with search; not shown to guests), time of day, minimum level, hide clean checks.
+   The intensity graph can show both series, intensity only or PM2.5 only, and, when no person is
+   filtered, a **By person | Everyone** switch: one line per person, or one line with every
+   report.
+
+   Graphs cover any period of local days up to two years: per day up to 62 days, longer periods
+   per Monday-to-Sunday week (decision #137). The heatmap shows each room's average level per
+   local hour; inside vs common shows each area's highest level; an event counts once, on the day
+   of its earliest report the viewer may see (decision #123).
 
    Guests see their own data only.
 6. **People** (residents): users with role and expiry; Invite, Expire, Reactivate, Reset password
@@ -384,7 +393,8 @@ QR code. There is no email.
    - password change
    - room and symptom lists (residents)
    - Guides: *How to rate*, *How to log*
-8. **Header:** app name, **Install app** (hidden in standalone mode), menu.
+   - **Install app** (hidden in standalone mode)
+8. **Header:** app name and an avatar menu (signed-in name, Log out).
 
 ### 9.1 PWA
 - Web app manifest:

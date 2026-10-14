@@ -1,7 +1,9 @@
 {% extends "base.html" %}
 {% block title %}{{ tr.t("offline-title") }}{% endblock %}
 {% block content %}
-<h1>{{ tr.t("offline-title") }}</h1>
-<p>{{ tr.t("offline-text") }}</p>
-<p><a href="/">{{ tr.t("offline-retry") }}</a></p>
+<section class="card">
+  <h1>{{ tr.t("offline-title") }}</h1>
+  <p>{{ tr.t("offline-text") }}</p>
+  <a href="/" class="button">{{ tr.t("offline-retry") }}</a>
+</section>
 {% endblock %}

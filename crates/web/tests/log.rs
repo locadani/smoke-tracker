@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::{Commit, EventRepo, ListWrites, Transactional, UserWrites};
@@ -22,29 +23,71 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
     assert_eq!(response.status(), StatusCode::OK);
     let html = text(response).await;
     assert!(html.contains("<h1>Log a smell</h1>"), "{html}");
-    assert!(html.contains("No smell event in progress."), "{html}");
+    assert!(
+        !Page::parse(&html).exists(".banner"),
+        "no event, no banner: {html}"
+    );
     assert!(
         html.contains(r#"<form method="post" action="/log""#),
         "{html}"
     );
+    let page = Page::parse(&html);
     let bedroom_id = app.room("room-bedroom").await;
-    let level_row = format!(r#"name="level-{bedroom_id}""#);
-    assert_eq!(html.matches(&level_row).count(), 11, "levels 0 to 10");
-    assert!(html.contains("<legend>Level in Bedroom</legend>"), "{html}");
-    let inside = html.find("Inside").unwrap();
-    let common = html.find("Common areas").unwrap();
-    let bedroom = html.find("<span>Bedroom</span>").unwrap();
-    let stairwell = html.find("<span>Stairwell (shared)</span>").unwrap();
-    assert!(inside < bedroom && bedroom < common && common < stairwell);
-    assert!(!html.contains("Kitchen"), "hidden rooms are not offered");
-    assert!(html.contains(r#"name="symptom""#) && html.contains("Eye irritation"));
-    assert!(html.contains(">Log smell</button>"), "{html}");
-    assert!(html.contains(">Log PM2.5 only</button>"), "{html}");
-    assert!(
-        html.contains(r#"value="no-smell" formnovalidate class="secondary">No smell</button>"#),
-        "{html}"
+    let bedroom = format!(r#".room:has(input[name=room][value="{bedroom_id}"])"#);
+    assert_eq!(
+        page.attrs(&format!("{bedroom} .levels input[type=radio]"), "value"),
+        (0..=10).map(|level| level.to_string()).collect::<Vec<_>>(),
+        "levels 0 to 10"
     );
-    assert!(html.contains(" · 0 clean checks"), "{html}");
+    assert_eq!(page.text(&format!("{bedroom} legend")), "Level in Bedroom");
+    assert_eq!(
+        page.text(&format!(
+            "{bedroom} .level:has(input[value='3']) .level-text"
+        )),
+        "Light. Clearly smoke, but weak. Easy to ignore."
+    );
+    assert_eq!(
+        page.text(&format!("{bedroom} .level-hint")),
+        "Pick a level from 0 to 10."
+    );
+    assert_eq!(page.texts(".rooms > .overline"), ["Inside", "Common areas"]);
+    let rooms = page.texts(".rooms .room-check");
+    assert_eq!(rooms.first().map(String::as_str), Some("Living room"));
+    assert_eq!(rooms.last().map(String::as_str), Some("Stairwell (shared)"));
+    assert!(
+        !rooms.iter().any(|room| room == "Kitchen"),
+        "hidden rooms are not offered"
+    );
+    assert!(
+        page.texts("label.chip > input[name=symptom] + span")
+            .contains(&"Eye irritation".to_owned())
+    );
+    assert!(
+        page.exists("details.collapsible:not([open]) input[type=datetime-local][name=observed_at]")
+    );
+    assert!(page.exists("details.collapsible:not([open]) textarea[name=note]"));
+    assert!(page.exists("input[type=number][name=pm25]"));
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.texts(r#"form[action="/log"] .actions button[name=action]"#),
+        ["No smell", "Log"]
+    );
+    assert_eq!(
+        page.attrs(
+            r#"form[action="/log"] .actions button[name=action]"#,
+            "value"
+        ),
+        ["no-smell", "log"]
+    );
+    assert!(page.exists("button[value=no-smell][formnovalidate][data-variant=secondary]"));
+    assert_eq!(
+        page.texts(".stats dt").last().map(String::as_str),
+        Some("clean checks")
+    );
+    assert_eq!(
+        page.texts(".stats dd").last().map(String::as_str),
+        Some("0")
+    );
 }
 
 #[tokio::test]
@@ -72,22 +115,25 @@ async fn with_an_event_open_the_form_offers_an_update_with_my_last_rooms() {
     let cookie = app.sign_in("daniele").await;
 
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains("Smell event in progress since 19:05."),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.text(".banner > p"),
+        "Smell event in progress since 19:05 2 reports · highest level 6 (Kitchen)"
     );
+    assert!(page.exists(&format!(
+        r#".banner form[action="/events/{}/close"] button"#,
+        first.report.event_id.unwrap().0
+    )));
     assert!(
         html.contains(">Update: situation changed</button>"),
         "{html}"
     );
-    assert!(
-        html.contains(&format!(r#"value="{}" checked><span>Bedroom"#, bedroom.0)),
-        "my last rooms are pre-selected: {html}"
+    assert_eq!(
+        page.texts(".room-check:has(input[name=room][checked])"),
+        ["Bedroom"],
+        "my last rooms are pre-selected, not the partner's Kitchen"
     );
-    assert!(
-        html.contains(&format!(r#"value="{}"><span>Kitchen"#, kitchen.0)),
-        "not the partner's: {html}"
-    );
+    assert!(page.exists(&format!(r#"input[name=room][value="{}"]"#, kitchen.0)));
 }
 
 #[tokio::test]
@@ -129,14 +175,11 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
 
     let cookie = app.sign_in("guest").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    for hidden in [
-        "since 19:05",
-        "Update: situation changed",
-        "No smell event in progress.",
-    ] {
+    for hidden in ["since 19:05", "Update: situation changed"] {
         assert!(!html.contains(hidden), "{hidden}: {html}");
     }
-    assert!(html.contains(">Log smell</button>"), "{html}");
+    assert!(!Page::parse(&html).exists(".banner"), "{html}");
+    assert!(html.contains(">Log</button>"), "{html}");
 
     app.log(
         &guest,
@@ -147,9 +190,10 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
     )
     .await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains("Smell event in progress since 19:05."),
-        "{html}"
+    assert_eq!(
+        Page::parse(&html).text(".banner > p"),
+        "Smell event in progress since 19:05 1 report · highest level 3 (Living room)",
+        "the guest's own report only"
     );
     assert!(
         html.contains(">Update: situation changed</button>"),
@@ -164,10 +208,9 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
     let cookie = app.sign_in("stranger").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
     assert!(!html.contains("since 19:05"), "{html}");
-    assert!(!html.contains("No smell event in progress."), "{html}");
     let cookie = app.sign_in("guest").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(html.contains("since 19:05."), "{html}");
+    assert!(html.contains("since 19:05"), "{html}");
     assert!(!html.contains(r#"action="/log""#), "{html}");
 }
 
@@ -207,16 +250,32 @@ async fn the_summary_counts_this_month_and_guests_count_only_their_own() {
     .await;
 
     let cookie = app.sign_in("daniele").await;
-    let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains("This month: 2 events · 3 reports · 2 days with bedroom smoke"),
-        "{html}"
+    let tiles = async |cookie: &str| {
+        let page = Page::parse(&text(app.send(get_with("/", cookie)).await).await);
+        assert_eq!(page.text(".stats-caption"), "This month");
+        page.texts(".stats dd")
+            .into_iter()
+            .zip(page.texts(".stats dt"))
+            .collect::<Vec<_>>()
+    };
+    let pair = |n: &str, label: &str| (n.to_owned(), label.to_owned());
+    assert_eq!(
+        tiles(&cookie).await,
+        [
+            pair("2", "events"),
+            pair("3", "reports"),
+            pair("2", "bedroom days"),
+            pair("0", "clean checks")
+        ]
     );
     let cookie = app.sign_in("guest").await;
-    let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains("This month: 2 events · 2 reports · 1 day with bedroom smoke"),
-        "{html}"
+    assert_eq!(
+        tiles(&cookie).await[..3],
+        [
+            pair("2", "events"),
+            pair("2", "reports"),
+            pair("1", "bedroom day")
+        ]
     );
 }
 
@@ -238,7 +297,7 @@ async fn opening_the_log_screen_runs_the_auto_close_sweep() {
     app.at("2026-01-16T07:00:00Z");
 
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(html.contains("No smell event in progress."), "{html}");
+    assert!(!Page::parse(&html).exists(".banner"), "auto-closed: {html}");
     let event = app
         .store
         .event(logged.report.event_id.unwrap())
@@ -256,22 +315,28 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
     app.add_user("daniele", Role::Resident, Locale::It).await;
     let cookie = app.sign_in("daniele").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains(r#"<a href="/guide/rating" data-dialog="rating-guide""#),
-        "{html}"
+    let page = Page::parse(&html);
+    assert!(page.exists(r#"a[href="/guide/rating"][data-dialog=rating-guide]"#));
+    let sheet = "dialog#rating-guide.sheet[aria-labelledby=rating-guide-title]";
+    assert_eq!(
+        page.text(&format!("{sheet} h2#rating-guide-title")),
+        "Come valutare"
     );
-    assert!(html.contains(r#"<dialog id="rating-guide""#), "{html}");
-    assert!(html.contains(r#"<form method="dialog""#), "{html}");
-    assert!(
-        html.contains(r#"<tr><th scope="row">0</th><td>Pulito</td></tr>"#),
-        "{html}"
+    assert!(page.exists(&format!(
+        "{sheet} form[method=dialog] button[aria-label=Chiudi]"
+    )));
+    assert_eq!(page.count(&format!("{sheet} tr")), 11);
+    assert_eq!(page.text(&format!("{sheet} tr td")), "Pulito");
+    assert_eq!(
+        page.texts(&format!("{sheet} tr td"))[1],
+        "Appena percepibile"
     );
-    assert!(html.contains("<td>Appena percepibile</td>"), "{html}");
-    assert!(
-        html.contains("Tra due numeri, scegli il più basso."),
-        "{html}"
+    assert_eq!(
+        page.text(&format!("{sheet} p")),
+        "Valuta quello che senti adesso, non quanto sei infastidito. Tra due numeri, scegli il più basso."
     );
-    assert!(html.contains(r#"<script src="/static/app.js" defer></script>"#));
+    assert!(page.exists(&format!(r#"{sheet} a[href="/guide/rating"]"#)));
+    assert!(page.exists(r#"script[type=module][src="/static/js/app.js"]"#));
 
     let guide = app.send(get_with("/guide/rating", &cookie)).await;
     assert_eq!(guide.status(), StatusCode::OK);
@@ -285,7 +350,7 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
         guide.contains("Come una stanza piena di fumo. Devi uscire."),
         "{guide}"
     );
-    let script = app.send(get("/static/app.js")).await;
+    let script = app.send(get("/static/js/dialog.js")).await;
     assert_eq!(script.status(), StatusCode::OK);
     assert!(text(script).await.contains("showModal()"));
     assert_eq!(

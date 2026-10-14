@@ -6,6 +6,8 @@ use smoke_domain::people::ExpiryPick;
 use smoke_domain::types::Role;
 
 use crate::forms::Pairs;
+use crate::i18n::Tr;
+use crate::routes::log::Choice;
 
 /// The guest quick picks: (form value, translation key).
 const GUEST_PICKS: [(&str, &str); 5] = [
@@ -19,20 +21,13 @@ const GUEST_PICKS: [(&str, &str); 5] = [
 /// A viewer may have no end, or end on a chosen day.
 const VIEWER_PICKS: [(&str, &str); 2] = [("never", "expiry-never"), ("date", "expiry-date")];
 
-/// One radio button of the expiry fields.
-pub(crate) struct PickChoice {
-    pub(crate) value: &'static str,
-    pub(crate) key: &'static str,
-    pub(crate) checked: bool,
-}
-
-/// The expiry fields for one role, named `<prefix>expiry` and `<prefix>expiry_date`
-/// (`templates/expiry_fields.html`).
+/// The expiry fields for one role, named `<prefix>expiry` and `<prefix>expiry_date` (the
+/// `expiry` macro of `templates/components.html`).
 pub(crate) struct ExpiryFields {
     pub(crate) role: &'static str,
     pub(crate) pick_name: String,
     pub(crate) date_name: String,
-    pub(crate) picks: Vec<PickChoice>,
+    pub(crate) picks: Vec<Choice<&'static str>>,
     pub(crate) date: String,
 }
 
@@ -57,7 +52,12 @@ impl ExpiryDraft {
 
 /// The fields for `role`, with `draft` picked (the role's default when nothing is); `None` for
 /// residents, who never expire.
-pub(crate) fn fields(role: Role, prefix: &str, draft: &ExpiryDraft) -> Option<ExpiryFields> {
+pub(crate) fn fields(
+    tr: Tr,
+    role: Role,
+    prefix: &str,
+    draft: &ExpiryDraft,
+) -> Option<ExpiryFields> {
     let (picks, default): (&[(&'static str, &'static str)], &str) = match role {
         Role::Resident => return None,
         Role::Guest => (&GUEST_PICKS, "1w"),
@@ -70,9 +70,9 @@ pub(crate) fn fields(role: Role, prefix: &str, draft: &ExpiryDraft) -> Option<Ex
         date_name: format!("{prefix}expiry_date"),
         picks: picks
             .iter()
-            .map(|&(value, key)| PickChoice {
+            .map(|&(value, key)| Choice {
                 value,
-                key,
+                label: tr.t(key),
                 checked: value == picked,
             })
             .collect(),
@@ -141,7 +141,11 @@ pub(crate) fn keys() -> Vec<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use smoke_domain::types::Locale;
+
     use super::*;
+
+    const EN: Tr = Tr(Locale::En);
 
     fn draft(pick: Option<&str>, date: &str) -> ExpiryDraft {
         ExpiryDraft {
@@ -218,14 +222,15 @@ mod tests {
 
     #[test]
     fn the_fields_preselect_the_default_or_the_draft() {
-        let guest = fields(Role::Guest, "guest_", &ExpiryDraft::default()).unwrap();
+        let guest = fields(EN, Role::Guest, "guest_", &ExpiryDraft::default()).unwrap();
         assert_eq!(guest.pick_name, "guest_expiry");
         let checked: Vec<_> = guest.picks.iter().filter(|p| p.checked).collect();
         assert_eq!(checked.len(), 1);
         assert_eq!(checked[0].value, "1w");
-        let viewer = fields(Role::Viewer, "", &draft(Some("date"), "2026-02-01")).unwrap();
+        assert_eq!(checked[0].label, "in 1 week");
+        let viewer = fields(EN, Role::Viewer, "", &draft(Some("date"), "2026-02-01")).unwrap();
         assert_eq!(viewer.date, "2026-02-01");
         assert!(viewer.picks.iter().any(|p| p.value == "date" && p.checked));
-        assert!(fields(Role::Resident, "", &ExpiryDraft::default()).is_none());
+        assert!(fields(EN, Role::Resident, "", &ExpiryDraft::default()).is_none());
     }
 }

@@ -1,17 +1,23 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("rating-title") }}{% endblock %}
 {% block content %}
+{% call c::back("/settings", tr.t("settings-title")) %}{% endcall %}
 <h1>{{ tr.t("rating-title") }}</h1>
-<table class="guide">
-  <thead>
-    <tr><th scope="col">{{ tr.t("rating-level") }}</th><th scope="col">{{ tr.t("rating-description") }}</th></tr>
-  </thead>
-  <tbody>
-    {% for level in levels %}
-    <tr><th scope="row">{{ level.value }} · {{ level.name }}</th><td>{{ level.description }}</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-<p>{{ tr.t("rating-tip") }}</p>
-<p><a href="/guide/logging">{{ tr.t("guide-log-title") }}</a> · <a href="/">{{ tr.t("error-back-home") }}</a></p>
+<section class="card">
+  <table class="scale">
+    <thead>
+      <tr><th scope="col">{{ tr.t("rating-level") }}</th><th scope="col">{{ tr.t("rating-description") }}</th></tr>
+    </thead>
+    <tbody>
+      {% for level in levels %}
+      <tr><th scope="row"><span class="badge">{{ level.value }}</span></th><td><strong>{{ level.name }}</strong><br>{{ level.description }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="muted">{{ tr.t("rating-tip") }}</p>
+</section>
+<section class="card rows">
+  {% call c::row("/guide/logging", tr.t("guide-log-title"), "") %}{% endcall %}
+</section>
 {% endblock %}

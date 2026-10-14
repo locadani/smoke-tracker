@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::clock::Clock;
 use smoke_domain::repos::UserRepo;
@@ -16,7 +17,10 @@ async fn only_residents_reach_people_and_see_it_in_the_menu() {
     app.add_user("lawyer", Role::Viewer, Locale::En).await;
     let resident = app.sign_in("daniele").await;
     let home = text(app.send(get_with("/", &resident)).await).await;
-    assert!(home.contains(r#"<a href="/people">People</a>"#), "{home}");
+    assert_eq!(
+        Page::parse(&home).text(r#"nav.tabbar a[href="/people"]"#),
+        "People"
+    );
     for name in ["guest", "lawyer"] {
         let cookie = app.sign_in(name).await;
         let home = text(app.send(get_with("/", &cookie)).await).await;
@@ -38,13 +42,23 @@ async fn people_lists_everyone_with_their_role_and_expiry() {
     app.add_user("guest", Role::Guest, Locale::En).await;
     let cookie = app.sign_in("daniele").await;
     let html = text(app.send(get_with("/people", &cookie)).await).await;
-    assert!(
-        html.contains("<strong>daniele</strong> · resident · no end date"),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.texts("section.card .person"),
+        [
+            "D daniele no end date resident",
+            "G guest until 22/01/2026 20:00 guest"
+        ]
     );
-    assert!(
-        html.contains("<strong>guest</strong> · guest · until 22/01/2026 20:00"),
-        "{html}"
+    assert_eq!(page.count(".person .tag"), 2);
+    assert_eq!(
+        page.attrs(".person .tag", "data-tone"),
+        ["warn"],
+        "residents keep the default tag"
+    );
+    assert_eq!(
+        page.text(r#"form[action="/people/2/expire"] button[data-variant=danger]"#),
+        "End access now"
     );
     assert!(html.contains(r#"action="/people/2/expire""#), "{html}");
     assert!(!html.contains(r#"action="/people/1/expire""#), "{html}");

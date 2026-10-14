@@ -1,6 +1,6 @@
 # 06 — Graphs
 
-> Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
+> Written against commit `eda7a09` (milestone 7b, look and feel). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
 > search the file for the old name. Exercises for this note: 16 (buckets), 17 (series). Reading time: about
 > 45 minutes, plus the exercises.
@@ -12,20 +12,23 @@
 - How a `BTreeMap` groups items by key and keeps them in key order, and what `entry`, `or_default` and `and_modify` do.
 - Why `None` is less than every `Some`, and how that makes "the highest level so far" a one-liner.
 - Why `f64::from(x)` and `bool::then` say more than `as f64` and an `if`.
-- Why filtering the input first is safer than filtering the output.
+- Why filtering the input first is safer than filtering the output, and how a pure `Filter` in the domain crate does the narrowing.
 - How JSON in an HTML attribute, a vendored script and a strict Content-Security-Policy fit together.
 - How `include_str!` lets a test read a file at compile time, and how `Drop` cleans up a test database.
+- How one module becomes a directory of files without changing what the rest of the program sees.
 
 ## The map
 
-This note covers the Graphs screen: the numbers behind each chart, how they reach the browser, and
+This note covers the Graphs screen: the filters in the address, the numbers behind each chart, how they reach the browser, and
 three smaller things around it (the README test, CI, and the test databases).
 
-- `crates/domain/src/graphs.rs`: the pure functions and the `Period` type.
+- `crates/domain/src/graphs.rs`: the pure functions, the `Period` type and the `Filter` that narrows the reports.
 - `crates/domain/src/schedule.rs::DailySchedule`: local days and the bounds of a month or a year.
-- `crates/web/src/routes/graphs.rs`: fetches the reports, filters them, builds the page.
+- `crates/web/src/routes/graphs/mod.rs`: fetches the reports, filters them, builds the page.
+- `crates/web/src/routes/graphs/filters.rs`: reads the filters from the address and builds the Filters card.
+- `crates/web/src/routes/graphs/charts.rs`: the Chart.js configuration of each chart and the heatmap rows.
 - `crates/web/templates/graphs.html`: the page; one `<canvas>` per chart and the heatmap table.
-- `crates/web/static/graphs.js`: draws each chart from its attribute.
+- `crates/web/static/js/graphs.js`: draws each chart from its attribute; `crates/web/static/js/series-switch.js` and `crates/web/static/js/person-filter.js` are the two small enhancements around it.
 - `crates/web/src/assets.rs`: the files compiled into the binary, with the hash test for the libraries.
 - `crates/web/src/routes/guide.rs`: the guide texts and the test that compares them with the README.
 - `.github/workflows/codeql.yml` and `.github/workflows/ci.yml`: security scanning and coverage.
@@ -47,7 +50,7 @@ can be many tests, and they run in microseconds.
   `crates/domain/src/graphs.rs::area_levels` each take a slice of `SmellReport` and return plain
   data. Read the comment at the top of the file: the caller has already limited the reports to one
   period and to what the viewer may see (#123).
-- `crates/web/src/routes/graphs.rs::show` is the other half. It fetches the reports for the
+- `crates/web/src/routes/graphs/mod.rs::show` is the other half. It fetches the reports for the
   period, filters them, calls the domain functions and hands the results to the page. The rules about
   days, weeks and counting stay in the domain crate; the route keeps only presentation choices,
   such as rounding an average for a colour class and picking the axis ticks.
@@ -72,17 +75,21 @@ buckets first and fills it afterwards, so a missing zero cannot happen.
 
 **In our code.**
 
-- `crates/domain/src/graphs.rs::Period` is an enum: `Month(NaiveDate)` counted per day, or
-  `Year(NaiveDate)` counted per week. Its methods `span`, `first_day`, `previous` and `next`
-  answer "where does it start and end". `span` uses
-  `crates/domain/src/schedule.rs::DailySchedule::year_span` for a year, which relies on chrono's
-  `Months` and `with_ordinal`.
+- `crates/domain/src/graphs.rs::Period` is a struct with a first and a last day, both private.
+  `Period::new` returns `Option<Self>` and refuses a period that ends before it starts or is
+  longer than two years (`Period::MAX_DAYS`). `Period::month`, `Period::year` and
+  `Period::last_days` are the other ways to make one, so no caller can build a bad period
+  (the same idea as `ReportValues` in note 04).
+- `crates/domain/src/graphs.rs::Period::granularity` returns the enum
+  `crates/domain/src/graphs.rs::Granularity`: `Day` for up to 62 days
+  (`Period::DAILY_UP_TO_DAYS`), `Week` beyond. `Period::span` gives the UTC bounds, and
+  `crates/domain/src/schedule.rs::DailySchedule::year_span` is still used for the year's ticks.
 - `crates/domain/src/graphs.rs::Period::buckets` makes the list with `std::iter::successors`:
   "the first bucket, then one step further each time", stopped by `take_while` at the end.
 
   ```rust
-  std::iter::successors(Some(self.bucket_of(first)), |&day| Some(day + step))
-      .take_while(|&day| day < end)
+  std::iter::successors(Some(self.bucket_of(self.first)), |&day| Some(day + step))
+      .take_while(|&day| day <= self.last)
       .collect()
   ```
 
@@ -97,9 +104,10 @@ buckets first and fills it afterwards, so a missing zero cannot happen.
 
 **Why this way.** A graph that starts at the first bar of the year is wrong when the year
 does not start on a Monday, so the first bucket may start in the year before. Alternatives
-recorded in decision #123: a rolling 30/90/365 days, and months as a year's buckets. A calendar
-month won because it matches the Events list (#100) and bounds every query; a year needs
-coarser buckets, hence a count per week.
+recorded in decision #123: a rolling 30/90/365 days, and months as a year's buckets. Milestone 7b
+(#137) replaced the two fixed kinds of period with any stretch of days: the granularity follows
+the length, so a long stretch needs coarser buckets, hence a count per week. Every period is
+at most two years, which bounds every query.
 
 **Read more.** [std: the `successors` function](https://doc.rust-lang.org/std/iter/fn.successors.html),
 [std: `BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html),
@@ -160,7 +168,7 @@ be lost, while `as` always compiles and may cut digits silently.
   anyway, it would give `NaN`; the point of `None` is that the page can show "no data" instead.
 - `u32::from(room.level.get())` in `crates/domain/src/graphs.rs::room_hours` widens a `u8` to a
   `u32`. If the type of the total changed to something smaller, this line would stop compiling.
-- `crates/web/src/routes/graphs.rs::heat_rows` does use `as u8` on a rounded average. It is
+- `crates/web/src/routes/graphs/charts.rs::heat_rows` does use `as u8` on a rounded average. It is
   deliberate: the value is between 0 and 10 and is only for a colour class. Where a cast is safe
   by construction and for display, `as` is acceptable.
 
@@ -184,13 +192,38 @@ number is made. Then the counting functions cannot leak, because they never rece
 
 **In our code.**
 
-- `crates/web/src/routes/graphs.rs::show` passes each report through
+- `crates/web/src/routes/graphs/mod.rs::show` passes each report through
   `smoke_domain::permissions::can_see` right after fetching it, before `events_per_bucket` or any
-  other function runs. The same filter is applied to the PM2.5 readings.
+  other function runs. The same filter is applied to the PM2.5 readings. Only then do the
+  chosen filters narrow the result further (below).
 - `crates/domain/src/permissions.rs::can_see` is the single rule that says who sees whose data.
 - The test `crates/web/tests/graphs.rs::guests_see_graphs_of_their_own_reports_only` checks the
   page of a guest: only the guest's own line, event count and heatmap cell appear, and the
   names of the other people appear nowhere.
+- The person filter follows the same rule. `crates/web/src/routes/graphs/mod.rs::show` gives
+  `crates/web/src/routes/graphs/filters.rs::read` the list of people only to those who see
+  everyone; for a guest the list is empty, so a typed `?by=` is ignored. The test
+  `crates/web/tests/graphs.rs::guests_get_no_person_filter_and_cannot_pick_someone_else` checks it.
+
+**The filters are pure too.** The chosen filters (rooms or area, person, part of the day, minimum
+level, hide clean checks) live in `crates/domain/src/graphs.rs::Filter`, a plain struct whose
+default keeps everything. `crates/domain/src/graphs.rs::Filter::reports` takes the reports by
+value and returns the ones to count; `crates/domain/src/graphs.rs::Filter::readings` does the
+same for PM2.5 readings. A room or area filter keeps only the chosen rooms of each report and
+drops a report left with none (#137). Two idioms carry it:
+
+```rust
+        self.person.is_none_or(|person| person == user)
+            && self.day_part.is_none_or(|part| part.contains(hour))
+```
+
+`Option::is_none_or` reads "no filter chosen, or it matches", so an unset filter lets
+everything through. And `filter_map` filters and changes in one step: the closure returns
+`Some(report)` to keep it (possibly narrowed) or `None` to drop it. The part of the day is an
+enum, `crates/domain/src/graphs.rs::DayPart`, whose `contains` handles the night, which crosses
+midnight. Because all this is in the domain crate, its tests need no page and no database, and
+the web layer only turns the address into a `Filter`: `crates/web/src/routes/graphs/filters.rs::read`
+reads each name from `Pairs` and falls back to the default when a value is missing or unusable.
 
 **Why this way.** Filtering at the edge makes the pure functions safe by their input. Alternatives:
 passing the viewer into every function lost because each of them would have to remember to check,
@@ -198,7 +231,9 @@ and one forgotten check is a leak. Filtering in SQL lost because it would be a s
 rule, in a second dialect. Passing the viewer would be the better choice if different functions
 needed different parts of what the viewer may see.
 
-**Read more.** [std: `Iterator::filter`](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.filter).
+**Read more.** [std: `Iterator::filter`](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.filter),
+[std: `Iterator::filter_map`](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.filter_map),
+[std: `Option::is_none_or`](https://doc.rust-lang.org/std/option/enum.Option.html#method.is_none_or).
 
 ## 6. From numbers to a chart: JSON in a data attribute, a vendored library and the CSP
 
@@ -211,21 +246,32 @@ JSON inside an attribute, which is inert text that the page's own script reads. 
 
 **In our code.**
 
-- `crates/web/src/routes/graphs.rs::intensity_chart`, `crates/web/src/routes/graphs.rs::count_chart`,
-  `crates/web/src/routes/graphs.rs::symptom_chart` and `crates/web/src/routes/graphs.rs::area_chart`
+- `crates/web/src/routes/graphs/charts.rs::intensity_chart`, `crates/web/src/routes/graphs/charts.rs::count_chart`,
+  `crates/web/src/routes/graphs/charts.rs::symptom_chart` and `crates/web/src/routes/graphs/charts.rs::area_chart`
   build a `serde_json::Value` with the `json!` macro: the Chart.js configuration, written like
   the JSON it becomes.
 - `crates/web/templates/graphs.html` writes each one into a `data-chart` attribute. Askama escapes
   the quotes, so the JSON cannot break out of the attribute.
-- `crates/web/static/graphs.js` reads each attribute with `JSON.parse` and draws it. It adds only
+- `crates/web/static/js/graphs.js` reads each attribute with `JSON.parse` and draws it. It adds only
   what JSON cannot carry: time-axis labels made with `Intl.DateTimeFormat` in the app's time
-  zone, not the browser's (#95).
+  zone, not the browser's (#95), and the colours.
+- Colours travel as token names. A dataset in the JSON says `"token": "accent"` and the script
+  reads that token's value from the stylesheet again when the system switches between light and
+  dark (#138). See `crates/web/src/routes/graphs/charts.rs::PERSON_TOKENS`.
+- The intensity chart has an Everyone line next to one line per person, and each dataset names
+  its `group`. The switches above the chart (By person or Everyone; Both, Intensity or PM2.5)
+  are in `crates/web/static/js/series-switch.js`, which shows or hides datasets. They are hidden
+  without JavaScript, so the page still shows one line per person. The Everyone line is built
+  in `crates/web/src/routes/graphs/charts.rs::intensity_chart` by merging every person's points
+  and sorting them by time, and only when no person is chosen.
 - `crates/web/static/chart-4.5.1.umd.min.js` is a vendored copy of Chart.js. The test
   `crates/web/src/assets.rs::the_vendored_libraries_are_the_published_releases` checks its SHA-256
   hash (#124).
-- `crates/web/src/routes/graphs.rs::period` reads `?month=` and `?year=`; a hand-typed
-  `?month=2026-13` falls back to the current month with status 200.
-  `crates/web/src/routes/graphs.rs::intl_locale` picks the language tag for the date labels.
+- `crates/web/src/routes/graphs/filters.rs::read` reads the period and every filter from the
+  address. The quick picks are `?range=`, typed dates are `?from=` and `?to=`, and typed dates
+  win. A hand-typed bad value falls back to its default with status 200, and a repeated name
+  takes its first value (#144).
+  `crates/web/src/routes/graphs/charts.rs::intl_locale` picks the language tag for the date labels.
 
 **Why this way.** The CSP allows only same-origin scripts, so inline executable code is blocked;
 the numbers must be inert data. Two forms are: an attribute, or a non-executed
@@ -252,12 +298,13 @@ drawing library: an HTML table with one coloured cell per value is a heatmap.
 
 **In our code.**
 
-- `crates/web/src/routes/graphs.rs::HeatRow` is one row: a room name and 24 cells.
-  `crates/web/src/routes/graphs.rs::heat_rows` fills it: one row per room a report named, each
+- `crates/web/src/routes/graphs/charts.rs::HeatRow` is one row: a room name and 24 cells.
+  `crates/web/src/routes/graphs/charts.rs::heat_rows` fills it: one row per room a report named, each
   cell the rounded average level at that hour (`None` where nobody checked), and the template
   gives each cell a class from `heat-0` to `heat-10`.
-- `crates/web/static/app.css` defines `.heat-0` to `.heat-10`: the accent colour at rising strength,
-  made with `color-mix`. See decision #126.
+- `crates/web/css/73-chart.css` defines `.heat-0` to `.heat-10`, each reading a `--heat-N` colour
+  token from `crates/web/css/20-tokens.css`, so light and dark mode each have their own steps.
+  See decision #126.
 
 **Why this way.** A table works without JavaScript, reads correctly with a screen reader (the room
 is a row header, the hour a column header), and a CSS class keeps the CSP strict because the
@@ -342,6 +389,35 @@ would be the better choice if setup were slow and the tests never committed.
 **Read more.** [The Rust Book: the `Drop` trait](https://doc.rust-lang.org/book/ch15-03-drop.html),
 [std: atomics](https://doc.rust-lang.org/std/sync/atomic/index.html).
 
+## 11. One module, three files
+
+**The idea.** In milestone 6 the whole Graphs route was one file. Milestone 7b added the filters,
+so the file would have grown past what is pleasant to read. Rust lets a module turn into a
+directory without changing its name for anyone outside: `routes/graphs.rs` became
+`routes/graphs/mod.rs` plus two files, and `routes::graphs::show` is still the path the router uses.
+
+**In our code.**
+
+- `crates/web/src/routes/graphs/mod.rs` declares `mod charts;` and `mod filters;`. They have no
+  `pub`, so they are private to the `graphs` module.
+- `crates/web/src/routes/graphs/mod.rs` brings names in with `use self::charts::{...}` and
+  `use self::filters::FiltersView`. `self::` means "this module's own child".
+- Items that the parent needs are `pub(crate)`, for example `charts::heat_rows`. Items that only
+  the child needs, such as `charts::tick_values` and `filters::range_period`, are private.
+- `crates/web/src/routes/graphs/mod.rs::keys` collects the translation keys of the whole
+  directory for the translation tests, by calling `filters::keys`.
+
+**Why this way.** `filters.rs` knows about the address and the Filters card, `charts.rs` knows
+Chart.js and the heatmap, and `mod.rs` only wires them to the store and the template. Each file
+has one reason to change. A private module also stops the rest of the app from reaching into
+the chart code by accident. Alternatives: keep one long file, which is easy at first and hard to
+read once it keeps growing; or make three sibling modules under `routes`, which would make the filters
+and charts visible to every route. One file would be the better choice for a module that
+stays small.
+
+**Read more.** [Rust Book: separating modules into different files](https://doc.rust-lang.org/book/ch07-05-separating-modules-into-different-files.html),
+[Rust Book: paths for referring to an item in the module tree](https://doc.rust-lang.org/book/ch07-03-paths-for-referring-to-an-item-in-the-module-tree.html).
+
 ## Check yourself
 
 1. Why does `buckets` start from `bucket_of(first_day)` and not from `first_day`, and what would the
@@ -355,6 +431,10 @@ would be the better choice if setup were slow and the tests never committed.
    would pass the CSP, and why did the app pick the attribute?
 6. What does `the_readme_tables_match_the_english_guides` fail on, and why can it read `README.md`
    with `include_str!`?
+7. Why does `Filter::reports` take the reports by value, and what does `is_none_or` do for a
+   filter that is not set?
+8. What does the `mod charts;` line in `graphs/mod.rs` make private, and how does `show` still
+   use `heat_rows`?
 
 ## Where next
 

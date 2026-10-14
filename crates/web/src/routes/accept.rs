@@ -21,7 +21,6 @@ use crate::error::{AppError, page};
 use crate::header::SignedIn;
 use crate::i18n::Tr;
 use crate::routes::people_refusal;
-use crate::routes::settings::{LANGUAGES, LanguageChoice};
 use crate::state::AppState;
 
 #[derive(Template)]
@@ -31,7 +30,6 @@ struct AcceptPage {
     signed_in: Option<SignedIn>,
     username: String,
     setup: bool,
-    languages: Vec<LanguageChoice>,
     error: Option<&'static str>,
 }
 
@@ -70,14 +68,6 @@ fn accept_page(
             signed_in: None,
             username,
             setup: invite.purpose == InvitePurpose::Setup,
-            languages: LANGUAGES
-                .iter()
-                .map(|&(locale, name)| LanguageChoice {
-                    value: locale.as_str(),
-                    name,
-                    current: locale == tr.0,
-                })
-                .collect(),
             error,
         },
     )

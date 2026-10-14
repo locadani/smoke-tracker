@@ -1,54 +1,55 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
+{% import "report_fields.html" as f %}
 {% block title %}{{ tr.t("log-title") }}{% endblock %}
 {% block content %}
 <h1>{{ tr.t("log-title") }}</h1>
-{% if let Some(saved) = saved %}
-<p class="notice" role="status">{{ tr.t(saved) }}</p>
-{% endif %}
+{% if let Some(saved) = saved %}{% call c::notice(tr.t(saved), false) %}{% endcall %}{% endif %}
 {% if let Some(notice) = notice %}
-<form method="post" action="/notices/dismiss" class="notice banner">
+<form method="post" action="/notices/dismiss" class="banner">
   <span>{{ notice }}</span>
-  <button type="submit" class="link">{{ tr.t("notice-dismiss") }}</button>
+  <button type="submit" class="button" data-variant="warn">{{ tr.t("notice-dismiss") }}</button>
 </form>
 {% endif %}
-<div class="status">
-  {% match status %}
-  {% when Status::Open with (since) %}<p>{{ tr.t1("event-open-since", "time", since) }}</p>
-  {% when Status::None %}<p>{{ tr.t("event-none") }}</p>
-  {% when Status::Hidden %}
-  {% endmatch %}
+{% if let Some(banner) = banner %}
+<section class="banner">
+  <p><strong>{{ tr.t("event-banner-title") }}</strong> {{ tr.t1("event-banner-since", "time", banner.since) }}<br>{{ banner.detail }}</p>
   {% if let Some(id) = close_event %}
   <form method="post" action="/events/{{ id }}/close">
     <input type="hidden" name="return_to" value="log">
-    <button type="submit" class="secondary">{{ tr.t("event-close") }}</button>
+    <button type="submit" class="button" data-variant="warn">{{ tr.t("event-close") }}</button>
   </form>
   {% endif %}
-</div>
-<p class="summary">
-  {{ tr.t("summary-this-month") }} {{ tr.n("summary-events", summary.events) }} · {{ tr.n("summary-reports", summary.reports) }}{% if let Some(days) = summary.bedroom_days %} · {{ tr.n("summary-bedroom-days", days) }}{% endif %} · {{ tr.n("summary-checks", summary.checks) }}
-</p>
-{% if let Some(form) = form %}
-{% if let Some(error) = form.error %}
-<p class="notice" role="alert">{{ tr.t(error) }}</p>
+</section>
 {% endif %}
-<form method="post" action="/log" class="stack log">
-  {% include "report_fields.html" %}
-  <label>{{ tr.t("log-pm25") }}
-    <input type="number" name="pm25" min="0" max="1000" step="0.1" inputmode="decimal" value="{{ form.pm25 }}">
+<dl class="stats">
+  <div><dt>{{ tr.n("tile-events", summary.events) }}</dt><dd>{{ summary.events }}</dd></div>
+  <div><dt>{{ tr.n("tile-reports", summary.reports) }}</dt><dd>{{ summary.reports }}</dd></div>
+  {% if let Some(days) = summary.bedroom_days %}<div><dt>{{ tr.n("tile-bedroom-days", days) }}</dt><dd>{{ days }}</dd></div>{% endif %}
+  <div><dt>{{ tr.n("tile-checks", summary.checks) }}</dt><dd>{{ summary.checks }}</dd></div>
+</dl>
+<p class="stats-caption">{{ tr.t("summary-caption") }}</p>
+{% if let Some(form) = form %}
+{% if let Some(error) = form.error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
+<form method="post" action="/log" class="stack">
+  {% call c::collapsible(tr.t("log-time"), form.time_hint(tr), tr.t("action-change"), !form.observed_at.is_empty()) %}
+  <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" aria-label="{{ tr.t("log-time") }}">
+  {% endcall %}
+  {% call f::report_cards(form.fields, form.note) %}
+  {% call c::card("") %}
+  <label class="inline-field">
+    <span><strong>PM2.5</strong> <span class="muted">· {{ tr.t("optional") }}</span></span>
+    <span class="unit"><input type="number" name="pm25" min="0" max="1000" step="0.1" inputmode="decimal" value="{{ form.pm25 }}"> µg/m³</span>
   </label>
-  <details class="when"{% if !form.observed_at.is_empty() %} open{% endif %}>
-    <summary>{{ tr.t("log-time") }}: {{ tr.t("log-time-now") }} · {{ tr.t("log-time-change") }}</summary>
-    <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" aria-label="{{ tr.t("log-time") }}">
-  </details>
-  <label>{{ tr.t("log-note") }}
-    <textarea name="note" rows="2" maxlength="2000">{{ form.note }}</textarea>
-  </label>
-  <button type="submit" name="action" value="smell">{% if form.update %}{{ tr.t("log-update") }}{% else %}{{ tr.t("log-submit") }}{% endif %}</button>
-  <button type="submit" name="action" value="no-smell" formnovalidate class="secondary">{{ tr.t("log-no-smell") }}</button>
-  <button type="submit" name="action" value="pm25" formnovalidate class="secondary">{{ tr.t("log-pm25-only") }}</button>
+  {% endcall %}
+  {% endcall %}
+  <div class="actions">
+    <button type="submit" name="action" value="no-smell" formnovalidate class="button" data-variant="secondary">{{ tr.t("log-no-smell") }}</button>
+    <button type="submit" name="action" value="log" class="button">{% if form.update %}{{ tr.t("log-update") }}{% else %}{{ tr.t("log-submit") }}{% endif %}</button>
+  </div>
 </form>
-{% include "rating_dialog.html" %}
+{% call f::rating_sheet(form.fields) %}{% endcall %}
 {% else %}
-<p>{{ tr.t("log-read-only") }}</p>
+<p class="card">{{ tr.t("log-read-only") }}</p>
 {% endif %}
 {% endblock %}

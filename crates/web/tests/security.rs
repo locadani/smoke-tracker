@@ -5,6 +5,7 @@ mod common;
 use axum::body::Body;
 use axum::http::header::CONTENT_TYPE;
 use axum::http::{Request, StatusCode};
+use common::page::Page;
 use common::*;
 use smoke_domain::types::{Locale, Role};
 
@@ -186,7 +187,7 @@ fn the_event_handler_scan_finds_attributes_and_not_words() {
 }
 
 #[tokio::test]
-async fn no_page_needs_inline_scripts_styles_or_eval() {
+async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
     let app = TestApp::new().await;
     app.at("2026-01-15T20:00:00Z");
     app.add_user("daniele", Role::Resident, Locale::En).await;
@@ -195,14 +196,14 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         .await;
     app.send(post_form(
         "/log",
-        "room=1&level-1=4&action=smell",
+        "room=1&level-1=4&action=log",
         Some(&cookie),
     ))
     .await;
     let question = app
         .send(post_form(
             "/log",
-            "room=1&level-1=5&action=smell",
+            "room=1&level-1=5&action=log",
             Some(&cookie),
         ))
         .await;
@@ -250,6 +251,7 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         "{accept_page}"
     );
     let pages = pages.into_iter().chain([accept_page]);
+    let sprite = include_str!("../static/icons.svg");
     for html in pages {
         assert!(
             html.contains(r#"<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>"#),
@@ -269,6 +271,43 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         assert_eq!(event_handler_attribute(&html), None, "{html}");
         for script in html.match_indices("<script").map(|(i, _)| &html[i..]) {
             assert!(script.starts_with("<script src=\"/static/"), "{script}");
+        }
+        for icon in Page::parse(&html).attrs("svg use", "href") {
+            let id = icon.strip_prefix("/static/icons.svg#").expect("the sprite");
+            assert!(sprite.contains(&format!("<symbol id=\"{id}\"")), "{id}");
+        }
+    }
+}
+
+/// Every template's source, by file name.
+fn templates() -> Vec<(String, String)> {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/templates");
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (name, std::fs::read_to_string(&path).unwrap())
+        })
+        .collect()
+}
+
+#[test]
+fn no_template_has_inline_styles_or_scripts() {
+    let templates = templates();
+    assert!(templates.iter().any(|(name, _)| name == "base.html"));
+    for (name, source) in templates {
+        for forbidden in ["<style", " style=", "javascript:", " hx-on"] {
+            assert!(!source.contains(forbidden), "{forbidden} in {name}");
+        }
+        assert_eq!(event_handler_attribute(&source), None, "{name}");
+        for script in source.match_indices("<script").map(|(i, _)| &source[i..]) {
+            let tag = &script[..script.find('>').unwrap()];
+            assert!(tag.contains(" src=\"/static/"), "{name}: {tag}");
+            assert!(
+                script[tag.len()..].starts_with("></script>"),
+                "{name}: a script body"
+            );
         }
     }
 }
