@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::{Commit, EventRepo, ListWrites, Transactional, UserWrites};
@@ -271,7 +272,10 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
         html.contains("Tra due numeri, scegli il più basso."),
         "{html}"
     );
-    assert!(html.contains(r#"<script src="/static/app.js" defer></script>"#));
+    assert!(
+        Page::parse(&html).exists(r#"script[type=module][src="/static/js/app.js"]"#),
+        "{html}"
+    );
 
     let guide = app.send(get_with("/guide/rating", &cookie)).await;
     assert_eq!(guide.status(), StatusCode::OK);
@@ -285,7 +289,7 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
         guide.contains("Come una stanza piena di fumo. Devi uscire."),
         "{guide}"
     );
-    let script = app.send(get("/static/app.js")).await;
+    let script = app.send(get("/static/js/dialog.js")).await;
     assert_eq!(script.status(), StatusCode::OK);
     assert!(text(script).await.contains("showModal()"));
     assert_eq!(

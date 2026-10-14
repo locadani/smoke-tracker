@@ -61,16 +61,20 @@ const ASSETS: &[Asset] = &[
         content_type: "text/css; charset=utf-8",
         body: STYLESHEET.0.as_bytes(),
     },
-    asset!("app.js", "text/javascript; charset=utf-8"),
     asset!("chart-4.5.1.umd.min.js", "text/javascript; charset=utf-8"),
     asset!("favicon.svg", "image/svg+xml"),
-    asset!("graphs.js", "text/javascript; charset=utf-8"),
     asset!("htmx-2.0.11.min.js", "text/javascript; charset=utf-8"),
     asset!("icon-180.png", "image/png"),
     asset!("icon-192.png", "image/png"),
     asset!("icon-512.png", "image/png"),
     asset!("icon.svg", "image/svg+xml"),
     asset!("icons.svg", "image/svg+xml"),
+    asset!("js/app.js", "text/javascript; charset=utf-8"),
+    asset!("js/date-picks.js", "text/javascript; charset=utf-8"),
+    asset!("js/dialog.js", "text/javascript; charset=utf-8"),
+    asset!("js/graphs.js", "text/javascript; charset=utf-8"),
+    asset!("js/install.js", "text/javascript; charset=utf-8"),
+    asset!("js/service-worker.js", "text/javascript; charset=utf-8"),
     asset!("manifest.webmanifest", "application/manifest+json"),
     asset!("sw.js", "text/javascript; charset=utf-8"),
 ];
@@ -126,15 +130,24 @@ mod tests {
     const CHART_JS_SHA256: &str =
         "48444a82d4edcb5bec0f1965faacdde18d9c17db3063d042abada2f705c9f54a";
 
-    /// The names of the files in `dir` (relative to the crate), sorted.
+    /// The paths of the files under `dir` (relative to the crate), relative to `dir`, sorted.
     fn files_in(dir: &str) -> Vec<String> {
-        let path = format!("{}/{dir}", env!("CARGO_MANIFEST_DIR"));
-        let mut names: Vec<String> = std::fs::read_dir(path)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
-            .collect();
-        names.sort();
-        names
+        fn walk(root: &std::path::Path, dir: &std::path::Path, out: &mut Vec<String>) {
+            for entry in std::fs::read_dir(dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    walk(root, &path, out);
+                } else {
+                    let relative = path.strip_prefix(root).unwrap();
+                    out.push(relative.to_str().unwrap().replace('\\', "/"));
+                }
+            }
+        }
+        let root = std::path::PathBuf::from(format!("{}/{dir}", env!("CARGO_MANIFEST_DIR")));
+        let mut paths = Vec::new();
+        walk(&root, &root, &mut paths);
+        paths.sort();
+        paths
     }
 
     #[test]
@@ -146,6 +159,37 @@ mod tests {
             .filter(|path| path != "app.css")
             .collect();
         assert_eq!(on_disk, listed);
+    }
+
+    /// The modules `js/app.js` imports, as `/static/js/…` paths.
+    fn entry_imports() -> Vec<String> {
+        let entry = std::str::from_utf8(asset("js/app.js").body).unwrap();
+        entry
+            .lines()
+            .filter_map(|line| line.strip_prefix("import \"./"))
+            .map(|rest| format!("/static/js/{}", rest.trim_end_matches("\";")))
+            .collect()
+    }
+
+    #[test]
+    fn the_service_worker_keeps_the_entry_module_and_its_imports() {
+        let worker = std::str::from_utf8(asset("sw.js").body).unwrap();
+        let imports = entry_imports();
+        assert!(imports.len() >= 4, "{imports:?}");
+        for path in imports
+            .iter()
+            .map(String::as_str)
+            .chain(["/static/js/app.js"])
+        {
+            assert!(
+                ASSETS.iter().any(|a| format!("/static/{}", a.path) == path),
+                "{path}"
+            );
+            assert!(
+                worker.contains(&format!("\"{path}\"")),
+                "sw.js lacks {path}"
+            );
+        }
     }
 
     #[test]

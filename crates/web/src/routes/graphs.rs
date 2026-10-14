@@ -1,5 +1,5 @@
 //! The Graphs screen (spec §9 screen 5). Each chart is a `<canvas>` whose Chart.js
-//! configuration travels as JSON in its `data-chart` attribute; `static/graphs.js` draws it, so
+//! configuration travels as JSON in its `data-chart` attribute; `static/js/graphs.js` draws it, so
 //! no page carries an inline script. The room × hour heatmap is a plain table, coloured by CSS
 //! classes. The numbers come from `smoke_domain::graphs`, over what the viewer may see: guests
 //! get graphs of their own data only (spec §4).
