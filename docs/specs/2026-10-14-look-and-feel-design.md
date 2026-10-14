@@ -108,16 +108,16 @@ Top to bottom:
 6. **Symptoms** card: chips.
 7. **PM2.5** card, one line: "PM2.5 · optional" and a small number field with "µg/m³".
 8. **Note** — collapsible card: "Note · optional", "Add ⌄". Starts open when it has text.
-9. Buttons side by side: **No smell** (secondary, 2/5) and **Save** (primary, 3/5). Inside an
+9. Buttons side by side: **No smell** (secondary, 2/5) and **Log** (primary, 3/5). Inside an
    open event the primary button keeps the label "Update: situation changed".
 
 ## 6. Behaviour changes (the only ones)
 
-### 6.1 One Save button (replaces "Log smell" and "Log PM2.5 only")
+### 6.1 One Log button (replaces "Log smell" and "Log PM2.5 only")
 
 The form decides from what is filled in (web route only):
 
-| Filled in | Save does |
+| Filled in | Log does |
 |---|---|
 | Rooms with levels, any above 0 | Smell report as today ("Log smell"); PM2.5 saved alongside if given |
 | Rooms, all at 0 | Clean check as today |
@@ -170,15 +170,18 @@ Settings (signed in) or stay at the page bottom (signed out).
   readings follow only dates, person and time of day. Events per day counts an event when at
   least one of its reports matches.
 - **First graph:** a **Both | Intensity | PM2.5** switch (client side) and a matching title.
+  Intensity is drawn **one line per person** (main spec §9 screen 5); when no person filter is
+  set, a **By person | Everyone** switch in the card header swaps to one line with every report.
+  Tapping the chart keeps showing values (tooltips).
 - Chart.js colours come from the tokens (accent for intensity/inside, amber for PM2.5/common).
 - Implementation: the Graphs route parses the filters and narrows the reports and readings before
   the existing `smoke_domain::graphs` series code runs; filtering is pure and unit-tested in the
   domain crate. No storage change.
 
-## 8. Changes to the main spec (need the user's approval before they are written)
+## 8. Changes to the main spec (approved by the user on 2026-10-14 and applied)
 
-1. §9 screen 1: one **Save** button with the rules of §6.1; "Log PM2.5 only" removed (§7.6 then
-   says a reading is logged alone by saving with only PM2.5 filled in).
+1. §9 screen 1: one **Log** button with the rules of §6.1; "Log PM2.5 only" removed (§7.6 then
+   says a reading is logged alone by pressing Log with only PM2.5 filled in).
 2. §9 screen 1: the event banner shows the report count and the highest level with its room.
 3. §9 screen 5: graph filters and the series switch (§7).
 4. §9.1 and decision #121: the Install button lives in Settings, not the header.
@@ -232,7 +235,7 @@ From the research in `docs/research/2026-10-14-frontend-standards.md` and the us
   the app on SQLite, creates a resident with the `create-resident` command, seeds data by using
   the app itself (sign in, log reports), and checks about 8 pages in light and dark at phone size.
   Screenshots are kept as job artifacts only (no visual-regression baselines; no Lighthouse CI).
-- New tests: Save decision table (§6.1, every row); banner counts and tie rule; graph filter
+- New tests: Log-button decision table (§6.1, every row); banner counts and tie rule; graph filter
   parsing and each filter's effect (domain unit tests + one route test per filter); guests never
   get the person filter; gap button posts to the move route and is hidden without permission;
   CSP still `'self'` only (no inline style/script in any template).
