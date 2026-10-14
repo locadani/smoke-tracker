@@ -19,3 +19,4 @@ pub mod ex13_form_pairs;
 pub mod ex14_expiry_pick;
 pub mod ex15_pwa_assets;
 pub mod ex16_buckets;
+pub mod ex17_series;
