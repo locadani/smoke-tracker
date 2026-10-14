@@ -1,0 +1,12 @@
+[package]
+name = "smoke-exercises"
+version = "0.1.0"
+description = "Rust exercises that go with docs/learning. Not part of the app."
+edition = "2024"
+rust-version = "1.94"
+license = "MIT"
+publish = false
+
+# An empty table makes this folder its own workspace root, so Cargo never treats it as a member
+# of the app's workspace one level up, and the app's builds, tests and lints never see it.
+[workspace]
