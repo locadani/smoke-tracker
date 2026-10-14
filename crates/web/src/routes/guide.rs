@@ -128,6 +128,26 @@ mod tests {
 
     use super::*;
 
+    /// The README repeats the English guides (spec §5); this keeps the two from drifting apart.
+    #[test]
+    fn the_readme_tables_match_the_english_guides() {
+        let readme = include_str!("../../../../README.md");
+        let tr = Tr(Locale::En);
+        for level in levels(tr) {
+            let row = format!(
+                "| {} | {} | {} |",
+                level.value, level.name, level.description
+            );
+            assert!(readme.contains(&row), "README lacks {row}");
+        }
+        for situation in situations(tr) {
+            let row = format!("| {} | {} |", situation.happened, situation.action);
+            assert!(readme.contains(&row), "README lacks {row}");
+        }
+        let tip = tr.t("rating-tip");
+        assert!(readme.contains(&tip), "README lacks {tip}");
+    }
+
     #[test]
     fn the_auto_close_rule_names_the_configured_hour() {
         let rules = rules(Tr(Locale::En), 5);
