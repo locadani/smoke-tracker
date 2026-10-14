@@ -55,10 +55,11 @@ impl Period {
         Self { first, last }
     }
 
-    /// The `days` days that end with `today`.
+    /// The `days` days that end with `today`, kept between one day and [`Self::MAX_DAYS`].
     pub fn last_days(today: NaiveDate, days: u64) -> Self {
+        let days = days.clamp(1, Self::MAX_DAYS.unsigned_abs());
         Self {
-            first: today - Days::new(days.saturating_sub(1)),
+            first: today - Days::new(days - 1),
             last: today,
         }
     }
@@ -488,6 +489,13 @@ mod tests {
         assert_eq!(weeks.len(), 53);
         assert_eq!(year.bucket_of(date("2026-01-01")), date("2025-12-29"));
         assert_eq!(year.bucket_of(date("2026-01-11")), date("2026-01-05"));
+    }
+
+    #[test]
+    fn the_last_days_stay_between_one_day_and_the_longest_period() {
+        let today = date("2026-10-14");
+        assert_eq!(Period::last_days(today, 0).days(), 1);
+        assert_eq!(Period::last_days(today, u64::MAX).days(), Period::MAX_DAYS);
     }
 
     #[test]
