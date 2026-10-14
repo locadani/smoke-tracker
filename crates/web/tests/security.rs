@@ -196,14 +196,14 @@ async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
         .await;
     app.send(post_form(
         "/log",
-        "room=1&level-1=4&action=smell",
+        "room=1&level-1=4&action=log",
         Some(&cookie),
     ))
     .await;
     let question = app
         .send(post_form(
             "/log",
-            "room=1&level-1=5&action=smell",
+            "room=1&level-1=5&action=log",
             Some(&cookie),
         ))
         .await;

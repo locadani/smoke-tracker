@@ -39,12 +39,19 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
     assert!(inside < bedroom && bedroom < common && common < stairwell);
     assert!(!html.contains("Kitchen"), "hidden rooms are not offered");
     assert!(html.contains(r#"name="symptom""#) && html.contains("Eye irritation"));
-    assert!(html.contains(">Log smell</button>"), "{html}");
-    assert!(html.contains(">Log PM2.5 only</button>"), "{html}");
-    assert!(
-        html.contains(r#"value="no-smell" formnovalidate class="secondary">No smell</button>"#),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.texts(r#"form[action="/log"] .actions button[name=action]"#),
+        ["No smell", "Log"]
     );
+    assert_eq!(
+        page.attrs(
+            r#"form[action="/log"] .actions button[name=action]"#,
+            "value"
+        ),
+        ["no-smell", "log"]
+    );
+    assert!(page.exists("button[value=no-smell][formnovalidate][data-variant=secondary]"));
     assert!(html.contains(" · 0 clean checks"), "{html}");
 }
 
@@ -137,7 +144,7 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
     ] {
         assert!(!html.contains(hidden), "{hidden}: {html}");
     }
-    assert!(html.contains(">Log smell</button>"), "{html}");
+    assert!(html.contains(">Log</button>"), "{html}");
 
     app.log(
         &guest,

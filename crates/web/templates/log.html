@@ -43,9 +43,10 @@
   <label>{{ tr.t("log-note") }}
     <textarea name="note" rows="2" maxlength="2000">{{ form.note }}</textarea>
   </label>
-  <button type="submit" name="action" value="smell">{% if form.update %}{{ tr.t("log-update") }}{% else %}{{ tr.t("log-submit") }}{% endif %}</button>
-  <button type="submit" name="action" value="no-smell" formnovalidate class="secondary">{{ tr.t("log-no-smell") }}</button>
-  <button type="submit" name="action" value="pm25" formnovalidate class="secondary">{{ tr.t("log-pm25-only") }}</button>
+  <div class="actions">
+    <button type="submit" name="action" value="no-smell" formnovalidate class="button" data-variant="secondary">{{ tr.t("log-no-smell") }}</button>
+    <button type="submit" name="action" value="log" class="button">{% if form.update %}{{ tr.t("log-update") }}{% else %}{{ tr.t("log-submit") }}{% endif %}</button>
+  </div>
 </form>
 {% include "rating_dialog.html" %}
 {% else %}

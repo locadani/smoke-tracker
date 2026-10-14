@@ -35,7 +35,7 @@ pub(crate) const FORM_ERRORS: [&str; 9] = [
     "log-error-time",
     "log-error-time-skipped",
     "log-error-pm25",
-    "log-error-pm25-missing",
+    "log-error-empty",
     "log-error-rooms",
     "log-error-level",
     "log-error-no-smell-level",
@@ -72,7 +72,7 @@ pub(crate) fn level_field(form: &Pairs, room: RoomId) -> Option<u8> {
 /// How a form's rooms and levels are read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Smell {
-    /// "Log smell": at least one room, each with a level.
+    /// "Log" with rooms: each room with a level; all at 0 is a clean check.
     Levels,
     /// "No smell": the selected rooms at 0, or the whole home when none is selected.
     None,
@@ -138,6 +138,12 @@ pub(crate) fn read_values(
 
 /// Reads and validates the Log form. `Err` is the translation key of what to fix. Only rooms
 /// and symptoms the form offers (not hidden) are accepted.
+///
+/// "No smell" has its own button. The one Log button decides from what is filled in (look-and-
+/// feel spec §6.1): rooms make a smell report, or a clean check when every level is 0, with the
+/// PM2.5 value saved alongside; without rooms a PM2.5 value alone is a reading, while symptoms
+/// or a note still need a room. Rooms ticked without any level count as no rooms next to a
+/// PM2.5 value: the Log screen ticks the rooms of the person's last report in the open event.
 fn read(
     form: &Pairs,
     rooms: &[Room],
@@ -160,14 +166,22 @@ fn read(
                 .ok_or("log-error-pm25")
         })
         .transpose()?;
-    if form.get("action") == Some("pm25") {
-        let value = pm25.ok_or("log-error-pm25-missing")?;
-        return Ok(Entry::Pm25Only { observed_at, value });
+    let no_smell = form.get("action") == Some("no-smell");
+    let picked = form.ids("room").ok_or("log-error-form")?;
+    let unrated = picked
+        .iter()
+        .all(|&room| level_field(form, RoomId(room)).is_none());
+    if unrated && !no_smell {
+        let symptoms = form.ids("symptom").ok_or("log-error-form")?;
+        let described = form.get("note").is_some() || !symptoms.is_empty();
+        match pm25 {
+            Some(value) if !described => return Ok(Entry::Pm25Only { observed_at, value }),
+            _ if !picked.is_empty() => {}
+            _ if described => return Err("log-error-rooms"),
+            _ => return Err("log-error-empty"),
+        }
     }
-    let smell = match form.get("action") {
-        Some("no-smell") => Smell::None,
-        _ => Smell::Levels,
-    };
+    let smell = if no_smell { Smell::None } else { Smell::Levels };
     let (offered_rooms, offered_symptoms) = offered(rooms, symptoms, (&[], &[]));
     let values = read_values(form, &offered_rooms, &offered_symptoms, smell)?;
     Ok(Entry::Smell(SmellEntry {
@@ -501,7 +515,7 @@ mod tests {
             "unselected rooms are ignored"
         );
         for (pairs, key) in [
-            (&[("level-1", "6")][..], "log-error-rooms"),
+            (&[("level-1", "6")][..], "log-error-empty"),
             (&[("room", "1")][..], "log-error-level"),
             (&[("room", "1"), ("level-1", "11")][..], "log-error-level"),
             (&[("room", "2"), ("level-2", "6")][..], "log-error-form"),
@@ -543,21 +557,75 @@ mod tests {
         );
     }
 
+    /// The Log button's decision table (look-and-feel spec §6.1), row by row.
     #[test]
-    fn pm25_only_ignores_the_smell_fields_but_needs_a_value() {
+    fn the_log_button_decides_from_what_is_filled_in() {
+        let Ok(Entry::Smell(smell)) = read_form(&[
+            ("action", "log"),
+            ("room", "1"),
+            ("level-1", "6"),
+            ("pm25", "40"),
+        ]) else {
+            panic!("rooms with a level above 0: a smell report");
+        };
+        assert_eq!(smell.values.intensity().get(), 6);
+        assert_eq!(smell.pm25.map(Pm25::ugm3), Some(40.0), "PM2.5 alongside");
+
+        let Ok(Entry::Smell(check)) =
+            read_form(&[("action", "log"), ("room", "1"), ("level-1", "0")])
+        else {
+            panic!("rooms all at 0: a clean check");
+        };
+        assert!(check.values.is_no_smell());
+        assert_eq!(check.values.room_ids(), [RoomId(1)]);
+
         let Ok(Entry::Pm25Only { observed_at, value }) = read_form(&[
-            ("action", "pm25"),
+            ("action", "log"),
             ("pm25", "12,5"),
             ("observed_at", "2026-01-15T20:30"),
         ]) else {
-            panic!("a valid reading");
+            panic!("no rooms, only PM2.5: a reading");
         };
         assert_eq!(observed_at, now() - TimeDelta::minutes(30));
         assert_eq!(value.ugm3(), 12.5);
+
+        for pairs in [
+            &[("action", "log"), ("symptom", "1")][..],
+            &[("action", "log"), ("note", "acrid")][..],
+            &[("action", "log"), ("note", "acrid"), ("pm25", "12")][..],
+        ] {
+            assert_eq!(read_form(pairs).err(), Some("log-error-rooms"), "{pairs:?}");
+        }
         assert_eq!(
-            read_form(&[("action", "pm25")]).err(),
-            Some("log-error-pm25-missing")
+            read_form(&[("action", "log"), ("note", "  ")]).err(),
+            Some("log-error-empty"),
+            "a blank note is no note"
         );
+        assert_eq!(
+            read_form(&[("action", "log")]).err(),
+            Some("log-error-empty")
+        );
+        assert_eq!(
+            read_form(&[]).err(),
+            Some("log-error-empty"),
+            "no action: Log"
+        );
+        let Ok(Entry::Pm25Only { .. }) =
+            read_form(&[("action", "log"), ("room", "1"), ("pm25", "18")])
+        else {
+            panic!("a ticked room without a level beside PM2.5: a reading");
+        };
+        for pairs in [
+            &[("action", "log"), ("room", "1")][..],
+            &[
+                ("action", "log"),
+                ("room", "1"),
+                ("pm25", "18"),
+                ("note", "acrid"),
+            ][..],
+        ] {
+            assert_eq!(read_form(pairs).err(), Some("log-error-level"), "{pairs:?}");
+        }
     }
 
     #[test]
