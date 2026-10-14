@@ -17,3 +17,4 @@ pub mod ex11_log_prompt;
 pub mod ex12_report_values;
 pub mod ex13_form_pairs;
 pub mod ex14_expiry_pick;
+pub mod ex15_pwa_assets;
