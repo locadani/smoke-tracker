@@ -16,7 +16,12 @@ document.addEventListener("input", (event) => {
 document.addEventListener("change", (event) => {
   const radio = event.target;
   const picks = radio.closest?.("[data-date-picks]");
-  if (picks && radio instanceof HTMLInputElement && radio.type === "radio" && radio.value !== "date") {
+  if (
+    picks &&
+    radio instanceof HTMLInputElement &&
+    radio.type === "radio" &&
+    radio.value !== "date"
+  ) {
     for (const date of picks.querySelectorAll('input[type="date"]')) {
       date.value = "";
     }

@@ -40,6 +40,19 @@ jobs:
       - name: audit hash ignores serde_json map ordering
         run: cargo test -p smoke-domain --lib --features serde_json/preserve_order audit
 
+  biome:
+    name: biome (JavaScript and CSS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: install Biome, the standalone binary
+        # Pinned to a commit, not a tag: a third-party action's tags can be moved.
+        uses: biomejs/setup-biome@4c91541eaada48f67d7dbd7833600ce162b68f51 # v2.7.1
+        with:
+          version: 2.5.15
+      - name: format and lint (biome.json)
+        run: biome ci .
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

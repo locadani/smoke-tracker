@@ -51,7 +51,7 @@
   }
 
   .segmented > button,
-  .segmented > .chip > span {
+  .segmented > .chip > input + span {
     min-block-size: var(--target);
     border: 0;
     border-radius: 10px;

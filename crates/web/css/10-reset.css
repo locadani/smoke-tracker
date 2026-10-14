@@ -56,7 +56,9 @@
     border-collapse: collapse;
   }
 
+  /* An !important in the first layer wins over every later layer: hidden stays hidden. */
   [hidden] {
+    /* biome-ignore lint/complexity/noImportantStyles: see above */
     display: none !important;
   }
 
@@ -64,7 +66,9 @@
     *,
     *::before,
     *::after {
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every layer */
       animation-duration: 0.01ms !important;
+      /* biome-ignore lint/complexity/noImportantStyles: reduced motion beats every layer */
       transition-duration: 0.01ms !important;
     }
   }
