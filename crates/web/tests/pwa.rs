@@ -91,12 +91,19 @@ async fn the_offline_page_needs_no_session() {
 async fn the_install_page_offers_the_button_and_the_iphone_steps() {
     let app = TestApp::new().await;
     let html = text(app.send(get("/install")).await).await;
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.text("button[type=button][data-install][hidden]"),
+        "Install"
+    );
     assert!(
-        html.contains(r#"<button type="button" data-install hidden>Install</button>"#),
+        page.text(".steps").contains("Tap the Share button"),
         "{html}"
     );
-    assert!(html.contains("Tap the Share button"), "{html}");
-    assert_eq!(html.matches("<svg").count(), 2, "{html}");
+    assert_eq!(
+        page.attrs(".steps svg.icon use", "href"),
+        ["/static/icons.svg#share", "/static/icons.svg#add-square"]
+    );
     assert!(!html.contains("Your account is ready."), "{html}");
 
     app.add_user("guest", Role::Guest, Locale::Tr).await;

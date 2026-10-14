@@ -1,0 +1,44 @@
+/* The guide pages: tables with a line between rows, numbered rules, the install steps; and
+   the app icon above the sign-in card. */
+@layer components {
+  .guide th,
+  .guide td {
+    padding: var(--space-2) var(--space-1);
+  }
+
+  .guide tr + tr,
+  .scale tbody tr + tr {
+    border-block-start: 1px solid var(--line);
+  }
+
+  .guide thead th,
+  .scale thead th {
+    color: var(--muted);
+    font-size: var(--text-label);
+  }
+
+  .rules,
+  .steps {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding-inline-start: var(--space-5);
+  }
+
+  .steps .icon {
+    display: inline-block;
+    vertical-align: text-bottom;
+  }
+
+  .welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-2);
+    padding-block: var(--space-5) var(--space-3);
+  }
+
+  .welcome > img {
+    border-radius: var(--radius-button);
+  }
+}
