@@ -4,3 +4,4 @@
 #![allow(unused_variables, unused_imports, unused_mut, dead_code)]
 
 pub mod ex01_newtypes;
+pub mod ex02_permissions;
