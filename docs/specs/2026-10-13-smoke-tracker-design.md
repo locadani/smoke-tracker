@@ -212,7 +212,8 @@ among its reports.
 ### 6.1 Tamper-evident audit log (hash chain)
 
 - Every write goes through **one transaction** that changes the data **and** appends an audit
-  entry. Changing data without recording it is impossible through the app.
+  entry. Changing data without recording it is impossible through the app. Housekeeping deletions
+  of expired sessions and expired, unused invites are not audited (decision #112).
 - Each entry's `hash` = SHA-256 of the previous entry's hash, a newline, and a **canonical
   serialisation** of the entry (independent of the database backend).
 - **`verify-audit`** command:
@@ -333,6 +334,8 @@ QR code. There is no email.
   (development only) the cookie is named `session` and is not `Secure`, because browsers refuse
   `Secure` cookies there.
 - 30-day lifetime, renewed on activity. Deleted on logout, expiry, deactivation, or password change.
+  On password change every session is deleted; the device that made the change is given a new
+  session so it stays signed in (decision #116).
 - JWTs were rejected because they cannot be revoked immediately (see ADR).
 
 ---
@@ -359,13 +362,19 @@ QR code. There is no email.
    readings, the large-gap warning, and Close / Reopen.
 4. **Report detail:** values, observed and recorded times, *Correct a mistake*, *Move to another
    event*, *History*.
-5. **Graphs** (Chart.js, self-hosted):
+5. **Graphs** (Chart.js, self-hosted; the room × hour-of-day heatmap is an HTML table coloured by
+   CSS classes, decision #126):
    - intensity over time (a report's highest room level), one line per person, with PM2.5 on a
      secondary axis
    - events per day/week
    - room × hour-of-day heatmap of room levels (0 counts as checked and clean)
    - symptom frequency
    - inside vs common-area comparison
+
+   Graphs cover one local month (per day) or one local year (per Monday-to-Sunday week). The
+   heatmap shows each room's average level per local hour; inside vs common shows each area's
+   highest level; an event counts once, on the day of its earliest report the viewer may see
+   (decision #123).
 
    Guests see their own data only.
 6. **People** (residents): users with role and expiry; Invite, Expire, Reactivate, Reset password
