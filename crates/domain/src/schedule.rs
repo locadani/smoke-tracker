@@ -66,6 +66,15 @@ impl DailySchedule {
         (self.at_local(first, 0), self.at_local(next, 0))
     }
 
+    /// `[start, end)` of the local calendar year that contains `date`.
+    pub fn year_span(&self, date: NaiveDate) -> (DateTime<Utc>, DateTime<Utc>) {
+        let first = date.with_ordinal(1).expect("every year has a first day");
+        let next = first
+            .checked_add_months(Months::new(12))
+            .expect("date within chrono's range");
+        (self.at_local(first, 0), self.at_local(next, 0))
+    }
+
     /// The boundary instant on a local calendar date.
     fn boundary_on(&self, date: NaiveDate) -> DateTime<Utc> {
         self.at_local(date, self.hour)
@@ -246,6 +255,14 @@ mod tests {
         assert_eq!(
             s.month_span(date("2026-03-01")),
             (t("2026-02-28T23:00:00Z"), t("2026-03-31T22:00:00Z"))
+        );
+    }
+
+    #[test]
+    fn a_local_year_runs_from_new_years_midnight_to_the_next() {
+        assert_eq!(
+            rome_at(4).year_span(date("2026-07-15")),
+            (t("2025-12-31T23:00:00Z"), t("2026-12-31T23:00:00Z"))
         );
     }
 
