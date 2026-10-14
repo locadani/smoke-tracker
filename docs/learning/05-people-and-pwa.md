@@ -1,6 +1,6 @@
 # 05 — People, invites and the PWA
 
-> Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
+> Written against commit `eda7a09` (milestone 7b, look and feel). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
 > search the file for the old name. Exercises for this note: 14 (expiry picks), 15 (assets,
 > caching and an SVG drawing). Reading time: about 45 minutes, plus the exercises.
@@ -12,25 +12,25 @@
 - How a type such as `TokenHash` keeps a secret from leaking by being a different type from `String`.
 - How a picture can be built as a `String` with `write!`, with no image library.
 - What `move` does in a closure that runs on another thread, and why that thread needs `'static`.
-- How a file is compiled into the program with `include_bytes!`, and how `LazyLock` computes a value once.
+- How files are compiled into the program with `include_bytes!`, how `concat!` and `include_str!` join sources at compile time, and how `LazyLock` computes a value once.
 - How an ETag lets a browser ask "has this changed?" and get a `304` with no body.
 - How a service worker (JavaScript) and the Rust server cooperate in a PWA.
 
 ## The map
 
 This note covers the people side of the app: a resident invites someone, a QR code carries a
-one-time link, the invitee sets a password, and later installs the app on a phone. It ends with
+one-time link, the invitee sets a password, and later installs the app on a phone from the Install card in Settings. It ends with
 what the app does to stop that link leaking.
 
 - `crates/domain/src/people.rs`: the account use cases and `PeopleError`.
 - `crates/domain/src/permissions.rs::check_expiry`: the rule that decides who may expire.
-- `crates/web/src/routes/people/expiry.rs`: reads the expiry fields of the forms.
+- `crates/web/src/routes/people/expiry.rs`: reads the expiry fields of the forms and builds the choices the `expiry` macro prints.
 - `crates/web/src/routes/people/links.rs`: creates a link and shows it (`new_token`, `create`).
 - `crates/domain/src/types.rs::TokenHash` and `crates/domain/src/records.rs::Invite`: the secret and its record.
 - `crates/web/src/qr.rs`: draws the QR code as SVG.
 - `crates/web/src/routes/accept.rs`: the page behind the link, where the password is set.
 - `crates/web/src/assets.rs`: the files compiled into the binary, with their ETags.
-- `crates/web/static/sw.js`, `crates/web/static/manifest.webmanifest`, `crates/web/static/app.js`: the PWA.
+- `crates/web/static/sw.js`, `crates/web/static/manifest.webmanifest`, `crates/web/static/js/service-worker.js` and `crates/web/static/js/install.js`: the PWA.
 - `crates/web/src/security.rs` and `crates/web/src/lib.rs`: headers and log rules around the link.
 
 ## 1. Account use cases and their errors
@@ -263,7 +263,12 @@ server answers `304 Not Modified` with no body.
 
 - `crates/web/src/assets.rs::asset` is a `macro_rules!` that builds an `Asset` with
   `include_bytes!(concat!("../static/", $path))`: the file's bytes are compiled into the binary.
-- `crates/web/src/assets.rs::ASSETS` is a `const` slice of them, listed explicitly.
+- `crates/web/src/assets.rs::stylesheet` is a second macro for the stylesheet, which is not one
+  file but many small ones under `crates/web/css/`. It joins them in the order given, at compile
+  time, into the one `crates/web/src/assets.rs::STYLESHEET`, served as `/static/app.css`. The
+  layer order file `crates/web/css/00-layers.css` comes first for that reason (#142).
+- `crates/web/src/assets.rs::ASSETS` is a `const` slice of them, listed explicitly. The scripts
+  are ES modules under `crates/web/static/js/`, one file per behaviour.
 - `crates/web/src/assets.rs::ETAGS` is a `LazyLock<Vec<String>>`: the first 16 hex characters of
   each file's SHA-256, computed once, on first use.
 - `crates/web/src/assets.rs::respond` uses `position` to find the asset, compares
@@ -284,17 +289,35 @@ static ETAGS: LazyLock<Vec<String>> = LazyLock::new(|| {
 });
 ```
 
+The stylesheet macro is a small lesson in how Rust builds text before the program runs:
+
+```rust
+        (
+            concat!($(include_str!(concat!("../css/", $file))),+),
+            &[$($file),+],
+        )
+```
+
+`include_str!` reads a file into a `&'static str` at compile time. `concat!` joins string
+literals, and it accepts `include_str!` as an argument because the compiler expands that macro
+first. The result is a `const`, so there is no join at runtime and no allocation. Both macros
+need literal paths, which is why the macro takes `$file:literal`. A test,
+`crates/web/src/assets.rs::every_file_in_the_static_folder_is_served`, covers the static folder;
+the stylesheet is the one entry it skips, because it is built from `css/`.
+
 **Why this way.** One file to deploy and no path to get wrong at runtime; revalidation makes a
 deploy visible at once, while a repeat visit costs a `304`. A plain `static` must be built from
 a value known at compile time, and a SHA-256 call is not; `LazyLock` runs the closure on first
 use and then hands out the same value. Alternative: `tower-http`'s `ServeDir`. It lost because it
 reads files at runtime, so they would have to be in the Docker image. Alternative: the
 `rust-embed` crate. It does the same with less hand-written code, but adds a dependency for
-twelve files. `rust-embed` would be the better choice with hundreds of files.
+about twenty files. `rust-embed` would be the better choice with hundreds of files.
 
 **Read more.**
 
 - [std: the `include_bytes!` macro](https://doc.rust-lang.org/std/macro.include_bytes.html)
+- [std: the `include_str!` macro](https://doc.rust-lang.org/std/macro.include_str.html)
+- [std: the `concat!` macro](https://doc.rust-lang.org/std/macro.concat.html)
 - [std: `LazyLock`](https://doc.rust-lang.org/std/sync/struct.LazyLock.html)
 - [MDN: the `ETag` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/ETag)
 
@@ -316,13 +339,21 @@ JavaScript. Rust's job is to serve these files correctly, which is section 6.
   deletes old caches, and `fetch` sends navigations to the network with `/offline` as the
   fallback. Static files are fetched first and the cached copy is the fallback. Form posts are
   never touched (#121).
-- `crates/web/static/app.js` captures `beforeinstallprompt` so any element with `data-install`
-  can open the browser's install dialog.
+- `crates/web/static/js/service-worker.js` registers the worker. `crates/web/static/js/app.js`
+  is the entry module of every page: it only imports one small module per behaviour, and each
+  is an enhancement that the page works without.
+- `crates/web/static/js/install.js` captures `beforeinstallprompt` so any element with
+  `data-install` can open the browser's install dialog, and hides those elements once the app
+  is installed.
+- Install lives in a card at the top of Settings (`crates/web/templates/settings.html`), not in
+  the header (#139). Where the browser has no install prompt, its link leads to `/install`.
 - `crates/web/src/routes/install.rs::show` and `crates/web/src/routes/install.rs::offline` are
-  the two pages.
+  the two pages. `show` reads `?welcome` through `crates/web/src/forms.rs::QueryPairs`.
 - The test `crates/web/tests/pwa.rs::everything_the_service_worker_precaches_exists` reads the
   `PRECACHE` list out of `sw.js` and requests each path, because one missing file would make the
-  whole install fail.
+  whole install fail. The list holds the stylesheet, the icon sprite and the entry module with
+  the modules it imports; `crates/web/src/assets.rs::the_service_worker_keeps_the_entry_module_and_its_imports`
+  checks that no import is forgotten.
 
 **Why this way.** Network-first means a new deploy is never hidden behind an old cache. The price
 is that the app does not work offline beyond the offline page; offline logging is out of scope

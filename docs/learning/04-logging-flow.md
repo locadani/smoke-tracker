@@ -1,6 +1,6 @@
 # 04 — The logging flow
 
-> Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
+> Written against commit `eda7a09` (milestone 7b, look and feel). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
 > search the file for the old name. Exercises for this note: 11 (log prompts), 12 (report values), 13 (form pairs). Reading time: about
 > 55 minutes, plus the exercises.
@@ -18,7 +18,7 @@
 
 ## The map
 
-This note follows one tap on the "Log smell" button: the form is read, the app may ask which
+This note follows one tap on the Log button: the form is read, the app may ask which
 event the report belongs to, and then the report is written in one transaction. It also covers
 the 04:00 sweep, which uses the same building blocks.
 
@@ -29,7 +29,7 @@ the 04:00 sweep, which uses the same building blocks.
 - `crates/domain/src/repos.rs`: the storage traits the use cases are generic over.
 - `crates/web/src/routes/entries.rs`: reads the form, asks the question, runs the use case.
 - `crates/web/src/routes/log.rs`: the Log screen and its view models.
-- `crates/web/src/forms.rs`: `Pairs`, the extractor for forms with repeated names.
+- `crates/web/src/forms.rs`: `Pairs` and `QueryPairs`, the extractors for forms and query strings with repeated names.
 - `crates/web/src/routes/mod.rs`: `refusal`, which turns a `LogError` into a message.
 
 ## 1. Use cases as generic functions over a write transaction
@@ -96,7 +96,10 @@ and the spec (§7) lists the answer for every combination. The code is that list
 - The thresholds are `const` values of the `chrono` type `TimeDelta`:
   `crates/domain/src/events.rs::BACKDATE_THRESHOLD`,
   `crates/domain/src/events.rs::FUTURE_TOLERANCE` and `crates/domain/src/events.rs::LARGE_GAP`.
-- `crates/domain/src/events.rs::large_gap_indices` finds reports that follow a long gap.
+- `crates/domain/src/events.rs::large_gap_indices` finds reports that follow a long gap. The
+  event page uses it for the gap warning. `crates/web/src/routes/events.rs::Gap` carries
+  `movable`, the report after the gap, which gets a "Move to a new event" button when the viewer
+  may move it and it is not a no-smell report (#140).
 
 ```rust
     match (observed, open_event, unseen_auto_closed) {
@@ -136,7 +139,7 @@ gap finder yourself.
 
 ## 3. A question that travels with its answer
 
-**The idea.** Two phones can use the same home log. You tap "Log smell" and the app asks "Same
+**The idea.** Two phones can use the same home log. You tap Log and the app asks "Same
 smell still going?" about the open event. While you read the question, the other phone closes
 that event. If your "Yes" were applied to the event as it is now, the report would land in an
 event that has ended. The fix is to send the question back together with the answer, so the
@@ -252,9 +255,30 @@ enum, and the web layer maps each variant to a translation key: a short, fixed n
 - `crates/web/src/routes/mod.rs::refusal` returns `Result<&'static str, AppError>`. `Ok(key)`
   means "show the form again with this message"; `Err` means "show an error page".
 - `crates/web/src/routes/entries.rs::read` returns `Result<Entry, &'static str>`: the form's own
-  mistakes are keys too.
+  mistakes are keys too. It is also where the one Log button decides what the form is (below).
 - `crates/web/src/routes/entries.rs::back_to_form` renders the Log screen again with status 422
   and what the person typed (#96).
+
+The Log screen has one Log button, not one button per kind of entry (#135). `read` looks at what
+is filled in and picks: rooms with a level above 0 make a smell report; rooms all at 0 make a
+clean check, with any PM2.5 value saved beside it; no rooms and only a PM2.5 value make a
+reading (`Entry::Pm25Only`); symptoms or a note without a room give `log-error-rooms`; an empty
+form gives `log-error-empty`. The "No smell" button keeps its own `action` value. The decision
+is a `match` with guards on the PM2.5 value and on what was picked:
+
+```rust
+        match pm25 {
+            Some(value) if !described => return Ok(Entry::Pm25Only { observed_at, value }),
+            _ if !picked.is_empty() => {}
+            _ if described => return Err("log-error-rooms"),
+            _ => return Err("log-error-empty"),
+        }
+```
+
+Arms are tried in order, and a guard (`if ...`) must hold for its arm to count, so the order is
+part of the rule. The test
+`crates/web/src/routes/entries.rs::the_log_button_decides_from_what_is_filled_in` walks the
+table row by row.
 
 **Why this way.** A `&'static str` is a string that lives for the whole program, such as a
 literal in the source. Passing one costs nothing. A key can still be wrong at runtime, so tests
@@ -288,6 +312,10 @@ pairs, and a lifetime is how a function tells it so.
 - `crates/web/src/forms.rs::Pairs::names_with_prefix` returns
   `impl Iterator<Item = &'a str> + 'a`.
 - `crates/web/src/forms.rs::Pairs::without` returns the pairs that are not named in a skip list.
+- `crates/web/src/forms.rs::Pairs::contains` says whether a name is there at all, even blank.
+- `crates/web/src/forms.rs::QueryPairs` reads a query string into the same `Pairs`. A repeated
+  name takes its first value and a query that does not parse is an empty list; it never answers
+  400 (#144).
 - `crates/web/src/routes/log.rs::Draft` and `Draft::from_form` build what the form shows again
   after an error.
 - `crates/web/src/routes/entries.rs::read_values` and
@@ -312,9 +340,16 @@ order the form arrived in. axum's `Form<Struct>` cannot express repeats at all. 
 costs one small extractor, and its `FromRequest` implementation reuses axum's own `Form` for the
 parsing. Owned `String`s would be the better choice if the data had to outlive the request.
 
+`QueryPairs` is a second extractor in the same file. It implements `FromRequestParts`, not
+`FromRequest`, because a query string lives in the request's address and needs no body. Its
+`Rejection` type is `Infallible`, an error type with no values, which tells the compiler that
+extraction cannot fail. A typed `Query<Struct>` would answer 400 for `?month=a&month=b`; the
+pages prefer to show their default.
+
 **Read more.** [Rust Book: validating references with lifetimes](https://doc.rust-lang.org/book/ch10-03-lifetime-syntax.html),
 [Rust Book: references and borrowing](https://doc.rust-lang.org/book/ch04-02-references-and-borrowing.html),
-[std: `Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html).
+[std: `Iterator`](https://doc.rust-lang.org/std/iter/trait.Iterator.html),
+[std: `Infallible`](https://doc.rust-lang.org/std/convert/enum.Infallible.html).
 
 **Try it.** [Exercise 13](../../exercises/src/ex13_form_pairs.rs): write a pairs type with
 borrowing getters.
@@ -332,10 +367,21 @@ exactly what the page needs, and the template only loops over it and prints.
   (inside and common).
 - `crates/web/src/routes/log.rs::log_page` reads the open event and the month's reports (keeping
   those `can_see` allows), makes the summary, and builds `LogPage`.
+- `crates/web/src/routes/log.rs::banner` builds `Banner`, the open event's start, the number of
+  reports the viewer may see and the highest level with its room (#136). The highest room comes
+  from `crates/web/src/routes/log.rs::peak`.
 - `crates/web/templates/log.html` and `crates/web/templates/report_fields.html` loop and print.
   The only conditions left are about display, such as `{% if form.update %}`.
-- `crates/web/static/app.css` hides a room's level row unless the room is ticked, using the
-  selector `.room:has(input[name="room"]:checked)` and its `:not(:has(...))` twin (#107).
+  Repeated markup is an Askama macro in `crates/web/templates/components.html`, such as `chip`
+  and `field`, called with `{% call %}`.
+- `crates/web/css/66-room.css` hides a room's level row unless the room is ticked, using the
+  selector `.room:has(> .room-check input:checked)` and its `:not(:has(...))` twin (#107).
+
+`peak` shows a useful trick. `max_by_key` takes the largest key, and a tuple compares its
+parts in order, so the key `(room.level, when)` means "the highest level, and on a tie the most
+recent report". The tie rule is one tuple, not an `if`. The tests
+`crates/web/src/routes/log.rs::the_peak_is_the_highest_room_level_of_the_event` and
+`crates/web/src/routes/log.rs::on_a_tie_the_most_recently_reported_room_wins` pin it down.
 
 **Why this way.** Rust decides and the template shows, so a unit test can check a decision
 without rendering a page, and askama checks the template against the struct when the app is
@@ -349,6 +395,7 @@ would have been the better choice for behaviour CSS cannot express, such as reac
 fetched after the page loads.
 
 **Read more.** [askama on docs.rs](https://docs.rs/askama),
+[std: `Iterator::max_by_key`](https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.max_by_key),
 [MDN: `:has()`](https://developer.mozilla.org/en-US/docs/Web/CSS/:has).
 
 ## 8. Small language features you will meet
