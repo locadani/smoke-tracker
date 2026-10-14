@@ -1,7 +1,8 @@
 //! The Graphs screen (spec §9 screen 5). Each chart is a `<canvas>` whose Chart.js
 //! configuration travels as JSON in its `data-chart` attribute; `static/graphs.js` draws it, so
-//! no page carries an inline script. The numbers come from `smoke_domain::graphs`, over what the
-//! viewer may see: guests get graphs of their own data only (spec §4).
+//! no page carries an inline script. The room × hour heatmap is a plain table, coloured by CSS
+//! classes. The numbers come from `smoke_domain::graphs`, over what the viewer may see: guests
+//! get graphs of their own data only (spec §4).
 
 use std::collections::HashMap;
 
@@ -12,9 +13,12 @@ use axum::response::Response;
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use smoke_domain::graphs::{Period, PersonLine, events_per_bucket, intensity_lines};
+use smoke_domain::graphs::{
+    AreaLevels, Period, PersonLine, RoomHours, area_levels, events_per_bucket, intensity_lines,
+    room_hours, symptom_counts,
+};
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::Pm25Reading;
+use smoke_domain::records::{Pm25Reading, Room, SmellReport, Symptom};
 use smoke_domain::repos::Store;
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::types::{Locale, UserId};
@@ -23,6 +27,7 @@ use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::header::SignedIn;
 use crate::i18n::Tr;
+use crate::labels;
 use crate::state::AppState;
 use crate::time;
 
@@ -175,19 +180,94 @@ fn bucket_labels(tr: Tr, period: Period, buckets: &[NaiveDate]) -> Vec<String> {
         .collect()
 }
 
-/// A bar chart of whole numbers, one bar per bucket and no legend.
-fn count_chart(tr: Tr, labels: Vec<String>, counts: Vec<usize>) -> Value {
+/// A bar chart of whole numbers with no legend; `across` lays the bars along the y axis, for
+/// long labels such as symptom names.
+fn count_chart(label: String, labels: Vec<String>, counts: Vec<usize>, across: bool) -> Value {
+    let (index, value) = if across { ("y", "x") } else { ("x", "y") };
     json!({
         "type": "bar",
         "data": {
             "labels": labels,
-            "datasets": [{ "label": tr.t("graphs-events-label"), "data": counts }],
+            "datasets": [{ "label": label, "data": counts }],
         },
         "options": {
-            "scales": { "y": { "beginAtZero": true, "ticks": { "precision": 0 } } },
+            "indexAxis": index,
+            "scales": { value: { "beginAtZero": true, "ticks": { "precision": 0 } } },
             "plugins": { "legend": { "display": false } },
         },
     })
+}
+
+/// How often each symptom was reported, most frequent first, by its shown name.
+fn symptom_chart(tr: Tr, reports: &[SmellReport], symptoms: &[Symptom]) -> Option<Value> {
+    let counts = symptom_counts(reports);
+    if counts.is_empty() {
+        return None;
+    }
+    let (names, counts) = counts
+        .into_iter()
+        .filter_map(|(id, count)| {
+            let symptom = symptoms.iter().find(|s| s.id == id)?;
+            Some((labels::symptom(tr, symptom), count))
+        })
+        .unzip();
+    Some(count_chart(
+        tr.t("graphs-symptoms-label"),
+        names,
+        counts,
+        true,
+    ))
+}
+
+/// Inside the home against common areas: each area's highest level per bucket, side by side.
+fn area_chart(tr: Tr, labels: Vec<String>, levels: &[(NaiveDate, AreaLevels)]) -> Value {
+    let series = |pick: fn(&AreaLevels) -> Option<u8>| -> Vec<Option<u8>> {
+        levels.iter().map(|(_, l)| pick(l)).collect()
+    };
+    json!({
+        "type": "bar",
+        "data": {
+            "labels": labels,
+            "datasets": [
+                { "label": tr.t("log-inside"), "data": series(|l| l.inside.map(|v| v.get())) },
+                { "label": tr.t("log-common"), "data": series(|l| l.common.map(|v| v.get())) },
+            ],
+        },
+        "options": {
+            "scales": {
+                "y": {
+                    "min": 0,
+                    "max": 10,
+                    "title": { "display": true, "text": tr.t("rating-level") },
+                },
+            },
+        },
+    })
+}
+
+/// One cell of the heatmap: the room's average level at that hour, rounded, which also picks
+/// the colour (`heat-0` to `heat-10`). `None` where nobody checked the room.
+type HeatCell = Option<u8>;
+
+struct HeatRow {
+    room: String,
+    cells: Vec<HeatCell>,
+}
+
+fn heat_rows(tr: Tr, rows: Vec<RoomHours>, rooms: &[Room]) -> Vec<HeatRow> {
+    rows.into_iter()
+        .filter_map(|row| {
+            let room = rooms.iter().find(|r| r.id == row.room)?;
+            Some(HeatRow {
+                room: labels::room(tr, room),
+                cells: row
+                    .hours
+                    .iter()
+                    .map(|tally| tally.mean().map(|mean| mean.round() as u8))
+                    .collect(),
+            })
+        })
+        .collect()
 }
 
 #[derive(Template)]
@@ -206,6 +286,10 @@ struct GraphsPage {
     intensity: String,
     events_key: &'static str,
     events: String,
+    hours: std::ops::Range<u8>,
+    heatmap: Vec<HeatRow>,
+    symptoms: Option<String>,
+    areas: String,
 }
 
 pub(crate) async fn show<S: Store + Clone + 'static>(
@@ -249,6 +333,9 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
         .into_iter()
         .map(|(_, count)| count)
         .collect();
+    let rooms = state.store.rooms().await?;
+    let symptoms = state.store.symptoms().await?;
+    let areas = area_levels(&reports, &rooms, period, schedule);
     let lines = intensity_lines(&reports);
     let intensity = intensity_chart(tr, &lines, &names, &readings, period, span, schedule);
 
@@ -278,7 +365,12 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
             empty: reports.is_empty() && readings.is_empty(),
             intensity: intensity.to_string(),
             events_key,
-            events: count_chart(tr, labels, events).to_string(),
+            events: count_chart(tr.t("graphs-events-label"), labels.clone(), events, false)
+                .to_string(),
+            hours: 0..24,
+            heatmap: heat_rows(tr, room_hours(&reports, schedule), &rooms),
+            symptoms: symptom_chart(tr, &reports, &symptoms).map(|chart| chart.to_string()),
+            areas: area_chart(tr, labels, &areas).to_string(),
         },
     )
 }

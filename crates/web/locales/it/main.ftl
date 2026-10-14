@@ -269,6 +269,14 @@ graphs-pm25 = PM2.5 (µg/m³)
 graphs-events-day = Eventi al giorno
 graphs-events-week = Eventi alla settimana
 graphs-events-label = Eventi
+graphs-rooms = Stanze per ora del giorno
+graphs-rooms-hint = Il livello medio dato a ogni stanza in ogni ora; 0 significa controllata e pulita. Una cella vuota significa che nessuno ha controllato quella stanza a quell'ora.
+graphs-rooms-none = Nessuna stanza è stata controllata in questo periodo.
+graphs-room = Stanza
+graphs-symptoms-label = Segnalazioni
+graphs-symptoms-none = Nessun sintomo segnalato in questo periodo.
+graphs-areas = In casa e parti comuni a confronto
+graphs-areas-hint = Ogni barra è il livello più alto segnalato in quel giorno o in quella settimana.
 
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.

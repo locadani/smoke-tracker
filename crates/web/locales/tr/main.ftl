@@ -269,6 +269,14 @@ graphs-pm25 = PM2.5 (µg/m³)
 graphs-events-day = Günlük olay sayısı
 graphs-events-week = Haftalık olay sayısı
 graphs-events-label = Olaylar
+graphs-rooms = Günün saatlerine göre odalar
+graphs-rooms-hint = Her odaya her saatte verilen ortalama seviye; 0 kontrol edildi ve temiz demektir. Boş bir hücre, o saatte o odayı kimsenin kontrol etmediği anlamına gelir.
+graphs-rooms-none = Bu dönemde hiçbir oda kontrol edilmedi.
+graphs-room = Oda
+graphs-symptoms-label = Bildirimler
+graphs-symptoms-none = Bu dönemde hiçbir belirti bildirilmedi.
+graphs-areas = Ev içi ve ortak alanlar karşılaştırması
+graphs-areas-hint = Her çubuk, o gün veya hafta bildirilen en yüksek seviyedir.
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

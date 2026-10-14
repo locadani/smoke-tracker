@@ -30,5 +30,42 @@
     <canvas data-chart="{{ events }}" role="img" aria-label="{{ tr.t(events_key) }}">{{ tr.t("graphs-needs-js") }}</canvas>
   </div>
 </section>
+<section>
+  <h2>{{ tr.t("graphs-rooms") }}</h2>
+  {% if heatmap.is_empty() %}
+  <p>{{ tr.t("graphs-rooms-none") }}</p>
+  {% else %}
+  <p class="hint">{{ tr.t("graphs-rooms-hint") }}</p>
+  <div class="scroll">
+    <table class="heatmap">
+      <thead>
+        <tr><th scope="col">{{ tr.t("graphs-room") }}</th>{% for hour in hours.clone() %}<th scope="col">{{ hour }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for row in heatmap %}
+        <tr><th scope="row">{{ row.room }}</th>{% for cell in row.cells %}{% if let Some(level) = cell %}<td class="heat-{{ level }}">{{ level }}</td>{% else %}<td></td>{% endif %}{% endfor %}</tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</section>
+<section>
+  <h2>{{ tr.t("log-symptoms") }}</h2>
+  {% if let Some(symptoms) = symptoms %}
+  <div class="chart">
+    <canvas data-chart="{{ symptoms }}" role="img" aria-label="{{ tr.t("log-symptoms") }}">{{ tr.t("graphs-needs-js") }}</canvas>
+  </div>
+  {% else %}
+  <p>{{ tr.t("graphs-symptoms-none") }}</p>
+  {% endif %}
+</section>
+<section>
+  <h2>{{ tr.t("graphs-areas") }}</h2>
+  <p class="hint">{{ tr.t("graphs-areas-hint") }}</p>
+  <div class="chart">
+    <canvas data-chart="{{ areas }}" role="img" aria-label="{{ tr.t("graphs-areas") }}">{{ tr.t("graphs-needs-js") }}</canvas>
+  </div>
+</section>
 {% endif %}
 {% endblock %}

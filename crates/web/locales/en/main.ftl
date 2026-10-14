@@ -269,6 +269,14 @@ graphs-pm25 = PM2.5 (µg/m³)
 graphs-events-day = Events per day
 graphs-events-week = Events per week
 graphs-events-label = Events
+graphs-rooms = Rooms by hour of day
+graphs-rooms-hint = The average level each room was given at each hour, 0 meaning checked and clean. An empty cell means nobody checked that room at that hour.
+graphs-rooms-none = No room was checked in this period.
+graphs-room = Room
+graphs-symptoms-label = Reports
+graphs-symptoms-none = No symptoms were reported in this period.
+graphs-areas = Inside vs common areas
+graphs-areas-hint = Each bar is the highest level reported in that day or week.
 
 error-not-found-title = Page not found
 error-not-found = This page does not exist.
