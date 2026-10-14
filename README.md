@@ -121,8 +121,12 @@ flowchart LR
 
 Some choices, each recorded with its alternatives in the [decision log](docs/DECISIONS.md):
 
-- **Server-rendered pages** with plain forms; the little JavaScript there is (a dialog, the
-  install prompt, the charts) is progressive enhancement.
+- **Server-rendered pages** with plain forms; the little JavaScript there is (one ES module
+  per behaviour: dialogs, menus, the install prompt, the charts and their filters) is
+  progressive enhancement.
+- **A small design system without a build step:** design tokens and cascade layers in a few
+  CSS files joined at compile time, Askama macros for every repeated piece of markup, one SVG
+  icon sprite; light and dark follow the phone.
 - A **strict Content-Security-Policy** (`'self'` only, no inline scripts or styles): the charts
   read their data from `data-` attributes, the heatmap is a table coloured by CSS classes, and
   QR codes are inline SVG. A test scans the app's pages for anything the policy would block.
@@ -147,6 +151,11 @@ export TEST_POSTGRES_URL=postgres://postgres@localhost:5432/postgres
 cargo test --workspace         # Postgres tests are skipped when TEST_POSTGRES_URL is unset
 scripts/sqlx-prepare.sh        # after changing a query or a migration; commit the .sqlx/ changes
 cargo fmt --all --check && cargo clippy --workspace --all-targets -- -D warnings
+biome ci .                     # JavaScript and CSS (the standalone Biome binary, 2.5.15)
+
+# The accessibility check in a browser (Node 24; installs Playwright's Chromium once)
+cargo build -p smoke-tracker
+cd tests/e2e && npm ci && npx playwright install chromium && npx playwright test
 ```
 
 Building needs no database: queries are checked against the committed `.sqlx/` metadata.
@@ -193,6 +202,7 @@ Pull requests into `main` need the checks marked *required* to pass.
 |---|---|---|
 | [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `fmt`, `clippy -D warnings`, the whole test suite on SQLite and a Postgres service (required); the committed `sqlx` query data (required); line coverage with `cargo-llvm-cov`, shown in the job summary and kept as an `lcov` artifact |
 | [`security.yml`](.github/workflows/security.yml) | push, pull requests, weekly | `cargo-deny` (RustSec advisories, licences, sources), `gitleaks`, a Trivy scan of the container image (all required) |
+| [`ci.yml`](.github/workflows/ci.yml) (more jobs) | push to `main`, pull requests | Biome on the JavaScript and CSS; the accessibility job: the app started on SQLite, seeded through its own pages, and axe-core on its pages at phone size in light and dark, with the screenshots kept for 14 days |
 | [`codeql.yml`](.github/workflows/codeql.yml) | push, pull requests, weekly | CodeQL for the Rust code, the workflows and the project's own JavaScript |
 | [`deploy.yml`](.github/workflows/deploy.yml) | push to `main` | Builds, scans and deploys the image to Cloud Run |
 | [`infra.yml`](.github/workflows/infra.yml) | changes under `infra/` | Terraform format, validation, tests and plan |
