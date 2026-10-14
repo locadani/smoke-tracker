@@ -378,6 +378,6 @@ would be the better choice if the log were readable by people other than the own
 
 ## Where next
 
-Next: note 06, graphs (series, iterators and charts).
+Next: [06 — Graphs](06-graphs.md) (series, iterators and charts).
 
 Exercises for this note: [Exercise 14](../../exercises/src/ex14_expiry_pick.rs) (expiry picks) and [Exercise 15](../../exercises/src/ex15_pwa_assets.rs) (assets, caching and an SVG drawing).

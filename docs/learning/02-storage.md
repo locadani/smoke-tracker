@@ -80,7 +80,7 @@ rewrote each method to return a boxed future (a heap allocation per call).
 - `crates/domain/src/repos.rs::Transactional`: `begin` returns `impl Future<Output =
   StoreResult<Self::Tx>> + Send`. The `+ Send` is written out, so callers may hand the future to
   another thread, as the web server does.
-- `crates/storage-sqlite/src/lib.rs::SqliteStore`: the impl just writes `async fn begin`. That is
+- `crates/storage-sqlite/src/lib.rs::SqliteStore`: the impl writes `async fn begin`. That is
   allowed because the future it returns is `Send`.
 - `crates/web/src/sessions.rs::DbSessions` implements tower-sessions' `SessionStore`, a trait
   from another crate that is declared with `async-trait`. The impl therefore carries
@@ -122,7 +122,7 @@ none does.
   audit entry in the same transaction (decision #47).
 
 **Why this way.** The associated type lets each backend have its own transaction while the
-generic code stays backend-free. Putting writes on the transaction makes it impossible to write
+generic code stays backend-free. Putting writes on the transaction makes it hard to write
 without the audit entry.
 
 Alternative: a generic parameter on the trait, `Transactional<Tx>`, would let one store have
@@ -220,7 +220,7 @@ type each column has, and they fail the build if the code disagrees.
 **In our code.**
 
 - `crates/storage-sqlite/src/audit.rs::fetch_entries` uses `sqlx::query_as!` with a row struct
-  and `$1` style parameters. `crates/storage-sqlite/src/tx.rs::SqliteTx` uses `sqlx::query!` in
+  and a fixed query. `crates/storage-sqlite/src/tx.rs::SqliteTx` uses `sqlx::query!` in
   `record`.
 - Asking a live database on every build would be slow, so the answers are saved as JSON in
   `crates/storage-sqlite/.sqlx/` and `crates/storage-postgres/.sqlx/`. `.cargo/config.toml` sets

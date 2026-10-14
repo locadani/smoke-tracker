@@ -14,7 +14,7 @@
 - How errors become translation keys instead of text.
 - What a lifetime such as `'a` promises when a function hands out references.
 - How a view model keeps decisions in Rust and only printing in the template.
-- Four small language features (`let … else`, let chains, `is_none_or`, `matches!`) and the Rust version that added each.
+- A few small language features (`let … else`, let chains, `is_none_or`, `matches!`, `map_or`) and the Rust version that added each.
 
 ## The map
 
@@ -49,7 +49,7 @@ caller hands it in, and the caller decides when to commit.
 - `crates/domain/src/logbook.rs::close_event`, `crates/domain/src/logbook.rs::reopen_event`,
   `crates/domain/src/logbook.rs::correct_report` and `crates/domain/src/logbook.rs::move_report`
   have the same shape with smaller bounds: only the traits each one needs.
-- `crates/domain/src/repos.rs::EventWrites` documents why the reads live on the transaction:
+- `crates/domain/src/repos.rs::EventWrites::open_event` documents why the reads live on the transaction:
   "Reads inside the transaction, so a decision and the write that follows it see the same data".
 - `crates/web/src/routes/entries.rs::submit` is the caller: `begin`, call the use case, then
   `commit`. On an error it calls `drop(tx)` and never commits.
@@ -301,11 +301,11 @@ pairs, and a lifetime is how a function tells it so.
 ```
 
 **Why this way.** A lifetime such as `'a` is a name for "how long some borrowed data stays
-valid". In `names_with_prefix`, the signature says: the returned names borrow from `self` and
-from `prefix`, so the iterator must not be used after either is gone. The compiler checks that
-at every call. Nothing is copied: callers get slices of the original strings. `prefix` carries
-`'a` as well because the closure inside the iterator captures it, so it must stay valid as long
-as the iterator does.
+valid". In `names_with_prefix`, the signature says: the returned names borrow from `self`, and the
+iterator itself also holds `prefix`, so the iterator must not be used after either is gone. The
+compiler checks that at every call. Nothing is copied: callers get slices of the original
+strings. `prefix` carries `'a` as well because the closure inside the iterator captures it, so
+it must stay valid as long as the iterator does.
 
 Returning `String`s would allocate once per call. A `HashMap<String, Vec<String>>` would lose the
 order the form arrived in. axum's `Form<Struct>` cannot express repeats at all. The pairs wrapper
@@ -341,7 +341,7 @@ exactly what the page needs, and the template only loops over it and prints.
 without rendering a page, and askama checks the template against the struct when the app is
 built (note 03). The CSS `:has()` selector matches an element that contains a matching
 descendant, so the browser shows the level row of a ticked room with no JavaScript. Where
-`:has()` is unsupported the rows simply stay visible, which still works.
+`:has()` is unsupported the rows stay visible, which still works.
 
 Logic inside the template language would be hard to test and easy to get wrong. A JavaScript
 component for the level rows would need a script and its security-policy allowance. A script
@@ -354,7 +354,7 @@ fetched after the page loads.
 ## 8. Small language features you will meet
 
 **The idea.** Some Rust features exist only to remove one level of nesting or one temporary
-variable. You will see these four all over the app.
+variable. You will see these all over the app.
 
 **In our code.**
 
@@ -397,7 +397,7 @@ yes, do the work now. The answer is the same at 04:00 sharp and at 08:00 after a
   Its bound `Transactional<Tx: EventWrites + JobWrites>` names what the transaction must offer.
 - `crates/domain/src/logbook.rs::close_at_last_report` is `pub(crate)`: visible inside the domain
   crate only. The "new event" answer and the sweep share it.
-- Callers: `crates/web/src/routes/log.rs::show`, `crates/web/src/routes/entries.rs::submit` and
+- Callers, for example: `crates/web/src/routes/log.rs::show`, `crates/web/src/routes/entries.rs::submit` and
   `crates/app/src/commands/serve.rs::sweep_events` (at startup and every five minutes, from a
   `tokio::time::interval`).
 - Tests: `crates/storage-contract/src/sweep.rs::on_dst_days_the_sweep_still_runs_at_four_local`
@@ -407,11 +407,10 @@ yes, do the work now. The answer is the same at 04:00 sharp and at 08:00 after a
 screen is cheap. Closing the event and recording the run in one transaction means a crash cannot
 leave the event closed with the run unrecorded, or the reverse. A cron job or a scheduler crate
 such as `tokio-cron-scheduler` needs the process awake at 04:00 and would be the better choice
-on a server that never sleeps. A `JoinHandle` (a task you can wait for) is background reading for
-how the timer loop is started.
+on a server that never sleeps. How the spawned timer loop is started is in
+[note 03](03-web-and-auth.md), section 11.
 
-**Read more.** [tokio on docs.rs](https://docs.rs/tokio) (`tokio::time::interval`),
-[Rust Book: using threads to run code simultaneously](https://doc.rust-lang.org/book/ch16-01-threads.html).
+**Read more.** [tokio::time::interval](https://docs.rs/tokio/latest/tokio/time/fn.interval.html).
 
 ## Check yourself
 
@@ -426,7 +425,7 @@ how the timer loop is started.
 
 ## Where next
 
-Next: note 05, people and the PWA (accounts, invites and the installable app).
+Next: [05 — People and the PWA](05-people-and-pwa.md) (accounts, invites and the installable app).
 
 Exercises for this note: [Exercise 11](../../exercises/src/ex11_log_prompt.rs) (log prompts),
 [Exercise 12](../../exercises/src/ex12_report_values.rs) (report values) and

@@ -96,11 +96,10 @@ buckets first and fills it afterwards, so a missing zero cannot happen.
   smaller time; if not, insert it. An event counts once, as in the summary card (#94, restated in #123).
 
 **Why this way.** A graph that starts at the first bar of the year is wrong when the year
-does not start on a Monday, so the first bucket may start in the year before. Alternatives:
-grouping by `NaiveDate::iso_week` lost because ISO weeks put early January days in week 52 or 53
-of the previous year, which makes the first bar confusing. A rolling 30 days lost because it does
-not match the Events list, which is by calendar month. A rolling window would be the better choice
-for a "last 30 days" dashboard.
+does not start on a Monday, so the first bucket may start in the year before. Alternatives
+recorded in decision #123: a rolling 30/90/365 days, and months as a year's buckets. A calendar
+month won because it matches the Events list (#100) and bounds every query; a year needs
+coarser buckets, hence a count per week.
 
 **Read more.** [std: the `successors` function](https://doc.rust-lang.org/std/iter/fn.successors.html),
 [std: `BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html),

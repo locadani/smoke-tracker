@@ -47,14 +47,15 @@ function body never runs, so a handler only sees values that already passed thei
 - `crates/web/src/routes/entries.rs::submit` takes the body-reading extractor `Pairs` as its
   last argument: a request body can be read once, so only the last extractor may consume it.
 - Every handler is generic: `S: Store + Clone + 'static`. `Clone` because axum clones the
-  state for each request; `'static` because tokio may move the handler's future to another
-  thread and run it later, so it may not borrow local data.
+  state for each request; `'static` because the router outlives any request, so the state type
+  must own its data (moving the future between threads is the separate `Send` requirement).
 - `crates/web/src/lib.rs::serve` runs `axum::serve` and finishes requests in flight on shutdown.
 
 **Why this way.** A handler's signature shows what it needs without reading the body.
 Alternatives: one large `match` on the path (what a router replaces); macros on handlers
-(Rocket) or an actor model (Actix). Axum won (decision #2) because it is built on tokio, tower
-and hyper, which the rest of the Rust web ecosystem shares.
+(Rocket) or an actor model (Actix). Decision #2 recorded Axum with Askama and htmx over Leptos
+(Rust compiled to WASM): transferable backend Rust, a tiny binary, no JavaScript build step, less
+framework friction while learning.
 
 **Read more.**
 
@@ -96,7 +97,8 @@ a plain 500 error, not a redirect to the login page).
 **The idea.** Some rules apply to many routes: sign-in, security headers, the cross-site check.
 Middleware is a function that receives the request and a handle to "the rest of the chain",
 may act before it, calls it, and may change the response on the way back. In axum,
-`middleware::from_fn` turns an `async fn(Request, Next) -> Response` into such a layer.
+`middleware::from_fn` turns an `async fn(Request, Next) -> Response` into such a layer
+(it may also take extractors first and return a `Result`).
 
 **In our code.**
 
@@ -108,9 +110,10 @@ may act before it, calls it, and may change the response on the way back. In axu
 - `crates/web/src/error.rs::render_errors`, the `CatchPanicLayer`, `TraceLayer` and request-id
   layers from `tower-http` are wired up in `crates/web/src/lib.rs::router`;
   `crates/web/src/request_id.rs::RandomRequestId` implements tower-http's `MakeRequestId`.
-- The layer added last is the outermost. So a page request meets `render_errors`, then
-  `check_origin`, then the session layer, then `load_user`, then `CatchPanicLayer`, then the
-  handler; the response travels back out in reverse.
+- The layer added last is the outermost. Within the page routes, a request meets
+  `render_errors`, `check_origin`, the session layer, `load_user`, `CatchPanicLayer` and then the
+  handler; the response travels back out in reverse. The outer router wraps all of these in the
+  body limit, the security headers, the request id and the trace layer.
 
 **Why this way.** A rule in one place cannot be forgotten in one handler. The order is
 deliberate: `CatchPanicLayer` sits inside, so a panic becomes a response that `render_errors`
@@ -135,9 +138,8 @@ guard releases the lock. `HashMap::entry` looks a key up once and lets you inser
 
 **In our code.**
 
-- `crates/web/src/state.rs::AppState` is a struct of `Arc`s (the clock, the configuration, the
-  limiter, a semaphore) around the store. Its `Clone` is written by hand and only clones the
-  `Arc`s, which is cheap.
+- `crates/web/src/state.rs::AppState`: the store plus `Arc`s (clock, configuration, limiter,
+  semaphore). Its `Clone` clones the store (so `S: Clone`) and bumps each `Arc`, which is cheap.
 - `crates/web/src/auth/limiter.rs::LoginLimiter` keeps a `Mutex<Tables>`: both counters sit
   behind one lock, so "check, then count" is one step (decision #60).
 - `crates/web/src/auth/limiter.rs::strike` uses `map.entry(key).or_insert_with(...)` and then
@@ -235,7 +237,7 @@ failure looks. A panic unwinds the stack, but a layer can catch it and turn it i
   works in handlers (note 02, section 5).
 - Its `IntoResponse` impl logs the cause chain and attaches a small marker,
   `crates/web/src/error.rs::ErrorPage`, to a bare status response.
-- `crates/web/src/error.rs::render_errors` is the outermost middleware: if the response carries
+- `crates/web/src/error.rs::render_errors` is the outermost of the page layers: if the response carries
   the marker, it replaces the body with a translated page. The language comes from the cookie
   or the browser, because no session may exist.
 - `crates/web/src/error.rs::chain` walks `Error::source` to print every cause;
@@ -270,7 +272,7 @@ time, so a misspelled field is a build error, and output is HTML-escaped by defa
   as `report_fields.html`; `crates/web/src/error.rs::page` renders one with a status.
 - `crates/web/src/labels.rs::room` keeps view logic in Rust, out of the template.
 
-**Why this way.** The pages are plain HTML forms, so no script is needed (decision #96).
+**Why this way.** The pages are plain HTML forms, so no script is needed (decision #96: htmx stays loaded but no page uses it yet).
 Alternatives: Tera or Handlebars (templates checked only at run time); Maud (HTML inside Rust
 macros); a single-page app with a JSON API (much more JavaScript to secure).
 
@@ -426,8 +428,7 @@ machine).
 
 **Read more.**
 
-- [The Cargo Book: workspaces](https://doc.rust-lang.org/cargo/reference/workspaces.html)
-  (profiles are set once for the whole workspace)
+- [The Cargo Book: profiles](https://doc.rust-lang.org/cargo/reference/profiles.html) (`[profile.release]`)
 
 ## Check yourself
 

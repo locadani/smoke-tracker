@@ -80,7 +80,7 @@ private, only code in that module can build the value.
 - `crates/storage-sqlite/src/lib.rs`: private `mod` lines and one `pub use crate::tx::SqliteTx`;
   the outside world sees only what the crate exposes.
 - `crates/web/src/lib.rs`: almost every module is private; the public surface is `router`,
-  `serve`, `AppState` and a couple of re-exports.
+  `serve`, `AppState`, `pub mod config` and a couple of re-exports.
 
 **Why this way.** Section 3 depends on it: "only this module can build a `Level`" is true only
 because the field is private. A small public surface also lets a crate refactor inside.
@@ -110,7 +110,7 @@ the app takes a `Level` and never checks again.
   (decision #51). `crates/domain/src/types.rs::ListName` trims and counts characters.
   Both derive `Serialize` only, not `Deserialize`, so there is no back door around `new`.
 - `crates/domain/src/types.rs::NewPassword`: counts `chars()`, not bytes, so a password of
-  ten Turkish letters is ten characters even though it takes more than ten bytes.
+  ten letters such as ş or ğ is ten characters even though it takes more than ten bytes.
   `Username` can use `len()` because it only allows ASCII, where one character is one byte.
 - `crates/domain/src/types.rs::Pm25`: uses `is_finite` so NaN ("not a number", a floating-point
   value equal to nothing) is refused.
@@ -142,8 +142,8 @@ prints every field, which is wrong for a secret.
 
 **In our code.**
 
-- `crates/domain/src/types.rs::Level`: a long derive list. `Copy` is allowed because the value
-  is one byte. `Ord` is needed so `Iterator::max` works in
+- `crates/domain/src/types.rs::Level`: a long derive list. `Copy` is allowed because every field is
+  `Copy`, and sensible because the value is one byte. `Ord` is needed so `Iterator::max` works in
   `crates/domain/src/records.rs::ReportValues::intensity`, and `Hash` lets a `Level` be a map key.
 - `crates/domain/src/types.rs::NewPassword` writes its own `Debug` and prints
   `NewPassword(<redacted>)`. `crates/domain/src/types.rs::TokenHash` prints only the first eight
@@ -152,7 +152,7 @@ prints every field, which is wrong for a secret.
   cannot print a secret.
 
 **Why this way.** For a secret, the safe default is to print nothing, and the hand-written
-implementation is six lines. A test in the same file checks the printed text.
+implementation is five lines. A test in the same file checks the printed text.
 
 Alternative: a wrapper from a crate such as `secrecy`, which also wipes memory on drop. That
 pays off with many secrets. Here there are three.
@@ -220,7 +220,7 @@ job.
   `crates/domain/src/types.rs`) and for `AuditAction` and `AuditEntity` in
   `crates/domain/src/audit.rs`: seven enums.
 
-**Why this way.** The same forty lines for seven enums would drift apart. The macro keeps the text
+**Why this way.** The same fifty-odd lines for seven enums would drift apart. The macro keeps the text
 form in one place.
 
 Alternatives: a derive crate such as `strum` is one more dependency, and the stored text must
@@ -260,7 +260,7 @@ the end of the line; nobody matches on its errors.
 
 Alternatives: `Box<dyn Error>` everywhere hides the cases from callers. Hand-written `Display` and
 `From` implementations are what `thiserror` generates; the web crate's `AppError` does it by
-hand, and Note 03 explains why.
+hand, and note 03 explains why.
 
 **Read more.**
 
@@ -384,7 +384,7 @@ and the tool generates many inputs to try to break it.
   and loops over every role and every action, so the whole table is checked cell by cell.
 - `crates/domain/src/audit.rs`: a `proptest!` block builds arbitrary chains, edits one entry
   anywhere, and requires `verify_chain` to find it.
-- `crates/web/tests/common/mod.rs::TestApp`: the web crate's integration tests (Note 03).
+- `crates/web/tests/common/mod.rs::TestApp`: the web crate's integration tests (note 03).
 
 **Why this way.** A change and its test sit in one diff. Example tests pin down the cases we
 thought of; property tests find the others.

@@ -45,8 +45,8 @@ Every function starts as `todo!()`, so every test starts red. Open
 in `exercises/tests/`: when the tests pass, you are done. Solutions are not in the repository on
 purpose; the doc comment's hint is the only help, and you can ask Claude when stuck.
 
-`cargo` builds into a `target` folder inside `exercises/` unless `CARGO_TARGET_DIR` is set. That folder is
-git-ignored, and removing it is `cargo clean` run inside `exercises/`.
+`cargo` builds into a `target` folder inside `exercises/` unless `CARGO_TARGET_DIR` is set.
+That folder is git-ignored, and removing it is `cargo clean` run inside `exercises/`.
 
 ### The list
 
