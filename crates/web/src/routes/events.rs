@@ -38,8 +38,10 @@ pub(crate) struct ListQuery {
 struct EventRow {
     id: i64,
     span: String,
-    reports: usize,
-    max_intensity: Option<String>,
+    /// "3 reports · max 6".
+    detail: String,
+    /// The highest intensity among the reports, or a dash when there is none to show.
+    badge: String,
 }
 
 struct ReadingRow {
@@ -143,15 +145,17 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         if local < schedule.local_date(from) {
             continue;
         }
+        let max = visible.iter().map(|r| r.values.intensity().get()).max();
+        let mut detail = tr.n("summary-reports", &visible.len());
+        if let Some(max) = max {
+            detail.push_str(" · ");
+            detail.push_str(&tr.t1("events-max-intensity", "level", &max.to_string()));
+        }
         day(&mut days, tr, local).events.push(EventRow {
             id: event.id.0,
             span: span(tr, event, tz),
-            reports: visible.len(),
-            max_intensity: visible
-                .iter()
-                .map(|r| r.values.intensity().get())
-                .max()
-                .map(|max| max.to_string()),
+            detail,
+            badge: max.map_or_else(|| "–".to_owned(), |max| max.to_string()),
         });
     }
     for check in checks.iter().rev() {

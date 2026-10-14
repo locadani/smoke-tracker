@@ -1,28 +1,29 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("events-title") }}{% endblock %}
 {% block content %}
 <h1>{{ tr.t("events-title") }}</h1>
-<nav class="months">
-  <a href="/events?month={{ previous }}">{{ tr.t("events-previous") }}</a>
+<nav class="card switcher" aria-label="{{ tr.t("events-month") }}">
+  <a href="/events?month={{ previous }}" aria-label="{{ tr.t("events-previous") }}">{% call c::icon("chevron-left") %}{% endcall %}</a>
   <strong>{{ month }}</strong>
-  <a href="/events?month={{ next }}">{{ tr.t("events-next") }}</a>
+  <a href="/events?month={{ next }}" aria-label="{{ tr.t("events-next") }}">{% call c::icon("chevron-right") %}{% endcall %}</a>
 </nav>
 {% for day in days %}
-<section>
-  <h2>{{ day.date }}</h2>
-  <ul class="rows">
+<section class="stack">
+  <h2 class="day">{{ day.date }}</h2>
+  <div class="card rows">
     {% for event in day.events %}
-    <li><a href="/events/{{ event.id }}">{{ event.span }}</a> · {{ tr.n("summary-reports", event.reports) }}{% if let Some(max) = event.max_intensity %} · {{ tr.t1("events-max-intensity", "level", max) }}{% endif %}</li>
+    {% call c::row("/events/{}"|format(event.id), event.span, event.detail) %}<span class="badge" data-tone="warn">{{ event.badge }}</span>{% endcall %}
     {% endfor %}
     {% for check in day.checks %}
-    <li><a href="/reports/{{ check.id }}">{{ check.at }} · {{ tr.t("events-check") }}</a></li>
+    {% call c::row("/reports/{}"|format(check.id), check.at, tr.t("events-check")) %}<span class="badge">0</span>{% endcall %}
     {% endfor %}
     {% for reading in day.readings %}
-    <li>{{ reading.at }} · {{ tr.t1("event-pm25", "value", reading.value) }}</li>
+    {% call c::row("", reading.at, tr.t1("event-pm25", "value", reading.value)) %}<span class="badge" data-tone="muted">PM</span>{% endcall %}
     {% endfor %}
-  </ul>
+  </div>
 </section>
 {% else %}
-<p>{{ tr.t("events-none") }}</p>
+<p class="card muted">{{ tr.t("events-none") }}</p>
 {% endfor %}
 {% endblock %}

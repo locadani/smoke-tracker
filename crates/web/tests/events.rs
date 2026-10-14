@@ -4,6 +4,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::EventRepo;
@@ -38,38 +39,42 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
     app.log_pm25(&me, "2026-01-11T13:00:00Z", 12.5).await;
     let cookie = app.sign_in("daniele").await;
 
-    let html = text(app.send(get_with("/events?month=2026-01", &cookie)).await).await;
-    assert!(html.contains("<strong>01/2026</strong>"), "{html}");
-    assert!(html.contains(r#"href="/events?month=2025-12""#), "{html}");
-    assert!(html.contains(r#"href="/events?month=2026-02""#), "{html}");
-    let day12 = html.find("<h2>12/01/2026</h2>").unwrap();
-    let day11 = html.find("<h2>11/01/2026</h2>").unwrap();
-    let day10 = html.find("<h2>10/01/2026</h2>").unwrap();
-    assert!(day12 < day11 && day11 < day10, "newest first: {html}");
-    assert!(
-        html.contains(&format!(
-            r#"<a href="/events/{}">19:00–20:00</a> · 2 reports · max 7"#,
-            first.report.event_id.unwrap()
-        )),
-        "{html}"
+    let page = Page::parse(&text(app.send(get_with("/events?month=2026-01", &cookie)).await).await);
+    assert_eq!(page.text("nav.switcher strong"), "01/2026");
+    assert_eq!(
+        page.attrs("nav.switcher a", "href"),
+        ["/events?month=2025-12", "/events?month=2026-02"]
     );
-    assert!(
-        html.contains(&format!(
-            r#"<a href="/events/{}">08:30–"#,
-            second.report.event_id.unwrap()
-        )),
-        "{html}"
+    assert_eq!(
+        page.attrs("nav.switcher a", "aria-label"),
+        ["Previous month", "Next month"]
     );
-    assert!(html.contains("14:00 · PM2.5 12.5 µg/m³"), "{html}");
+    assert_eq!(
+        page.texts("h2.day"),
+        ["12/01/2026", "11/01/2026", "10/01/2026"],
+        "newest first"
+    );
+    let event = |id| format!(r#"a.row[href="/events/{id}"]"#);
+    let first = event(first.report.event_id.unwrap());
+    assert_eq!(page.text(&format!("{first} .badge[data-tone=warn]")), "7");
+    assert_eq!(
+        page.text(&format!("{first} .row-text")),
+        "19:00–20:00 2 reports · max 7"
+    );
+    let second = event(second.report.event_id.unwrap());
+    assert!(
+        page.text(&format!("{second} .row-text strong"))
+            .starts_with("08:30–")
+    );
+    assert_eq!(page.text("div.row .badge[data-tone=muted]"), "PM");
+    assert_eq!(page.text("div.row .row-text"), "14:00 PM2.5 12.5 µg/m³");
 
     let empty = text(app.send(get_with("/events?month=2025-11", &cookie)).await).await;
     assert!(empty.contains("No events this month."), "{empty}");
-    let default = text(app.send(get_with("/events?month=junk", &cookie)).await).await;
-    assert!(default.contains("<strong>01/2026</strong>"), "{default}");
-    for far in ["262142-12", "-262143-01", "0001-01"] {
+    for far in ["junk", "262142-12", "-262143-01", "0001-01"] {
         let uri = format!("/events?month={far}");
-        let html = text(app.send(get_with(&uri, &cookie)).await).await;
-        assert!(html.contains("<strong>01/2026</strong>"), "{far}: {html}");
+        let page = Page::parse(&text(app.send(get_with(&uri, &cookie)).await).await);
+        assert_eq!(page.text("nav.switcher strong"), "01/2026", "{far}");
     }
 }
 
@@ -106,12 +111,14 @@ async fn guests_list_only_events_they_own_or_reported_in() {
         !html.contains(&format!("/events/{}", private.report.event_id.unwrap())),
         "{html}"
     );
-    assert!(
-        html.contains(&format!(
-            r#"<a href="/events/{}">19:00–19:30</a> · 1 report · max 4"#,
-            shared.report.event_id.unwrap()
-        )),
-        "only the guest's own report counts: {html}"
+    let row = format!(
+        r#"a.row[href="/events/{}"] .row-text"#,
+        shared.report.event_id.unwrap()
+    );
+    assert_eq!(
+        Page::parse(&html).text(&row),
+        "19:00–19:30 1 report · max 4",
+        "only the guest's own report counts"
     );
 }
 
@@ -147,25 +154,48 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
     let cookie = app.sign_in("daniele").await;
 
     let html = text(app.send(get_with(&format!("/events/{id}"), &cookie)).await).await;
-    assert!(html.contains("<h1>Event of 15/01/2026</h1>"), "{html}");
-    assert!(html.contains("Started by daniele"), "{html}");
+    let page = Page::parse(&html);
+    assert_eq!(page.text("h1"), "Event of 15/01/2026");
     assert!(
-        html.contains(&format!(
-            r#"<a href="/reports/{}">intensity 3 · Bedroom 3</a>"#,
-            first.report.id
-        )),
+        page.text("h1 + p").ends_with("Started by daniele"),
         "{html}"
     );
-    assert!(html.contains("<span class=\"by\">(guest)</span>"), "{html}");
-    let reading = html.find("PM2.5 30 µg/m³").unwrap();
-    let gap = html
-        .find("More than 3 hours since the previous report")
+    assert_eq!(page.attr("a.back", "href").as_deref(), Some("/events"));
+    assert_eq!(
+        page.text(&format!(
+            r#".timeline a[href="/reports/{}"]"#,
+            first.report.id
+        )),
+        "intensity 3 · Bedroom 3"
+    );
+    assert_eq!(
+        page.texts(".timeline .entry > .muted"),
+        ["daniele", "guest", "daniele", "daniele"]
+    );
+    assert_eq!(
+        page.texts(".timeline > li .at"),
+        ["10:00", "11:00", "11:30", "15:00"],
+        "reports and readings in time order"
+    );
+    assert_eq!(
+        page.text(".timeline > li[data-kind=reading] .entry"),
+        "PM2.5 30 µg/m³ daniele"
+    );
+    let items = page.attrs(".timeline > li", "class");
+    assert_eq!(items, ["gap"], "one gap warning");
+    let order: Vec<String> = page.texts(".timeline > li");
+    let gap = order
+        .iter()
+        .position(|item| item.starts_with("More than 3 hours"))
         .unwrap();
-    let after_gap = html
-        .find(&format!(r#"<a href="/reports/{}">"#, late.report.id))
-        .unwrap();
-    assert!(reading < gap && gap < after_gap, "{html}");
-    assert_eq!(html.matches("More than 3 hours").count(), 1);
+    assert!(
+        order[gap - 1].contains("PM2.5 30") && order[gap + 1].starts_with("15:00"),
+        "{order:?}"
+    );
+    assert!(page.exists(&format!(
+        r#".timeline a[href="/reports/{}"]"#,
+        late.report.id
+    )));
 }
 
 #[tokio::test]
@@ -467,12 +497,14 @@ async fn the_list_shows_each_days_checks_to_those_who_may_see_them() {
 
     let resident = app.sign_in("daniele").await;
     let html = text(app.send(get_with("/events?month=2026-01", &resident)).await).await;
-    for (check, at) in [(&mine, "09:00"), (&theirs, "09:00")] {
-        let row = format!(
-            r#"<a href="/reports/{}">{at} · no smell (check)</a>"#,
-            check.report.id
+    let page = Page::parse(&html);
+    for check in [&mine, &theirs] {
+        let row = format!(r#"a.row[href="/reports/{}"]"#, check.report.id);
+        assert_eq!(
+            page.text(&format!("{row} .row-text")),
+            "09:00 no smell (check)"
         );
-        assert!(html.contains(&row), "{html}");
+        assert_eq!(page.text(&format!("{row} .badge")), "0");
     }
     assert!(!html.contains("No events this month."), "{html}");
 

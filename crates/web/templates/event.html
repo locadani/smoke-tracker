@@ -1,38 +1,33 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t1("event-title", "date", date) }}{% endblock %}
 {% block content %}
-<h1>{{ tr.t1("event-title", "date", date) }}</h1>
-<p>{{ span }}{% if let Some(reason) = reason %} · {{ tr.t(reason) }}{% endif %}</p>
-{% if let Some(owner) = owner %}
-<p>{{ tr.t1("event-started-by", "username", owner) }}</p>
-{% endif %}
-{% if let Some(error) = error %}
-<p class="notice" role="alert">{{ tr.t(error) }}</p>
-{% endif %}
+{% call c::back("/events", tr.t("events-title")) %}{% endcall %}
+<div>
+  <h1>{{ tr.t1("event-title", "date", date) }}</h1>
+  <p class="muted">{{ span }}{% if let Some(reason) = reason %} · {{ tr.t(reason) }}{% endif %}{% if let Some(owner) = owner %} · {{ tr.t1("event-started-by", "username", owner) }}{% endif %}</p>
+</div>
+{% if let Some(error) = error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
+{% call c::card(tr.t("event-timeline")) %}
 <ol class="timeline">
   {% for entry in entries %}
   {% if entry.gap_before %}
-  <li class="gap" role="note">{{ tr.t("event-gap") }}</li>
+  <li class="gap" role="note"><span>{{ tr.t("event-gap") }}</span></li>
   {% endif %}
-  <li>
+  <li{% if entry.report.is_none() %} data-kind="reading"{% endif %}>
     <span class="at">{{ entry.at }}</span>
-    {% if let Some(report) = entry.report %}<a href="/reports/{{ report }}">{{ entry.text }}</a>{% else %}{{ entry.text }}{% endif %}
-    {% if let Some(by) = entry.by %}<span class="by">({{ by }})</span>{% endif %}
+    <span class="entry">{% if let Some(report) = entry.report %}<a href="/reports/{{ report }}">{{ entry.text }}</a>{% else %}{{ entry.text }}{% endif %}{% if let Some(by) = entry.by %}<span class="muted">{{ by }}</span>{% endif %}</span>
   </li>
   {% endfor %}
 </ol>
+{% endcall %}
 {% if let Some(close_at) = close_at %}
+{% call c::card(tr.t("event-close-title")) %}
 <form method="post" action="/events/{{ id }}/close" class="stack">
-  <label>{{ tr.t("event-close-at") }}
-    <input type="datetime-local" name="closed_at" value="{{ close_at }}" required>
-  </label>
-  <button type="submit">{{ tr.t("event-close") }}</button>
+  {% call c::field(tr.t("event-close-at")) %}<input type="datetime-local" name="closed_at" value="{{ close_at }}" required>{% endcall %}
+  <button type="submit" class="button">{{ tr.t("event-close") }}</button>
 </form>
+{% endcall %}
 {% endif %}
-{% if can_reopen %}
-<form method="post" action="/events/{{ id }}/reopen">
-  <button type="submit" class="secondary">{{ tr.t("event-reopen") }}</button>
-</form>
-{% endif %}
-<p><a href="/events">{{ tr.t("events-title") }}</a></p>
+{% if can_reopen %}{% call c::post_button("/events/{}/reopen"|format(id), tr.t("event-reopen"), "secondary") %}{% endcall %}{% endif %}
 {% endblock %}
