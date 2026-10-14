@@ -22,7 +22,11 @@ for (const canvas of document.querySelectorAll("canvas[data-chart]")) {
   if (time) {
     const day = formatter(time, false);
     const moment = formatter(time, true);
-    config.options.scales.x.ticks = { ...config.options.scales.x.ticks, callback: (value) => day.format(value) };
+    const x = config.options.scales.x;
+    x.ticks = { ...x.ticks, callback: (value) => day.format(value) };
+    x.afterBuildTicks = (scale) => {
+      scale.ticks = time.ticks.map((value) => ({ value }));
+    };
     config.options.plugins = {
       ...config.options.plugins,
       tooltip: { callbacks: { title: (items) => moment.format(items[0].parsed.x) } },

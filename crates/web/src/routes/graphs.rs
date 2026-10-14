@@ -9,14 +9,14 @@ use askama::Template;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
-use chrono::{DateTime, Datelike, NaiveDate, TimeDelta, Utc};
-use chrono_tz::Tz;
+use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use smoke_domain::graphs::{Period, PersonLine, events_per_bucket, intensity_lines};
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::Pm25Reading;
 use smoke_domain::repos::Store;
+use smoke_domain::schedule::DailySchedule;
 use smoke_domain::types::{Locale, UserId};
 
 use crate::auth::CurrentUser;
@@ -77,7 +77,19 @@ fn intl_locale(locale: Locale) -> &'static str {
     }
 }
 
-const DAY_MS: i64 = 24 * 60 * 60 * 1000;
+/// Where the time axis puts its ticks, as milliseconds since the epoch: the local midnight of
+/// each day of a month, or of each month's first day in a year. Fixed steps of 24 hours would
+/// drift an hour off midnight after a clock change.
+fn tick_values(period: Period, schedule: &DailySchedule) -> Vec<i64> {
+    let first = period.first_day();
+    let days: Vec<NaiveDate> = match period {
+        Period::Month(_) => period.buckets(),
+        Period::Year(_) => (0..12).map(|m| first + Months::new(m)).collect(),
+    };
+    days.into_iter()
+        .map(|day| schedule.day_span(day).0.timestamp_millis())
+        .collect()
+}
 
 /// Intensity over time: one line per person on the 0–10 axis, PM2.5 readings on their own axis
 /// on the right (spec §9). The x axis is milliseconds since the epoch.
@@ -88,7 +100,7 @@ fn intensity_chart(
     readings: &[Pm25Reading],
     period: Period,
     (from, to): (DateTime<Utc>, DateTime<Utc>),
-    tz: Tz,
+    schedule: &DailySchedule,
 ) -> Value {
     let mut datasets: Vec<Value> = lines
         .iter()
@@ -117,10 +129,6 @@ fn intensity_chart(
             "borderDash": [6, 4],
         }));
     }
-    let step = match period {
-        Period::Month(_) => json!({ "stepSize": DAY_MS }),
-        Period::Year(_) => json!({}),
-    };
     json!({
         "type": "line",
         "data": { "datasets": datasets },
@@ -130,7 +138,6 @@ fn intensity_chart(
                     "type": "linear",
                     "min": from.timestamp_millis(),
                     "max": (to - TimeDelta::milliseconds(1)).timestamp_millis(),
-                    "ticks": step,
                 },
                 "level": {
                     "type": "linear",
@@ -149,7 +156,11 @@ fn intensity_chart(
                 },
             },
         },
-        "time": { "zone": tz.name(), "locale": intl_locale(tr.0) },
+        "time": {
+            "zone": schedule.tz().name(),
+            "locale": intl_locale(tr.0),
+            "ticks": tick_values(period, schedule),
+        },
     })
 }
 
@@ -239,7 +250,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
         .map(|(_, count)| count)
         .collect();
     let lines = intensity_lines(&reports);
-    let intensity = intensity_chart(tr, &lines, &names, &readings, period, span, schedule.tz());
+    let intensity = intensity_chart(tr, &lines, &names, &readings, period, span, schedule);
 
     let (label, events_key, other_key) = match period {
         Period::Month(_) => (
@@ -314,6 +325,27 @@ mod tests {
                 "{month:?} {year:?}"
             );
         }
+    }
+
+    #[test]
+    fn ticks_sit_on_local_midnights_across_a_clock_change() {
+        let schedule = DailySchedule::new(chrono_tz::Europe::Rome, 4).unwrap();
+        let ticks = tick_values(Period::Month(date("2026-10-01")), &schedule);
+        assert_eq!(ticks.len(), 31);
+        let hour = 3_600_000;
+        assert_eq!(ticks[24] - ticks[23], 24 * hour, "24 to 25 October");
+        assert_eq!(
+            ticks[25] - ticks[24],
+            25 * hour,
+            "the night of the 25th is an hour longer"
+        );
+        assert_eq!(ticks[26] - ticks[25], 24 * hour);
+        let year = tick_values(Period::Year(date("2026-01-01")), &schedule);
+        assert_eq!(year.len(), 12);
+        assert_eq!(
+            year[0],
+            schedule.year_span(date("2026-01-01")).0.timestamp_millis()
+        );
     }
 
     #[test]
