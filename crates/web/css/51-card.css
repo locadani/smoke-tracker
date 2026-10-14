@@ -19,7 +19,7 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    min-block-size: 3.25rem;
+    min-block-size: var(--target-large);
     list-style: none;
     cursor: pointer;
   }
@@ -33,7 +33,7 @@
     align-items: center;
     gap: var(--space-1);
     color: var(--accent);
-    font-size: 0.9375rem;
+    font-size: var(--text-control);
     font-weight: 600;
   }
 
@@ -43,5 +43,9 @@
 
   .collapsible > .stack {
     padding-block-end: var(--space-3);
+  }
+
+  .card h1 {
+    font-size: var(--text-brand);
   }
 }

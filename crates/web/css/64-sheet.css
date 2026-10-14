@@ -3,7 +3,7 @@
   .sheet {
     inline-size: 100%;
     max-inline-size: var(--column);
-    max-block-size: 85vh;
+    max-block-size: 85dvh;
     margin: auto auto 0;
     padding: var(--space-3) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
     border: 0;
@@ -29,21 +29,6 @@
 
   .sheet::backdrop {
     background: var(--backdrop);
-  }
-
-  .scale th,
-  .scale td {
-    padding-block: var(--space-1);
-    vertical-align: middle;
-  }
-
-  .scale th {
-    inline-size: 3rem;
-  }
-
-  .scale .badge {
-    inline-size: 2rem;
-    block-size: 2rem;
   }
 
   @media (prefers-reduced-motion: no-preference) {

@@ -1,9 +1,24 @@
-/* The guide pages: tables with a line between rows, numbered rules, the install steps; and
-   the app icon above the sign-in card. */
+/* The guide pages: tables with a line between rows, the intensity scale, numbered rules, the
+   install steps; and the app icon above the sign-in card. */
 @layer components {
   .guide th,
   .guide td {
     padding: var(--space-2) var(--space-1);
+  }
+
+  .scale th,
+  .scale td {
+    padding-block: var(--space-1);
+    vertical-align: middle;
+  }
+
+  .scale th {
+    inline-size: 3rem;
+  }
+
+  .scale .badge {
+    inline-size: 2rem;
+    block-size: 2rem;
   }
 
   .guide tr + tr,

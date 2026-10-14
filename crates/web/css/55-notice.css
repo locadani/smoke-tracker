@@ -1,14 +1,20 @@
 /* .notice: a confirmation (role="status") or an error (role="alert") above a form.
-   .banner: the amber strip of something going on, with its action. */
+   .banner: the amber strip of something going on, with its action; .gap (the timeline's note)
+   shares the amber surface. */
 @layer components {
-  .notice {
+  .notice,
+  .banner {
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-button);
+  }
+
+  .notice {
     background: var(--accent-soft);
   }
 
   .notice[role="alert"],
-  .banner {
+  .banner,
+  .gap {
     background: var(--warn-bg);
     color: var(--warn-text);
   }
@@ -17,18 +23,9 @@
     display: flex;
     align-items: center;
     gap: var(--space-3);
-    padding: var(--space-3) var(--space-4);
-    border-radius: var(--radius-button);
   }
 
   .banner > :first-child {
     flex-grow: 1;
-  }
-
-  .banner .button {
-    border-color: var(--warn-text);
-    background: transparent;
-    color: var(--warn-text);
-    font-size: var(--text-label);
   }
 }

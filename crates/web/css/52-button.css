@@ -1,4 +1,4 @@
-/* .button: primary by default; data-variant="secondary", "danger" or "quiet". */
+/* .button: primary by default; data-variant="secondary", "danger", "quiet" or "warn" (on an amber surface). */
 @layer components {
   .button {
     display: inline-flex;
@@ -36,6 +36,13 @@
     padding-inline: var(--space-2);
   }
 
+  .button[data-variant="warn"] {
+    border-color: var(--warn-text);
+    background: transparent;
+    color: var(--warn-text);
+    font-size: var(--text-label);
+  }
+
   /* Buttons that share a row: the main one takes three parts in five (look-and-feel spec §5). */
   .actions {
     display: grid;
@@ -44,7 +51,7 @@
   }
 
   .actions .button {
-    min-block-size: 3.25rem;
+    min-block-size: var(--target-large);
   }
 
   .back {

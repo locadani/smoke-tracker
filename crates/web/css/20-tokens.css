@@ -27,7 +27,7 @@
     --series-4: #4d7a1f;
 
     /* The heatmap ramp: dark text on 0–5, --on-accent text on 6–10. */
-    --heat-0: #e2eeea;
+    --heat-0: var(--accent-soft);
     --heat-1: #d1e1dc;
     --heat-2: #c1d4ce;
     --heat-3: #b0c8c0;
@@ -46,11 +46,15 @@
     --text-label: 0.875rem;
     --text-small: 0.8125rem;
     --text-tiny: 0.75rem;
+    --text-control: 0.9375rem;
 
     --radius-card: 20px;
     --radius-button: 16px;
     --radius-field: 12px;
     --radius-pill: 999px;
+    --radius-room: 14px;
+    --radius-tile: 10px;
+    --radius-box: 8px;
 
     --space-1: 0.25rem;
     --space-2: 0.5rem;
@@ -60,6 +64,7 @@
     --gutter: 1rem;
     --column: 32rem;
     --target: 44px;
+    --target-large: 3.25rem;
     --field-height: 48px;
     --tabbar-height: 4rem;
   }
@@ -87,7 +92,7 @@
       --series-3: #d3a2e3;
       --series-4: #b8d98a;
 
-      --heat-0: #21332e;
+      --heat-0: var(--accent-soft);
       --heat-1: #273c37;
       --heat-2: #2d4640;
       --heat-3: #344f48;

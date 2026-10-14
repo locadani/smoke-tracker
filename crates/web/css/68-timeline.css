@@ -2,13 +2,14 @@
    readings are hollow dots; a .gap note marks a long silence. */
 @layer components {
   .timeline {
+    --time-column: 3.25rem;
     list-style: none;
   }
 
   .timeline > li {
     position: relative;
     display: grid;
-    grid-template-columns: 3.25rem 1fr;
+    grid-template-columns: var(--time-column) 1fr;
     gap: var(--space-3);
     padding-block: var(--space-2);
   }
@@ -17,7 +18,7 @@
     content: "";
     position: absolute;
     inset-block: 0;
-    inset-inline-start: calc(3.25rem + var(--space-1));
+    inset-inline-start: calc(var(--time-column) + var(--space-1));
     border-inline-start: 2px solid var(--line);
   }
 
@@ -25,7 +26,7 @@
     content: "";
     position: absolute;
     inset-block-start: calc(var(--space-2) + 0.4rem);
-    inset-inline-start: calc(3.25rem + 0.0625rem);
+    inset-inline-start: calc(var(--time-column) + 0.0625rem);
     inline-size: 0.75rem;
     block-size: 0.75rem;
     border: 2px solid var(--accent);
@@ -59,16 +60,6 @@
     margin-block: var(--space-1);
     padding: var(--space-3);
     border-radius: var(--radius-field);
-    background: var(--warn-bg);
-    color: var(--warn-text);
-    font-size: var(--text-label);
-  }
-
-  .gap .button {
-    align-self: flex-start;
-    border-color: var(--warn-text);
-    background: transparent;
-    color: var(--warn-text);
     font-size: var(--text-label);
   }
 }

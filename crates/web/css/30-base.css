@@ -64,7 +64,10 @@
     cursor: pointer;
   }
 
-  :focus-visible {
+  :focus-visible,
+  .chip > input:focus-visible + span,
+  .room-check > input:focus-visible + .box,
+  .level > input:focus-visible + span {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }

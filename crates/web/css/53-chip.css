@@ -1,18 +1,22 @@
-/* .chip: a native checkbox or radio drawn as a pill. .segmented: a row of choices in one frame,
+/* .chip: a native checkbox or radio drawn as a pill; its input, like those of the rooms and
+   levels (66-room.css), stays native and visually hidden. .segmented: a row of choices in one frame,
    from radios (chips) or submit buttons (the current one marked aria-current). */
 @layer components {
   .chip {
     position: relative;
     display: inline-flex;
-    font-size: 0.9375rem;
+    font-size: var(--text-control);
     font-weight: 550;
   }
 
-  .chip > input {
+  .chip > input,
+  .room-check > input,
+  .level > input {
     position: absolute;
     inset: 0;
     margin: 0;
     opacity: 0;
+    pointer-events: none;
   }
 
   .chip > span {
@@ -32,11 +36,6 @@
     color: var(--accent);
   }
 
-  .chip > input:focus-visible + span {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-
   .segmented {
     display: flex;
     gap: var(--space-1);
@@ -54,7 +53,7 @@
   .segmented > .chip > input + span {
     min-block-size: var(--target);
     border: 0;
-    border-radius: 10px;
+    border-radius: var(--radius-tile);
     background: transparent;
     font-weight: 600;
   }

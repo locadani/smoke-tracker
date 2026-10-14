@@ -27,8 +27,4 @@
     display: block;
     font-size: var(--text-label);
   }
-
-  .card h1 {
-    font-size: var(--text-brand);
-  }
 }

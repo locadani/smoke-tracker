@@ -1,4 +1,5 @@
-/* .field: a label above its control. .inline-field: label and a short control on one line. */
+/* .field: a label above its control. .inline-field: label and a short control on one line.
+   .overline: the small capitals that name a group. */
 @layer components {
   .field {
     display: flex;
@@ -22,6 +23,18 @@
   .inline-field input {
     inline-size: 7rem;
     text-align: end;
+  }
+
+  .overline {
+    color: var(--muted);
+    font-size: var(--text-small);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .stack > .overline {
+    padding-inline: var(--space-1);
   }
 
   .hint {
