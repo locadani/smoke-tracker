@@ -1,9 +1,12 @@
-//! Urlencoded forms whose field names repeat (`room=1&room=3`): `serde_urlencoded` cannot put
-//! those in a struct, so handlers read the pairs instead.
+//! Urlencoded forms and query strings whose names repeat (`room=1&room=3`): `serde_urlencoded`
+//! cannot put those in a struct, so handlers read the pairs instead.
+
+use std::convert::Infallible;
 
 use axum::Form;
 use axum::extract::rejection::FormRejection;
-use axum::extract::{FromRequest, Request};
+use axum::extract::{FromRequest, FromRequestParts, Query, Request};
+use axum::http::request::Parts;
 
 /// A posted form as its `(name, value)` pairs, in order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -27,6 +30,11 @@ impl Pairs {
             .find(|(key, _)| key == name)
             .map(|(_, value)| value.trim())
             .filter(|value| !value.is_empty())
+    }
+
+    /// Whether `name` is there at all, even blank (`?welcome`).
+    pub(crate) fn contains(&self, name: &str) -> bool {
+        self.0.iter().any(|(key, _)| key == name)
     }
 
     /// Every value of `name` parsed as an id; `None` if one is not a number.
@@ -65,6 +73,23 @@ impl<S: Send + Sync> FromRequest<S> for Pairs {
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
         let Form(pairs) = Form::<Vec<(String, String)>>::from_request(request, state).await?;
         Ok(Self(pairs))
+    }
+}
+
+/// The query string as its pairs. Unlike a typed `Query`, a repeated name (`?month=1&month=2`)
+/// or one that does not parse never answers 400: the page reads the first value, or none, and
+/// falls back to its default.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct QueryPairs(pub(crate) Pairs);
+
+impl<S: Send + Sync> FromRequestParts<S> for QueryPairs {
+    type Rejection = Infallible;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
+        let pairs = Query::<Vec<(String, String)>>::try_from_uri(&parts.uri)
+            .map(|Query(pairs)| pairs)
+            .unwrap_or_default();
+        Ok(Self(Pairs(pairs)))
     }
 }
 

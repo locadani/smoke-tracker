@@ -1,12 +1,11 @@
 //! The Log screen (spec §9, screen 1): the event status, the month's summary card and the form.
 
 use askama::Template;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
-use serde::Deserialize;
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::{Event, Room, RoomLevel, SmellReport, Symptom, User};
 use smoke_domain::repos::Store;
@@ -17,7 +16,7 @@ use smoke_domain::types::{RoomArea, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
+use crate::forms::{Pairs, QueryPairs};
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::entries::level_field;
@@ -249,20 +248,15 @@ pub(crate) struct LogPage {
     form: Option<FormView>,
 }
 
-#[derive(Deserialize)]
-pub(crate) struct ShowQuery {
-    saved: Option<String>,
-}
-
 pub(crate) async fn show<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ShowQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     auto_close(&state.store, &state.config.schedule, now).await?;
-    let saved = match query.saved.as_deref() {
+    let saved = match query.get("saved") {
         Some("report") => Some("log-saved-report"),
         Some("pm25") => Some("log-saved-pm25"),
         Some("no-smell") => Some("log-saved-no-smell"),

@@ -5,11 +5,10 @@
 use std::collections::{BTreeMap, HashMap};
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
-use serde::Deserialize;
 use smoke_domain::events::{FUTURE_TOLERANCE, large_gap_indices};
 use smoke_domain::logbook::{close_event, reopen_event};
 use smoke_domain::permissions::{Action, Actor, can, can_see};
@@ -20,7 +19,7 @@ use smoke_domain::types::{EventId, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
+use crate::forms::{Pairs, QueryPairs};
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::labels;
@@ -28,12 +27,6 @@ use crate::routes::entries::read_time;
 use crate::routes::{can_open, refusal};
 use crate::state::AppState;
 use crate::time;
-
-#[derive(Deserialize)]
-pub(crate) struct ListQuery {
-    /// `YYYY-MM`; the current month when absent or invalid.
-    month: Option<String>,
-}
 
 struct EventRow {
     id: i64,
@@ -96,7 +89,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ListQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     auto_close(&state.store, &state.config.schedule, now).await?;
@@ -104,8 +97,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
     let tz = schedule.tz();
     let actor = user.actor();
     let first = query
-        .month
-        .as_deref()
+        .get("month")
         .and_then(time::parse_month)
         .unwrap_or_else(|| schedule.local_date(now));
     let (from, to) = schedule.month_span(first);

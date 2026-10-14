@@ -3,7 +3,7 @@
 
 use askama::Template;
 use axum::Form;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use serde::Deserialize;
@@ -18,6 +18,7 @@ use crate::auth::client_ip::ClientIp;
 use crate::auth::limiter::LoginLimiter;
 use crate::auth::{self, CurrentUser, password};
 use crate::error::{AppError, page};
+use crate::forms::QueryPairs;
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::lists::{self, ListsView};
@@ -69,18 +70,13 @@ pub(crate) async fn settings_page<S: Store>(
     )
 }
 
-#[derive(Deserialize)]
-pub(crate) struct ShowQuery {
-    saved: Option<String>,
-}
-
 pub(crate) async fn show<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ShowQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
-    let saved = match query.saved.as_deref() {
+    let saved = match query.get("saved") {
         Some("language") => Some("settings-saved-language"),
         Some("password") => Some("settings-saved-password"),
         Some("lists") => Some("settings-saved-lists"),

@@ -655,3 +655,31 @@ async fn the_list_shows_each_days_checks_to_those_who_may_see_them() {
         "{html}"
     );
 }
+
+/// A repeated query parameter takes its first value instead of answering 400 (M6 carry-over).
+#[tokio::test]
+async fn a_repeated_month_takes_the_first_one() {
+    let app = TestApp::new().await;
+    app.at("2026-01-20T12:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let response = app
+        .send(get_with("/events?month=2025-11&month=2025-12", &cookie))
+        .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let page = Page::parse(&text(response).await);
+    assert_eq!(page.text("nav.switcher strong"), "11/2025");
+    for path in [
+        "/?saved=report&saved=pm25",
+        "/settings?saved=password&saved=lists",
+        "/people?saved=expired&saved=x",
+    ] {
+        let response = app.send(get_with(path, &cookie)).await;
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        assert_eq!(
+            Page::parse(&text(response).await).count(".notice[role=status]"),
+            1,
+            "{path}"
+        );
+    }
+}

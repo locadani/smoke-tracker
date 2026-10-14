@@ -2,14 +2,14 @@
 //! steps, and the page the service worker shows when there is no connection.
 
 use askama::Template;
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Response;
-use serde::Deserialize;
 use smoke_domain::repos::Store;
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
+use crate::forms::QueryPairs;
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::state::AppState;
@@ -23,17 +23,12 @@ struct InstallPage {
     welcome: bool,
 }
 
-#[derive(Deserialize)]
-pub(crate) struct InstallQuery {
-    welcome: Option<String>,
-}
-
 /// Open to everyone: someone may want to install before signing in.
 pub(crate) async fn show<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     user: Option<CurrentUser>,
     tr: Tr,
-    Query(query): Query<InstallQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     page(
@@ -41,7 +36,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
         &InstallPage {
             tr,
             signed_in: user.and_then(|CurrentUser(user)| SignedIn::of(&user, now, Tab::Settings)),
-            welcome: query.welcome.is_some(),
+            welcome: query.contains("welcome"),
         },
     )
 }

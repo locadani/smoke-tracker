@@ -5,11 +5,10 @@ pub(crate) mod expiry;
 pub(crate) mod links;
 
 use askama::Template;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
 use smoke_domain::DomainError;
 use smoke_domain::people::{PeopleError, expire, reactivate};
 use smoke_domain::permissions::{Action, can};
@@ -19,7 +18,7 @@ use smoke_domain::types::{Role, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
+use crate::forms::{Pairs, QueryPairs};
 use crate::header::{SignedIn, Tab, initial};
 use crate::i18n::Tr;
 use crate::routes::people::expiry::{ExpiryDraft, ExpiryFields};
@@ -157,19 +156,14 @@ async fn people_page<S: Store>(
     )
 }
 
-#[derive(Deserialize)]
-pub(crate) struct ListQuery {
-    saved: Option<String>,
-}
-
 pub(crate) async fn list<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    Query(query): Query<ListQuery>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
     require_manager(&user, state.clock.now())?;
-    let saved = match query.saved.as_deref() {
+    let saved = match query.get("saved") {
         Some("expired") => Some("people-saved-expired"),
         Some("reactivated") => Some("people-saved-reactivated"),
         _ => None,
