@@ -76,16 +76,20 @@ pub(crate) struct SignedIn {
     tab: Tab,
 }
 
+/// A person's avatar: the first letter of the username, upper case.
+pub(crate) fn initial(username: &str) -> String {
+    username
+        .chars()
+        .take(1)
+        .flat_map(char::to_uppercase)
+        .collect()
+}
+
 impl SignedIn {
     pub(crate) fn of(user: &User, now: DateTime<Utc>, tab: Tab) -> Option<Self> {
         let username = user.username.to_string();
         Some(Self {
-            initial: username
-                .chars()
-                .next()
-                .into_iter()
-                .flat_map(char::to_uppercase)
-                .collect(),
+            initial: initial(&username),
             username,
             people: can(&user.actor(), Action::ManageUsers, now),
             tab,

@@ -20,7 +20,7 @@ use smoke_domain::types::{Role, UserId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
-use crate::header::{SignedIn, Tab};
+use crate::header::{SignedIn, Tab, initial};
 use crate::i18n::Tr;
 use crate::routes::people::expiry::{ExpiryDraft, ExpiryFields};
 use crate::routes::people_refusal;
@@ -31,7 +31,11 @@ use crate::time;
 pub(crate) struct PersonRow {
     pub(crate) id: i64,
     pub(crate) username: String,
+    /// The avatar's letter.
+    pub(crate) initial: String,
     pub(crate) role: &'static str,
+    /// The role tag's colour: residents green, guests amber, viewers grey.
+    pub(crate) tone: &'static str,
     /// "until 22/01/2026 19:05", "expired 15/01/2026 20:00" or "no end date".
     pub(crate) status: String,
     /// Invited but has not chosen a password yet.
@@ -49,6 +53,14 @@ struct PeoplePage {
     saved: Option<&'static str>,
     error: Option<&'static str>,
     people: Vec<PersonRow>,
+}
+
+fn role_tone(role: Role) -> &'static str {
+    match role {
+        Role::Resident => "accent",
+        Role::Guest => "warn",
+        Role::Viewer => "muted",
+    }
 }
 
 pub(crate) fn role_key(role: Role) -> &'static str {
@@ -120,12 +132,14 @@ async fn people_page<S: Store>(
             PersonRow {
                 id: person.id.0,
                 username: person.username.to_string(),
+                initial: initial(person.username.as_str()),
                 role: role_key(person.role),
+                tone: role_tone(person.role),
                 status: status(tr, person, now, tz),
                 pending_setup: person.password_hash.is_none(),
                 can_expire: person.role != Role::Resident && !expired,
                 reactivate: expired
-                    .then(|| expiry::fields(person.role, "", &typed))
+                    .then(|| expiry::fields(tr, person.role, "", &typed))
                     .flatten(),
             }
         })

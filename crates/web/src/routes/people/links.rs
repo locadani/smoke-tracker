@@ -96,8 +96,8 @@ fn invite_page(
                     checked: choice == role,
                 })
                 .collect(),
-            guest: expiry::fields(Role::Guest, "guest_", &draft.guest),
-            viewer: expiry::fields(Role::Viewer, "viewer_", &draft.viewer),
+            guest: expiry::fields(tr, Role::Guest, "guest_", &draft.guest),
+            viewer: expiry::fields(tr, Role::Viewer, "viewer_", &draft.viewer),
         },
     )
 }

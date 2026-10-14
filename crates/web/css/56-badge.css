@@ -1,6 +1,19 @@
-/* .badge: the square in front of a list line. .tag: a small pill after a name.
-   data-tone="warn" or "muted" changes either. */
+/* .badge: the square in front of a list line. .tag: a small pill after a name. .avatar: a
+   person's initial in a circle. data-tone="warn" or "muted" changes a badge or a tag. */
 @layer components {
+  .avatar {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    inline-size: var(--target);
+    block-size: var(--target);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--text-card);
+    font-weight: 700;
+  }
+
   .badge {
     display: inline-flex;
     align-items: center;

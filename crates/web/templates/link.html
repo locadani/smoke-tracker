@@ -1,11 +1,14 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("link-title") }}{% endblock %}
 {% block content %}
-<h1>{% if setup %}{{ tr.t1("link-setup-title", "username", username) }}{% else %}{{ tr.t1("link-reset-title", "username", username) }}{% endif %}</h1>
-<p>{{ tr.t("link-scan") }}</p>
-<figure class="qr-code">{{ qr|safe }}</figure>
-<p class="notice">{{ tr.t1("link-valid-until", "time", until) }}</p>
-<p class="hint">{{ tr.t("link-text") }}</p>
-<p><code class="link-text">{{ url }}</code></p>
-<p><a href="/people">{{ tr.t("link-done") }}</a></p>
+<section class="card center">
+  <h1>{% if setup %}{{ tr.t1("link-setup-title", "username", username) }}{% else %}{{ tr.t1("link-reset-title", "username", username) }}{% endif %}</h1>
+  <p>{{ tr.t("link-scan") }}</p>
+  <figure class="qr-code">{{ qr|safe }}</figure>
+  {% call c::notice(tr.t1("link-valid-until", "time", until), false) %}{% endcall %}
+  <p class="hint">{{ tr.t("link-text") }}</p>
+  <code>{{ url }}</code>
+</section>
+<a href="/people" class="button">{{ tr.t("link-done") }}</a>
 {% endblock %}

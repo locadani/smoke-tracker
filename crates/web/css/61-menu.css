@@ -1,24 +1,15 @@
-/* .menu: the avatar and the small panel it opens (a <details>). */
+/* .menu: the avatar in the header and the small panel it opens (a <details>). */
 @layer components {
   .menu {
     position: relative;
   }
 
-  .avatar {
-    display: grid;
-    place-items: center;
-    inline-size: var(--target);
-    block-size: var(--target);
-    border-radius: var(--radius-pill);
-    background: var(--accent-soft);
-    color: var(--accent);
-    font-size: var(--text-card);
-    font-weight: 700;
+  summary.avatar {
     list-style: none;
     cursor: pointer;
   }
 
-  .avatar::-webkit-details-marker {
+  summary.avatar::-webkit-details-marker {
     display: none;
   }
 

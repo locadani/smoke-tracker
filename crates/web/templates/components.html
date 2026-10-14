@@ -90,3 +90,15 @@
   {% endfor %}
 </nav>
 {% endmacro %}
+
+{# When an account stops working (spec §8.3): quick picks as chips, or a day. js/date-picks.js
+   keeps the two from being sent together. #}
+{% macro expiry(fields, legend, date_label) %}
+<fieldset class="expiry stack" data-date-picks data-role="{{ fields.role }}">
+  <legend>{{ legend }}</legend>
+  <div class="cluster">
+    {% for pick in fields.picks.iter() %}{% call chip("radio", fields.pick_name, pick.value, pick.label, pick.checked) %}{% endcall %}{% endfor %}
+  </div>
+  <input type="date" name="{{ fields.date_name }}" value="{{ fields.date }}" aria-label="{{ date_label }}">
+</fieldset>
+{% endmacro %}
