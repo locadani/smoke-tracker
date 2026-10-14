@@ -11,3 +11,4 @@ pub mod ex05_event_repo;
 pub mod ex06_transaction;
 pub mod ex07_store_errors;
 pub mod ex08_login_limiter;
+pub mod ex09_request_rules;
