@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+pub mod page;
+
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 

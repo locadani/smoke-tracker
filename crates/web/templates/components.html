@@ -1,0 +1,69 @@
+{# Every repeated piece of markup, as Askama macros (look-and-feel spec §9). Import with
+   {% import "components.html" as c %}. Macros take translated text, never the translator. #}
+
+{# A decorative icon from the sprite; the text beside it, or the control's aria-label, names it. #}
+{% macro icon(name) %}<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ name }}"></use></svg>{% endmacro %}
+
+{# A card with an optional heading; the body is the call block. #}
+{% macro card(title) %}
+<section class="card">
+  {% if !title.is_empty() %}<h2>{{ title }}</h2>{% endif %}
+  {{ caller() }}
+</section>
+{% endmacro %}
+
+{# A card that opens and closes: the title, a muted hint and an accent action ("Change", "Add").
+   `open` keeps it open when the form comes back with a value in it. #}
+{% macro collapsible(title, hint, action, open) %}
+<details class="card collapsible"{% if open %} open{% endif %}>
+  <summary>
+    <span><strong>{{ title }}</strong>{% if !hint.is_empty() %} <span class="muted">· {{ hint }}</span>{% endif %}</span>
+    <span class="action">{{ action }}{% call icon("chevron-down") %}{% endcall %}</span>
+  </summary>
+  <div class="stack">{{ caller() }}</div>
+</details>
+{% endmacro %}
+
+{# A checkbox or radio drawn as a pill; the input stays native, visually hidden. #}
+{% macro chip(kind, name, value, label, checked) %}
+<label class="chip"><input type="{{ kind }}" name="{{ name }}" value="{{ value }}"{% if checked %} checked{% endif %}><span>{{ label }}</span></label>
+{% endmacro %}
+
+{# A label above its control; the control is the call block. #}
+{% macro field(label) %}
+<label class="field"><span>{{ label }}</span>{{ caller() }}</label>
+{% endmacro %}
+
+{# A one-button form that posts to `action`. #}
+{% macro post_button(action, label, variant) %}
+<form method="post" action="{{ action }}"><button type="submit" class="button" data-variant="{{ variant }}">{{ label }}</button></form>
+{% endmacro %}
+
+{# A message above a form: `alert` for what went wrong, otherwise a confirmation. #}
+{% macro notice(text, alert) %}
+<p class="notice" role="{% if alert %}alert{% else %}status{% endif %}">{{ text }}</p>
+{% endmacro %}
+
+{# A line of a list card, linked when `href` is set. The call block is what leads the line,
+   such as a badge; it may be empty. #}
+{% macro row(href, title, detail) %}
+{% if href.is_empty() %}<div class="row">{% else %}<a class="row" href="{{ href }}">{% endif %}
+  {{ caller() }}
+  <span class="row-text"><strong>{{ title }}</strong>{% if !detail.is_empty() %}<span>{{ detail }}</span>{% endif %}</span>
+{% if href.is_empty() %}</div>{% else %}{% call icon("chevron-right") %}{% endcall %}</a>{% endif %}
+{% endmacro %}
+
+{# The link back to the page above, e.g. "‹ Events". #}
+{% macro back(href, label) %}
+<a class="back" href="{{ href }}">{% call icon("chevron-left") %}{% endcall %}{{ label }}</a>
+{% endmacro %}
+
+{# The three languages as buttons that post to /lang; `return_to` names the page to come back to. #}
+{% macro languages(choices, label, return_to) %}
+<form method="post" action="/lang" class="segmented" aria-label="{{ label }}">
+  {% if !return_to.is_empty() %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
+  {% for language in choices %}
+  <button type="submit" name="lang" value="{{ language.value }}" lang="{{ language.value }}"{% if language.current %} aria-current="true"{% endif %}>{{ language.name }}</button>
+  {% endfor %}
+</form>
+{% endmacro %}

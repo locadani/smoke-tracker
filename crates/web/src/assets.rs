@@ -44,6 +44,14 @@ const STYLESHEET: (&str, &[&str]) = stylesheet!(
     "20-tokens.css",
     "30-base.css",
     "40-layout.css",
+    "50-icon.css",
+    "51-card.css",
+    "52-button.css",
+    "53-chip.css",
+    "54-field.css",
+    "55-notice.css",
+    "56-badge.css",
+    "57-row.css",
     "90-utilities.css",
 );
 
@@ -62,6 +70,7 @@ const ASSETS: &[Asset] = &[
     asset!("icon-192.png", "image/png"),
     asset!("icon-512.png", "image/png"),
     asset!("icon.svg", "image/svg+xml"),
+    asset!("icons.svg", "image/svg+xml"),
     asset!("manifest.webmanifest", "application/manifest+json"),
     asset!("sw.js", "text/javascript; charset=utf-8"),
 ];

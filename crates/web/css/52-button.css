@@ -1,0 +1,58 @@
+/* .button: primary by default; data-variant="secondary", "danger" or "quiet". */
+@layer components {
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    min-block-size: var(--target);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-button);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-size: 1rem;
+    font-weight: 650;
+    text-align: center;
+    text-decoration: none;
+  }
+
+  .button[data-variant="secondary"] {
+    border-color: var(--control-border);
+    background: var(--card);
+    color: var(--accent);
+  }
+
+  .button[data-variant="danger"] {
+    border-color: var(--danger);
+    background: transparent;
+    color: var(--danger);
+  }
+
+  .button[data-variant="quiet"] {
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent);
+    padding-inline: var(--space-2);
+  }
+
+  /* Buttons that share a row: the main one takes three parts in five (look-and-feel spec §5). */
+  .actions {
+    display: grid;
+    grid-template-columns: 2fr 3fr;
+    gap: var(--space-3);
+  }
+
+  .actions .button {
+    min-block-size: 3.25rem;
+  }
+
+  .back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-block-size: var(--target);
+    font-weight: 600;
+    text-decoration: none;
+  }
+}

@@ -273,6 +273,39 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
     }
 }
 
+/// Every template's source, by file name.
+fn templates() -> Vec<(String, String)> {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/templates");
+    std::fs::read_dir(dir)
+        .unwrap()
+        .map(|entry| {
+            let path = entry.unwrap().path();
+            let name = path.file_name().unwrap().to_string_lossy().into_owned();
+            (name, std::fs::read_to_string(&path).unwrap())
+        })
+        .collect()
+}
+
+#[test]
+fn no_template_has_inline_styles_or_scripts() {
+    let templates = templates();
+    assert!(templates.iter().any(|(name, _)| name == "base.html"));
+    for (name, source) in templates {
+        for forbidden in ["<style", " style=", "javascript:", " hx-on"] {
+            assert!(!source.contains(forbidden), "{forbidden} in {name}");
+        }
+        assert_eq!(event_handler_attribute(&source), None, "{name}");
+        for script in source.match_indices("<script").map(|(i, _)| &source[i..]) {
+            let tag = &script[..script.find('>').unwrap()];
+            assert!(tag.contains(" src=\"/static/"), "{name}: {tag}");
+            assert!(
+                script[tag.len()..].starts_with("></script>"),
+                "{name}: a script body"
+            );
+        }
+    }
+}
+
 #[tokio::test]
 async fn oversized_form_posts_are_refused() {
     let app = TestApp::new().await;

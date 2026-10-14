@@ -1,0 +1,40 @@
+/* .badge: the square in front of a list line. .tag: a small pill after a name.
+   data-tone="warn" or "muted" changes either. */
+@layer components {
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border-radius: var(--radius-field);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--text-label);
+    font-weight: 700;
+  }
+
+  .tag {
+    display: inline-block;
+    padding: 0.125rem var(--space-2);
+    border-radius: var(--radius-pill);
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: var(--text-small);
+    font-weight: 600;
+    vertical-align: middle;
+  }
+
+  .badge[data-tone="warn"],
+  .tag[data-tone="warn"] {
+    background: var(--warn-bg);
+    color: var(--warn-text);
+  }
+
+  .badge[data-tone="muted"],
+  .tag[data-tone="muted"] {
+    background: var(--bg);
+    color: var(--muted);
+  }
+}
