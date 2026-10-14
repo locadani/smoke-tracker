@@ -24,11 +24,10 @@ log-level-in = { $room } seviyesi
 log-inside = Ev içi
 log-common = Ortak alanlar
 log-symptoms = Belirtiler
-log-pm25 = PM2.5 (µg/m³, isteğe bağlı)
 log-time = Saat
 log-time-now = şimdi
-log-time-change = değiştir
-log-note = Not (isteğe bağlı)
+log-time-change = Değiştir
+log-note = Not
 log-submit = Kaydet
 log-update = Güncelle: durum değişti
 log-no-smell = Koku yok
@@ -70,22 +69,29 @@ refused-future = Saat gelecekte olamaz.
 refused-close-before-last-report = Bitiş, son bildirimden önce olamaz.
 refused-close-in-future = Bitiş gelecekte olamaz.
 
-summary-this-month = Bu ay:
-summary-events = { $count ->
-    [one] 1 olay
-   *[other] { $count } olay
-}
 summary-reports = { $count ->
     [one] 1 bildirim
    *[other] { $count } bildirim
 }
-summary-bedroom-days = { $count ->
-    [one] yatak odasında duman olan 1 gün
-   *[other] yatak odasında duman olan { $count } gün
+log-level-hint = 0 ile 10 arasında bir seviye seç.
+optional = isteğe bağlı
+action-add = Ekle
+summary-caption = Bu ay
+tile-events = { $count ->
+    [one] olay
+   *[other] olay
 }
-summary-checks = { $count ->
-    [one] 1 temiz kontrol
-   *[other] { $count } temiz kontrol
+tile-reports = { $count ->
+    [one] bildirim
+   *[other] bildirim
+}
+tile-bedroom-days = { $count ->
+    [one] yatak odasında dumanlı gün
+   *[other] yatak odasında dumanlı gün
+}
+tile-checks = { $count ->
+    [one] temiz kontrol
+   *[other] temiz kontrol
 }
 
 rating-title = Nasıl puanlanır

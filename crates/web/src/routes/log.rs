@@ -13,7 +13,7 @@ use smoke_domain::repos::Store;
 use smoke_domain::starter::BEDROOM_KEY;
 use smoke_domain::summary::{MonthSummary, summarise};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Level, RoomArea, RoomId, SymptomId};
+use smoke_domain::types::{RoomArea, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
@@ -74,10 +74,18 @@ pub(crate) struct Choice {
     pub(crate) checked: bool,
 }
 
-/// A room chip and the row of levels it shows while selected.
+/// A room's line and the level grid it opens while selected.
 pub(crate) struct RoomChoice {
     pub(crate) room: Choice,
-    pub(crate) levels: Vec<Choice>,
+    /// "Level in Bedroom", for screen readers.
+    pub(crate) legend: String,
+    pub(crate) picked: Option<u8>,
+}
+
+impl RoomChoice {
+    pub(crate) fn is_picked(&self, level: &u8) -> bool {
+        self.picked == Some(*level)
+    }
 }
 
 /// The room, level and symptom fields shared by the Log form and the correction form
@@ -86,6 +94,8 @@ pub(crate) struct Fields {
     pub(crate) inside: Vec<RoomChoice>,
     pub(crate) common: Vec<RoomChoice>,
     pub(crate) symptoms: Vec<Choice>,
+    /// The levels 0–10 with their names and descriptions, offered for each room.
+    pub(crate) levels: Vec<GuideRow>,
 }
 
 /// The choices for `draft`. Hidden rooms and symptoms are offered only if listed in `keep`
@@ -102,24 +112,19 @@ pub(crate) fn fields(
             .iter()
             .filter(|r| r.area == area && (r.hidden_at.is_none() || keep.0.contains(&r.id)))
             .map(|r| {
-                let picked = draft
-                    .levels
-                    .iter()
-                    .find(|(room, _)| *room == r.id)
-                    .map(|&(_, level)| level);
+                let label = labels::room(tr, r);
                 RoomChoice {
+                    legend: tr.t1("log-level-in", "room", &label),
+                    picked: draft
+                        .levels
+                        .iter()
+                        .find(|(room, _)| *room == r.id)
+                        .map(|&(_, level)| level),
                     room: Choice {
                         value: r.id.0,
-                        label: labels::room(tr, r),
+                        label,
                         checked: draft.rooms.contains(&r.id),
                     },
-                    levels: (Level::MIN..=Level::MAX)
-                        .map(|value| Choice {
-                            value: value.into(),
-                            label: value.to_string(),
-                            checked: picked == Some(value),
-                        })
-                        .collect(),
                 }
             })
             .collect()
@@ -136,6 +141,7 @@ pub(crate) fn fields(
                 checked: draft.symptoms.contains(&s.id),
             })
             .collect(),
+        levels: levels(tr),
     }
 }
 
@@ -214,6 +220,17 @@ pub(crate) struct FormView {
     error: Option<&'static str>,
 }
 
+impl FormView {
+    /// "now" beside "Time" while no time is typed.
+    fn time_hint(&self, tr: &Tr) -> String {
+        if self.observed_at.is_empty() {
+            tr.t("log-time-now")
+        } else {
+            String::new()
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "log.html")]
 pub(crate) struct LogPage {
@@ -228,7 +245,6 @@ pub(crate) struct LogPage {
     /// A translation key confirming what was just saved.
     saved: Option<&'static str>,
     summary: MonthSummary,
-    levels: Vec<GuideRow>,
     /// `None` for people who may not log (viewers, expired guests).
     form: Option<FormView>,
 }
@@ -343,7 +359,6 @@ pub(crate) async fn log_page<S: Store>(
         notice,
         saved,
         summary,
-        levels: levels(tr),
         form,
     })
 }

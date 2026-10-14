@@ -24,11 +24,10 @@ log-level-in = Livello in { $room }
 log-inside = In casa
 log-common = Parti comuni
 log-symptoms = Sintomi
-log-pm25 = PM2.5 (µg/m³, facoltativo)
 log-time = Ora
 log-time-now = adesso
-log-time-change = cambia
-log-note = Nota (facoltativa)
+log-time-change = Cambia
+log-note = Nota
 log-submit = Registra
 log-update = Aggiorna: la situazione è cambiata
 log-no-smell = Nessun odore
@@ -70,22 +69,29 @@ refused-future = L'ora non può essere nel futuro.
 refused-close-before-last-report = La fine non può essere prima dell'ultima segnalazione.
 refused-close-in-future = La fine non può essere nel futuro.
 
-summary-this-month = Questo mese:
-summary-events = { $count ->
-    [one] 1 evento
-   *[other] { $count } eventi
-}
 summary-reports = { $count ->
     [one] 1 segnalazione
    *[other] { $count } segnalazioni
 }
-summary-bedroom-days = { $count ->
-    [one] 1 giorno con fumo in camera da letto
-   *[other] { $count } giorni con fumo in camera da letto
+log-level-hint = Scegli un livello da 0 a 10.
+optional = facoltativo
+action-add = Aggiungi
+summary-caption = Questo mese
+tile-events = { $count ->
+    [one] evento
+   *[other] eventi
 }
-summary-checks = { $count ->
-    [one] 1 controllo pulito
-   *[other] { $count } controlli puliti
+tile-reports = { $count ->
+    [one] segnalazione
+   *[other] segnalazioni
+}
+tile-bedroom-days = { $count ->
+    [one] giorno con fumo in camera
+   *[other] giorni con fumo in camera
+}
+tile-checks = { $count ->
+    [one] controllo pulito
+   *[other] controlli puliti
 }
 
 rating-title = Come valutare

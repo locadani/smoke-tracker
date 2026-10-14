@@ -95,7 +95,7 @@ impl Tr {
         LOCALES.lookup_with_args(language(self.0), key, &args)
     }
 
-    /// A message that depends on a number, e.g. `tr.n("summary-events", &3)`: Fluent picks the
+    /// A message that depends on a number, e.g. `tr.n("summary-reports", &3)`: Fluent picks the
     /// language's plural form from `$count`. Takes a reference because templates pass one.
     pub(crate) fn n(&self, key: &str, count: &usize) -> String {
         let args: HashMap<Cow<'static, str>, FluentValue> =
@@ -336,10 +336,10 @@ mod tests {
 
     #[test]
     fn counts_pick_the_plural_form_of_each_language() {
-        assert_eq!(Tr(Locale::En).n("summary-events", &1), "1 event");
-        assert_eq!(Tr(Locale::En).n("summary-events", &14), "14 events");
+        assert_eq!(Tr(Locale::En).n("tile-events", &1), "event");
+        assert_eq!(Tr(Locale::En).n("tile-events", &14), "events");
         assert_eq!(Tr(Locale::It).n("summary-reports", &1), "1 segnalazione");
         assert_eq!(Tr(Locale::It).n("summary-reports", &41), "41 segnalazioni");
-        assert_eq!(Tr(Locale::Tr).n("summary-events", &14), "14 olay");
+        assert_eq!(Tr(Locale::Tr).n("summary-reports", &14), "14 bildirim");
     }
 }

@@ -178,7 +178,12 @@ async fn residents_add_rooms_and_symptoms_and_hide_them_from_the_forms() {
         ("Balcony", RoomArea::Common, None)
     );
     let log = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(log.contains("<span>Balcony</span>"), "{log}");
+    assert!(
+        Page::parse(&log)
+            .texts(".room-check")
+            .contains(&"Balcony".to_owned()),
+        "{log}"
+    );
     assert!(log.contains("Dizziness"), "{log}");
 
     let hide = format!("/settings/rooms/{}/hidden", balcony.id);
@@ -199,7 +204,12 @@ async fn residents_add_rooms_and_symptoms_and_hide_them_from_the_forms() {
     app.send(post_form(&hide, "hidden=false", Some(&cookie)))
         .await;
     let log = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(log.contains("<span>Balcony</span>"), "{log}");
+    assert!(
+        Page::parse(&log)
+            .texts(".room-check")
+            .contains(&"Balcony".to_owned()),
+        "{log}"
+    );
 }
 
 #[tokio::test]

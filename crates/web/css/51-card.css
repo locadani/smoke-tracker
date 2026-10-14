@@ -10,6 +10,7 @@
   }
 
   .collapsible {
+    display: block;
     padding-block: var(--space-1);
   }
 
@@ -40,7 +41,7 @@
     transform: rotate(180deg);
   }
 
-  .collapsible[open] > .stack {
+  .collapsible > .stack {
     padding-block-end: var(--space-3);
   }
 }

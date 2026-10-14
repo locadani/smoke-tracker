@@ -56,6 +56,9 @@ const STYLESHEET: (&str, &[&str]) = stylesheet!(
     "61-menu.css",
     "62-tabbar.css",
     "63-install.css",
+    "64-sheet.css",
+    "65-stats.css",
+    "66-room.css",
     "90-utilities.css",
 );
 

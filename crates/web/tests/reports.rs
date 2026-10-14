@@ -4,6 +4,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::{EventRepo, ReportRepo};
@@ -76,13 +77,14 @@ async fn correcting_a_mistake_is_recorded_and_badged() {
             .await,
     )
     .await;
-    assert!(
-        form.contains(&format!(r#"name="level-{}" value="6" checked>"#, bedroom.0)),
-        "{form}"
-    );
-    assert!(
-        form.contains(&format!(r#"value="{}" checked><span>Bedroom"#, bedroom.0)),
-        "{form}"
+    let page = Page::parse(&form);
+    assert!(page.exists(&format!(
+        r#"input[name="level-{}"][value="6"][checked]"#,
+        bedroom.0
+    )));
+    assert_eq!(
+        page.texts(".room-check:has(input[name=room][checked])"),
+        ["Bedroom"]
     );
     assert!(
         form.contains(r#"name="observed_at" value="2026-01-15T19:05""#),

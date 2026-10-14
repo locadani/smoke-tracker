@@ -1,0 +1,61 @@
+/* .sheet: a <dialog> that rises from the bottom of the screen over a dimmed page. */
+@layer components {
+  .sheet {
+    inline-size: 100%;
+    max-inline-size: var(--column);
+    max-block-size: 85vh;
+    margin: auto auto 0;
+    padding: var(--space-3) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
+    border: 0;
+    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    background: var(--card);
+    color: var(--text);
+  }
+
+  .sheet[open] {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .sheet::before {
+    content: "";
+    align-self: center;
+    inline-size: 2.5rem;
+    block-size: 0.3125rem;
+    border-radius: var(--radius-pill);
+    background: var(--line);
+  }
+
+  .sheet::backdrop {
+    background: var(--backdrop);
+  }
+
+  .scale th,
+  .scale td {
+    padding-block: var(--space-1);
+    vertical-align: middle;
+  }
+
+  .scale th {
+    inline-size: 3rem;
+  }
+
+  .scale .badge {
+    inline-size: 2rem;
+    block-size: 2rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .sheet[open] {
+      animation: rise 0.2s ease-out;
+    }
+
+    @keyframes rise {
+      from {
+        transform: translateY(2rem);
+        opacity: 0;
+      }
+    }
+  }
+}

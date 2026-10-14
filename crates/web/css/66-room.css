@@ -1,0 +1,151 @@
+/* The Rooms card of the Log form: one line per room with a check square; a selected room is
+   highlighted and opens its level grid 0–10 (6 + 5), where each level carries its name and
+   description, shown under the grid once picked. */
+@layer components {
+  .rooms {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .group {
+    margin-block-start: var(--space-2);
+    color: var(--muted);
+    font-size: var(--text-small);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .info {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    min-block-size: var(--target);
+    font-size: var(--text-label);
+    font-weight: 600;
+    text-decoration: none;
+  }
+
+  .room {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+  }
+
+  .room:has(> .room-check input:checked) {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+
+  .room-check {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    min-block-size: var(--field-height);
+    padding-inline: var(--space-3);
+    font-size: 1rem;
+    font-weight: 550;
+    cursor: pointer;
+  }
+
+  .room-check > input,
+  .level > input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .box {
+    display: grid;
+    place-items: center;
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+    border: 2px solid var(--control-border);
+    border-radius: 8px;
+    color: transparent;
+  }
+
+  .room-check > input:checked + .box {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .room-check > input:focus-visible + .box,
+  .level > input:focus-visible + span {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .box .icon {
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+  }
+
+  .levels {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.375rem;
+    padding: 0 var(--space-3) var(--space-3);
+  }
+
+  .room:not(:has(> .room-check input:checked)) > .levels {
+    display: none;
+  }
+
+  /* The label is no box of its own: its number is a grid cell, its text the line below. */
+  .level {
+    display: contents;
+  }
+
+  .level > span:first-of-type {
+    display: grid;
+    place-items: center;
+    min-block-size: var(--target);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: var(--card);
+    font-size: 0.9375rem;
+    font-weight: 650;
+    cursor: pointer;
+  }
+
+  .level > input:checked + span {
+    border-color: var(--accent);
+    background: var(--accent);
+    color: var(--on-accent);
+  }
+
+  .level-text,
+  .level-hint {
+    grid-column: 1 / -1;
+    grid-row: 3;
+    color: var(--muted);
+    font-size: var(--text-label);
+  }
+
+  .level-text {
+    display: none;
+  }
+
+  .level-text > strong {
+    color: var(--text);
+  }
+
+  .level > input:checked ~ .level-text {
+    display: block;
+  }
+
+  .levels:has(input:checked) > .level-hint {
+    display: none;
+  }
+
+  .unit {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    color: var(--muted);
+    font-size: var(--text-label);
+    white-space: nowrap;
+  }
+}

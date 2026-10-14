@@ -20,7 +20,6 @@ use crate::forms::Pairs;
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::entries::{Smell, joinable_events, read_time, read_values};
-use crate::routes::guide::{GuideRow, levels};
 use crate::routes::log::{Draft, Fields, fields, offered};
 use crate::routes::refusal;
 use crate::state::AppState;
@@ -290,7 +289,6 @@ struct CorrectPage {
     tr: Tr,
     signed_in: Option<SignedIn>,
     id: i64,
-    levels: Vec<GuideRow>,
     /// A no-smell check: its levels stay at 0.
     check: bool,
     form: CorrectForm,
@@ -335,7 +333,6 @@ async fn correct_page<S: Store>(
         tr,
         signed_in: SignedIn::of(user, state.clock.now(), Tab::Events),
         id: report.id.0,
-        levels: levels(tr),
         check: report.event_id.is_none(),
         form: CorrectForm {
             fields: fields(tr, &rooms, &symptoms, &draft, keep),

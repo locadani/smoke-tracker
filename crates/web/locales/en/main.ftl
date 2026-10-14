@@ -24,11 +24,10 @@ log-level-in = Level in { $room }
 log-inside = Inside
 log-common = Common areas
 log-symptoms = Symptoms
-log-pm25 = PM2.5 (µg/m³, optional)
 log-time = Time
 log-time-now = now
-log-time-change = change
-log-note = Note (optional)
+log-time-change = Change
+log-note = Note
 log-submit = Log
 log-update = Update: situation changed
 log-no-smell = No smell
@@ -70,22 +69,29 @@ refused-future = The time cannot be in the future.
 refused-close-before-last-report = The end cannot be before the last report.
 refused-close-in-future = The end cannot be in the future.
 
-summary-this-month = This month:
-summary-events = { $count ->
-    [one] 1 event
-   *[other] { $count } events
-}
 summary-reports = { $count ->
     [one] 1 report
    *[other] { $count } reports
 }
-summary-bedroom-days = { $count ->
-    [one] 1 day with bedroom smoke
-   *[other] { $count } days with bedroom smoke
+log-level-hint = Pick a level from 0 to 10.
+optional = optional
+action-add = Add
+summary-caption = This month
+tile-events = { $count ->
+    [one] event
+   *[other] events
 }
-summary-checks = { $count ->
-    [one] 1 clean check
-   *[other] { $count } clean checks
+tile-reports = { $count ->
+    [one] report
+   *[other] reports
+}
+tile-bedroom-days = { $count ->
+    [one] bedroom day
+   *[other] bedroom days
+}
+tile-checks = { $count ->
+    [one] clean check
+   *[other] clean checks
 }
 
 rating-title = How to rate

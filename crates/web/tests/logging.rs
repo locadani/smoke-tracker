@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
 use smoke_domain::repos::{EventRepo, ReadingRepo, ReportRepo};
@@ -501,10 +502,14 @@ async fn invalid_input_shows_the_form_again_with_what_was_typed() {
         html.contains("Pick a level from 0 to 10 for each selected room."),
         "{html}"
     );
-    assert!(html.contains(">kept as typed</textarea>"), "{html}");
-    assert!(
-        html.contains(&format!(r#"value="{}" checked><span>Bedroom"#, bedroom.0)),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.text("details.collapsible[open] textarea[name=note]"),
+        "kept as typed"
+    );
+    assert_eq!(
+        page.texts(".room-check:has(input[name=room][checked])"),
+        ["Bedroom"]
     );
     let missing = app
         .send(post_form("/log", "action=log", Some(&cookie)))
@@ -551,7 +556,15 @@ async fn no_smell_with_nothing_open_saves_a_check_without_asking() {
     assert!(check.values.rooms().is_empty(), "the whole home");
     let html = text(app.send(get_with("/?saved=no-smell", &cookie)).await).await;
     assert!(html.contains("Saved: no smell."), "{html}");
-    assert!(html.contains(" · 1 clean check"), "{html}");
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.texts(".stats dt").last().map(String::as_str),
+        Some("clean check")
+    );
+    assert_eq!(
+        page.texts(".stats dd").last().map(String::as_str),
+        Some("1")
+    );
 }
 
 #[tokio::test]
