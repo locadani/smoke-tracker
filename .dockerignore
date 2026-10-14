@@ -6,6 +6,8 @@ target
 .superpowers
 docs
 tests
+# Practice package, not part of the app.
+exercises
 data
 *.db
 *.db-*

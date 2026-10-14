@@ -15,7 +15,7 @@ guesses.
 | 6 | **Graphs, guides & README** | Chart.js graphs, guide pages, README with permissions/rules/intensity tables, CodeQL, coverage | §5, §9 (5), §13.1 | `06-graphs-guides-readme.md` |
 | 7 | **Neon readiness** | ~~`migrate-to-postgres` command and its CI test~~ Not needed: production starts on Postgres (decision #77) | §10.2 | — |
 | 7b | **Look & feel** | Soft-card design in light and dark (tokens, CSS layers, Askama components, icon sprite, ES modules), avatar menu and tab bar, one Log button, event banner counts, graph filters with per-person lines, move-to-new-event from the gap warning, Biome and an accessibility CI job | Look-and-feel spec §1–§10 | `07b-look-and-feel.md` |
-| 8 | **Learning pack** | `docs/learning/` notes per milestone, optional exercises with tests, walkthroughs | Decision #43 | — |
+| 8 | **Learning pack** | `docs/learning/` notes per area with an index, 17 optional exercises with tests in `exercises/` (outside the app), walkthroughs and quizzes on request in chat | Decision #43 | `08-learning-pack.md` |
 
 **After milestone 1 (done):** GitHub repo created, branch protection (ruleset) and push protection enabled, push-reminder issue created (#3).
 
