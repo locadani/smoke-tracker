@@ -14,7 +14,7 @@ guesses.
 | 5 | **People, invites & PWA** | Invites with QR, account setup, password reset, expire/reactivate, settings (language, password, lists), manifest, service worker, install prompt, header Install button | §8.3, §9 (6–8), §9.1 | `05-people-and-pwa.md` |
 | 6 | **Graphs, guides & README** | Chart.js graphs, guide pages, README with permissions/rules/intensity tables, CodeQL, coverage | §5, §9 (5), §13.1 | `06-graphs-guides-readme.md` |
 | 7 | **Neon readiness** | ~~`migrate-to-postgres` command and its CI test~~ Not needed: production starts on Postgres (decision #77) | §10.2 | — |
-| 8 | **Learning pack** | `docs/learning/` notes per milestone, optional exercises with tests, walkthroughs | Decision #43 | — |
+| 8 | **Learning pack** | `docs/learning/` notes per area with an index, 17 optional exercises with tests in `exercises/` (outside the app), walkthroughs and quizzes on request in chat | Decision #43 | `08-learning-pack.md` |
 
 **After milestone 1 (done):** GitHub repo created, branch protection (ruleset) and push protection enabled, push-reminder issue created (#3).
 
