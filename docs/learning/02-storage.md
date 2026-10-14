@@ -1,6 +1,6 @@
 # 02 — Storage
 
-> Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
+> Written against commit `eda7a09` (milestone 7b, look and feel). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
 > search the file for the old name. Exercises for this note: 5 (a repository trait), 6 (transactions and Drop), 7 (error types and the ? operator). Reading time: about
 > 50 minutes, plus the exercises.

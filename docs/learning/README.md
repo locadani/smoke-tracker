@@ -1,7 +1,7 @@
 # Learning Rust with Smoke Tracker
 
 This folder is a set of study notes and optional exercises for learning Rust. The app is real and
-deployed, so every note points at real code. Written against `main` at commit `5b52604`.
+deployed, so every note points at real code. Written against commit `eda7a09` (milestone 7b, look and feel).
 
 ## Start here
 

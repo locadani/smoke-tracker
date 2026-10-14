@@ -1,6 +1,6 @@
 # 03 — Web and auth
 
-> Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
+> Written against commit `eda7a09` (milestone 7b, look and feel). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
 > search the file for the old name. Exercises for this note: 8 (a login limiter), 9 (request rules), 10 (middleware and error chains). Reading time: about
 > 60 minutes, plus the exercises.
@@ -43,7 +43,8 @@ function body never runs, so a handler only sees values that already passed thei
   groups them with `.merge`, adds middleware with `.route_layer` and `.layer`, sets a
   `.fallback` and finishes with `.with_state`.
 - `crates/web/src/routes/log.rs::show` takes `State<AppState<S>>`, `CurrentUser`, `Tr` and
-  `Query<ShowQuery>`, and returns `Result<Response, AppError>`.
+  `QueryPairs`, and returns `Result<Response, AppError>`. `QueryPairs` reads the query string
+  and never rejects the request (note 04, section 6).
 - `crates/web/src/routes/entries.rs::submit` takes the body-reading extractor `Pairs` as its
   last argument: a request body can be read once, so only the last extractor may consume it.
 - Every handler is generic: `S: Store + Clone + 'static`. `Clone` because axum clones the
@@ -268,8 +269,10 @@ time, so a misspelled field is a build error, and output is HTML-escaped by defa
 
 - `crates/web/src/routes/log.rs::LogPage` has `#[derive(Template)]` and
   `#[template(path = "log.html")]`; its fields are what the template can read.
-- `crates/web/templates/` holds the HTML: pages extend `base.html` and include fragments such
-  as `report_fields.html`; `crates/web/src/error.rs::page` renders one with a status.
+- `crates/web/templates/` holds the HTML: pages extend `base.html` and import Askama macros
+  from `components.html` (cards, buttons, icons) and from fragments such as
+  `report_fields.html`, so repeated markup is written once; `crates/web/src/error.rs::page`
+  renders one with a status.
 - `crates/web/src/labels.rs::room` keeps view logic in Rust, out of the template.
 
 **Why this way.** The pages are plain HTML forms, so no script is needed (decision #96: htmx stays loaded but no page uses it yet).
@@ -394,8 +397,9 @@ and read the response, with no network port. It tests the whole stack together.
 
 - `crates/web/tests/common/mod.rs::TestApp` builds a real router over a temporary SQLite file
   and a `FakeClock`, and calls it with `tower::ServiceExt::oneshot`.
-- `crates/web/tests/security.rs::no_page_needs_inline_scripts_styles_or_eval` scans every
-  page's HTML for inline scripts or styles, which the CSP would block.
+- `crates/web/tests/security.rs::no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists`
+  scans every page's HTML for inline scripts or styles, which the CSP would block, and for icons
+  missing from the sprite.
 
 **Why this way.** A request-level test runs in milliseconds and needs no browser. Alternatives:
 only unit tests (they miss wiring mistakes); browser tests (slow, flaky, a toolchain to keep).
