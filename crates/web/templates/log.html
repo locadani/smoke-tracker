@@ -32,7 +32,7 @@
 {% if let Some(form) = form %}
 {% if let Some(error) = form.error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <form method="post" action="/log" class="stack">
-  {% call c::collapsible(tr.t("log-time"), form.time_hint(tr), tr.t("log-time-change"), !form.observed_at.is_empty()) %}
+  {% call c::collapsible(tr.t("log-time"), form.time_hint(tr), tr.t("action-change"), !form.observed_at.is_empty()) %}
   <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" aria-label="{{ tr.t("log-time") }}">
   {% endcall %}
   {% call f::rooms(form.fields, tr.t("log-rooms"), tr.t("log-how-to-rate"), tr.t("log-inside"), tr.t("log-common"), tr.t("log-level-hint")) %}{% endcall %}

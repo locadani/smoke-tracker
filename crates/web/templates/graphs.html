@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("graphs-title") }}{% endblock %}
 {% block scripts %}
   <script src="/static/chart-4.5.1.umd.min.js" defer></script>
@@ -6,15 +7,55 @@
 {% endblock %}
 {% block content %}
 <h1>{{ tr.t("graphs-title") }}</h1>
-<nav class="months">
-  <a href="/graphs?{{ previous }}">{{ tr.t("events-previous") }}</a>
-  <strong>{{ label }}</strong>
-  <a href="/graphs?{{ next }}">{{ tr.t("events-next") }}</a>
-</nav>
-<p><a href="/graphs?{{ other }}">{{ tr.t(other_key) }}</a></p>
-{% if own_only %}
-<p class="hint">{{ tr.t("graphs-own-only") }}</p>
-{% endif %}
+{% call c::collapsible(tr.t("graphs-filters"), filters.summary, tr.t("action-change"), false) %}
+<form method="get" action="/graphs" class="stack filters">
+  <fieldset class="stack" data-date-picks>
+    <legend>{{ tr.t("graphs-dates") }}</legend>
+    <div class="cluster">
+      {% for pick in filters.ranges %}{% call c::chip("radio", "range", pick.value, pick.label, pick.checked) %}{% endcall %}{% endfor %}
+    </div>
+    <div class="split">
+      {% call c::field(tr.t("graphs-from")) %}<input type="date" name="from" value="{{ filters.from }}">{% endcall %}
+      {% call c::field(tr.t("graphs-to")) %}<input type="date" name="to" value="{{ filters.to }}">{% endcall %}
+    </div>
+  </fieldset>
+  <fieldset class="stack">
+    <legend>{{ tr.t("graphs-where") }}</legend>
+    <div class="segmented">
+      {% for pick in filters.areas %}{% call c::chip("radio", "area", pick.value, pick.label, pick.checked) %}{% endcall %}{% endfor %}
+    </div>
+    <div class="cluster">
+      {% for room in filters.rooms %}{% call c::chip("checkbox", "room", room.value, room.label, room.checked) %}{% endcall %}{% endfor %}
+    </div>
+  </fieldset>
+  {% if let Some(people) = filters.people %}
+  {% call c::field(tr.t("graphs-by")) %}
+  <select name="by">
+    <option value="">{{ tr.t("graphs-everyone") }}</option>
+    {% for person in people %}
+    <option value="{{ person.value }}" data-role="{{ person.role }}"{% if person.selected %} selected{% endif %}>{{ person.name }}</option>
+    {% endfor %}
+  </select>
+  {% endcall %}
+  {% endif %}
+  <fieldset class="stack">
+    <legend>{{ tr.t("graphs-time") }}</legend>
+    <div class="cluster">
+      {% for pick in filters.times %}{% call c::chip("radio", "time", pick.value, pick.label, pick.checked) %}{% endcall %}{% endfor %}
+    </div>
+  </fieldset>
+  <label class="field">
+    <span class="split">{{ tr.t("graphs-min-level") }} <output for="min-level">{{ filters.min_label }}</output></span>
+    <input type="range" id="min-level" name="min" min="0" max="10" step="1" value="{{ filters.min_level }}">
+  </label>
+  <label class="inline-field">{{ tr.t("graphs-hide-clean") }} <input type="checkbox" name="clean" value="hide"{% if filters.hide_clean %} checked{% endif %}></label>
+  <div class="actions">
+    <a href="/graphs" class="button" data-variant="secondary">{{ tr.t("graphs-reset") }}</a>
+    <button type="submit" class="button">{{ tr.t("graphs-show") }}</button>
+  </div>
+</form>
+{% endcall %}
+{% if own_only %}<p class="hint">{{ tr.t("graphs-own-only") }}</p>{% endif %}
 {% if empty %}
 <p>{{ tr.t("graphs-none") }}</p>
 {% else %}

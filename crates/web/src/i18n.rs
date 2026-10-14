@@ -263,7 +263,7 @@ mod tests {
         used.extend(settings::keys().into_iter().map(str::to_owned));
         used.extend(lists::KEYS.map(str::to_owned));
         used.extend(people::keys().into_iter().map(str::to_owned));
-        used.extend(graphs::KEYS.map(str::to_owned));
+        used.extend(graphs::keys().into_iter().map(str::to_owned));
         let english = message_ids(Locale::En);
         let missing: Vec<_> = used.difference(&english).collect();
         assert!(

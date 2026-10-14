@@ -25,7 +25,7 @@
 {% call c::card(tr.t("language")) %}
 {% call c::languages(tr.languages(), tr.t("language"), "settings") %}{% endcall %}
 {% endcall %}
-{% call c::collapsible(tr.t("settings-password"), "", tr.t("settings-change"), notices.password_error.is_some()) %}
+{% call c::collapsible(tr.t("settings-password"), "", tr.t("action-change"), notices.password_error.is_some()) %}
 {% if let Some(error) = notices.password_error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <form method="post" action="/settings/password" class="stack">
   <input type="text" name="username" value="{{ username }}" autocomplete="username" hidden>
@@ -37,7 +37,7 @@
 </form>
 {% endcall %}
 {% if let Some(lists) = lists %}
-{% call c::collapsible(tr.t("log-rooms"), "", tr.t("settings-change"), notices.list_error.is_some()) %}
+{% call c::collapsible(tr.t("log-rooms"), "", tr.t("action-change"), notices.list_error.is_some()) %}
 {% if let Some(error) = notices.list_error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <p class="hint">{{ tr.t("settings-lists-hint") }}</p>
 <ul class="items">
@@ -55,7 +55,7 @@
   </fieldset>
 </form>
 {% endcall %}
-{% call c::collapsible(tr.t("log-symptoms"), "", tr.t("settings-change"), notices.list_error.is_some()) %}
+{% call c::collapsible(tr.t("log-symptoms"), "", tr.t("action-change"), notices.list_error.is_some()) %}
 <ul class="items">
   {% for item in lists.symptoms %}{% call list_item(item, tr.t("settings-list-hidden"), tr.t("settings-list-hide"), tr.t("settings-list-show")) %}{% endcall %}{% endfor %}
 </ul>
