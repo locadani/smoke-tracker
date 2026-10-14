@@ -11,8 +11,16 @@
 {% call c::card(tr.t("event-timeline")) %}
 <ol class="timeline">
   {% for entry in entries %}
-  {% if entry.gap_before %}
-  <li class="gap" role="note"><span>{{ tr.t("event-gap") }}</span></li>
+  {% if let Some(gap) = entry.gap %}
+  <li class="gap" role="note">
+    <span>{{ tr.t("event-gap") }}</span>
+    {% if let Some(report) = gap.movable %}
+    <form method="post" action="/reports/{{ report }}/move">
+      <input type="hidden" name="target" value="new">
+      <button type="submit" class="button">{{ tr.t1("event-gap-move", "time", entry.at) }}</button>
+    </form>
+    {% endif %}
+  </li>
   {% endif %}
   <li{% if entry.report.is_none() %} data-kind="reading"{% endif %}>
     <span class="at">{{ entry.at }}</span>

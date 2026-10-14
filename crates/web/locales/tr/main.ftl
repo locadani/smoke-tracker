@@ -161,6 +161,7 @@ event-started-by = Başlatan: { $username }
 event-timeline = Zaman çizelgesi
 event-close-title = Bu olayı kapat
 event-gap = Önceki bildirimden bu yana 3 saatten fazla geçti: hâlâ aynı olay mı?
+event-gap-move = { $time } kaydını yeni bir olaya taşı
 event-intensity = yoğunluk { $level }
 event-pm25 = PM2.5 { $value } µg/m³
 event-close = Olayı kapat

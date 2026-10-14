@@ -204,7 +204,14 @@ struct Entry {
     /// Shown to people who see everyone's data.
     by: Option<String>,
     /// More than three hours after the previous report (spec §7.7).
-    gap_before: bool,
+    gap: Option<Gap>,
+}
+
+/// The large-gap warning before a report.
+struct Gap {
+    /// The report after the gap, when the viewer may move it to a new event (look-and-feel
+    /// spec §6.4). A no-smell report cannot start an event, so it is never offered.
+    movable: Option<i64>,
 }
 
 #[derive(Template)]
@@ -314,7 +321,17 @@ async fn detail<S: Store>(
                     .collect::<Vec<_>>()
                     .join(" · "),
                 by: names.get(&report.user_id).cloned(),
-                gap_before: gaps.contains(&index),
+                gap: gaps.contains(&index).then(|| Gap {
+                    movable: (!report.values.is_no_smell()
+                        && can(
+                            &actor,
+                            Action::EditEntry {
+                                owner: report.user_id,
+                            },
+                            now,
+                        ))
+                    .then_some(report.id.0),
+                }),
             },
         ));
     }
@@ -326,7 +343,7 @@ async fn detail<S: Store>(
                 report: None,
                 text: tr.t1("event-pm25", "value", &reading.value.ugm3().to_string()),
                 by: names.get(&reading.user_id).cloned(),
-                gap_before: false,
+                gap: None,
             },
         ));
     }

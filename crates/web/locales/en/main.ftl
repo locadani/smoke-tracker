@@ -161,6 +161,7 @@ event-started-by = Started by { $username }
 event-timeline = Timeline
 event-close-title = Close this event
 event-gap = More than 3 hours since the previous report: is this still the same event?
+event-gap-move = Move { $time } to a new event
 event-intensity = intensity { $level }
 event-pm25 = PM2.5 { $value } µg/m³
 event-close = Close event

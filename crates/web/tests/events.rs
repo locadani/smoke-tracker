@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
-use smoke_domain::repos::EventRepo;
+use smoke_domain::repos::{EventRepo, ReportRepo};
 use smoke_domain::types::{CloseReason, Locale, Role};
 
 #[tokio::test]
@@ -196,6 +196,142 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
         r#".timeline a[href="/reports/{}"]"#,
         late.report.id
     )));
+}
+
+/// Look-and-feel spec §6.4: the warning offers to move the report after the gap, through the
+/// existing move route, to those allowed to move it.
+#[tokio::test]
+async fn the_gap_warning_moves_the_report_after_it_to_a_new_event() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let guest = app.add_user("guest", Role::Guest, Locale::En).await;
+    let first = app
+        .log(
+            &me,
+            "2026-01-15T09:00:00Z",
+            3,
+            &[],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+    let id = first.report.event_id.unwrap();
+    app.log(
+        &guest,
+        "2026-01-15T09:30:00Z",
+        4,
+        &[],
+        EventChoice::Join(id),
+    )
+    .await;
+    let late = app
+        .log(&me, "2026-01-15T13:45:00Z", 6, &[], EventChoice::Join(id))
+        .await;
+    let path = format!("/events/{id}");
+
+    let resident = app.sign_in("daniele").await;
+    let page = Page::parse(&text(app.send(get_with(&path, &resident)).await).await);
+    let form = format!(
+        r#".gap form[method=post][action="/reports/{}/move"]"#,
+        late.report.id
+    );
+    assert!(page.exists(&format!(
+        "{form} input[type=hidden][name=target][value=new]"
+    )));
+    assert_eq!(
+        page.text(&format!("{form} button")),
+        "Move 14:45 to a new event"
+    );
+
+    let guest = app.sign_in("guest").await;
+    let page = Page::parse(&text(app.send(get_with(&path, &guest)).await).await);
+    assert!(
+        !page.exists(".gap"),
+        "the guest sees only their own report: no gap"
+    );
+
+    let moved = app
+        .send(post_form(
+            &format!("/reports/{}/move", late.report.id),
+            "target=new",
+            Some(&resident),
+        ))
+        .await;
+    assert_eq!(
+        location(&moved),
+        Some(format!("/reports/{}", late.report.id).as_str())
+    );
+    let report = app.store.report(late.report.id).await.unwrap().unwrap();
+    assert_ne!(report.event_id, Some(id), "a new event");
+    let page = Page::parse(&text(app.send(get_with(&path, &resident)).await).await);
+    assert!(!page.exists(".gap"), "the gap is gone with the report");
+}
+
+#[tokio::test]
+async fn the_gap_warning_offers_no_move_without_permission_or_for_a_check() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let guest = app.add_user("guest", Role::Guest, Locale::En).await;
+    app.add_user("lawyer", Role::Viewer, Locale::En).await;
+    let first = app
+        .log(
+            &guest,
+            "2026-01-15T09:00:00Z",
+            3,
+            &[],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+    let id = first.report.event_id.unwrap();
+    app.log(
+        &guest,
+        "2026-01-15T13:00:00Z",
+        5,
+        &[],
+        EventChoice::Join(id),
+    )
+    .await;
+    let other = app
+        .log(
+            &me,
+            "2026-01-15T14:00:00Z",
+            2,
+            &[],
+            EventChoice::New {
+                replacing: Some(id),
+            },
+        )
+        .await;
+    let other_id = other.report.event_id.unwrap();
+    app.log_values(
+        &me,
+        "2026-01-15T18:00:00Z",
+        vec![],
+        &[],
+        EventChoice::Join(other_id),
+    )
+    .await;
+    let path = format!("/events/{id}");
+
+    let viewer = app.sign_in("lawyer").await;
+    let page = Page::parse(&text(app.send(get_with(&path, &viewer)).await).await);
+    assert!(page.exists(".gap"), "viewers see the warning");
+    assert!(!page.exists(".gap form"), "but may not move reports");
+
+    let resident = app.sign_in("daniele").await;
+    let page = Page::parse(
+        &text(
+            app.send(get_with(&format!("/events/{other_id}"), &resident))
+                .await,
+        )
+        .await,
+    );
+    assert!(page.exists(".gap"), "a check after a gap");
+    assert!(
+        !page.exists(".gap form"),
+        "a no-smell report cannot start an event"
+    );
 }
 
 #[tokio::test]

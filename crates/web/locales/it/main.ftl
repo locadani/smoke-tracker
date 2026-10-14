@@ -161,6 +161,7 @@ event-started-by = Iniziato da { $username }
 event-timeline = Cronologia
 event-close-title = Chiudi questo evento
 event-gap = Più di 3 ore dalla segnalazione precedente: è ancora lo stesso evento?
+event-gap-move = Sposta { $time } in un nuovo evento
 event-intensity = intensità { $level }
 event-pm25 = PM2.5 { $value } µg/m³
 event-close = Chiudi evento
