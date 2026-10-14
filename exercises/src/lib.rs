@@ -14,3 +14,4 @@ pub mod ex08_login_limiter;
 pub mod ex09_request_rules;
 pub mod ex10_middleware;
 pub mod ex11_log_prompt;
+pub mod ex12_report_values;
