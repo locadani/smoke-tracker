@@ -102,3 +102,9 @@
   <input type="date" name="{{ fields.date_name }}" value="{{ fields.date }}" aria-label="{{ date_label }}">
 </fieldset>
 {% endmacro %}
+
+{# One choice of a client-side switch: a radio that needs no form (js/series-switch.js reads it).
+   `title` is the chart heading it sets, if any. #}
+{% macro series(name, value, label, title, checked) %}
+<label class="chip"><input type="radio" name="{{ name }}" value="{{ value }}"{% if !title.is_empty() %} data-title="{{ title }}"{% endif %}{% if checked %} checked{% endif %}><span>{{ label }}</span></label>
+{% endmacro %}

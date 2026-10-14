@@ -65,6 +65,7 @@ const STYLESHEET: (&str, &[&str]) = stylesheet!(
     "70-items.css",
     "71-people.css",
     "72-guide.css",
+    "73-chart.css",
     "90-utilities.css",
 );
 
@@ -88,6 +89,9 @@ const ASSETS: &[Asset] = &[
     asset!("js/graphs.js", "text/javascript; charset=utf-8"),
     asset!("js/install.js", "text/javascript; charset=utf-8"),
     asset!("js/menu.js", "text/javascript; charset=utf-8"),
+    asset!("js/person-filter.js", "text/javascript; charset=utf-8"),
+    asset!("js/range-output.js", "text/javascript; charset=utf-8"),
+    asset!("js/series-switch.js", "text/javascript; charset=utf-8"),
     asset!("js/service-worker.js", "text/javascript; charset=utf-8"),
     asset!("manifest.webmanifest", "application/manifest+json"),
     asset!("sw.js", "text/javascript; charset=utf-8"),

@@ -102,7 +102,38 @@ async fn residents_see_one_line_per_person_and_pm25_on_its_own_axis() {
     let intensity = &charts(&html)[0];
     assert_eq!(
         labels(intensity),
-        ["daniele", "partner", "guest", "PM2.5 (µg/m³)"]
+        ["daniele", "partner", "guest", "Everyone", "PM2.5 (µg/m³)"]
+    );
+    let groups: Vec<_> = intensity["data"]["datasets"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| (d["group"].as_str().unwrap(), d["token"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        groups,
+        [
+            ("person", "accent"),
+            ("person", "series-2"),
+            ("person", "series-3"),
+            ("everyone", "accent"),
+            ("pm25", "amber")
+        ],
+        "colours are token names, resolved by graphs.js"
+    );
+    let everyone = &intensity["data"]["datasets"][3];
+    assert_eq!(everyone["hidden"], true, "the switch shows it");
+    assert_eq!(
+        everyone["data"].as_array().unwrap().len(),
+        3,
+        "every report"
+    );
+    let page = Page::parse(&html);
+    assert!(
+        page.exists("[data-series-chart] [data-series][hidden] input[name=series][value=pm25]")
+    );
+    assert!(
+        page.exists("[data-series-chart] [data-lines][hidden] input[name=lines][value=everyone]")
     );
     let datasets = &intensity["data"]["datasets"];
     assert_eq!(datasets[0]["yAxisID"], "level");
@@ -111,9 +142,9 @@ async fn residents_see_one_line_per_person_and_pm25_on_its_own_axis() {
         datasets[1]["data"][0]["x"],
         t("2026-01-10T19:00:00Z").timestamp_millis()
     );
-    assert_eq!(datasets[3]["yAxisID"], "pm25");
-    assert_eq!(datasets[3]["data"][0]["y"], 35.5);
-    assert_eq!(datasets[3]["data"].as_array().unwrap().len(), 2);
+    assert_eq!(datasets[4]["yAxisID"], "pm25");
+    assert_eq!(datasets[4]["data"][0]["y"], 35.5);
+    assert_eq!(datasets[4]["data"].as_array().unwrap().len(), 2);
     let scales = &intensity["options"]["scales"];
     assert_eq!(scales["level"]["max"], 10);
     assert_eq!(scales["pm25"]["position"], "right");
@@ -348,7 +379,15 @@ async fn filtered(app: &TestApp, cookie: &str, query: &str) -> (Vec<String>, Vec
     .await;
     let lines = charts(&html)
         .first()
-        .map(|chart| labels(chart).into_iter().map(str::to_owned).collect())
+        .map(|chart| {
+            chart["data"]["datasets"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|dataset| dataset["group"] == "person")
+                .map(|dataset| dataset["label"].as_str().unwrap().to_owned())
+                .collect()
+        })
         .unwrap_or_default();
     (lines, Page::parse(&html).texts(".heatmap tbody th"))
 }
@@ -508,7 +547,7 @@ async fn a_viewer_sees_everyone_and_may_choose_a_person() {
     let html = text(app.send(get_with("/graphs", &viewer)).await).await;
     assert!(!html.contains("only your own"), "{html}");
     let charts = charts(&html);
-    assert_eq!(labels(&charts[0]), ["daniele", "partner"]);
+    assert_eq!(labels(&charts[0]), ["daniele", "partner", "Everyone"]);
     assert_eq!(
         Page::parse(&html).texts("select[name=by] option"),
         ["Everyone", "daniele", "lawyer", "partner"]

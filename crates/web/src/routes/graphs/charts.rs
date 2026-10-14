@@ -10,7 +10,7 @@ use smoke_domain::graphs::{
 };
 use smoke_domain::records::{Pm25Reading, Room, SmellReport, Symptom};
 use smoke_domain::schedule::DailySchedule;
-use smoke_domain::types::{Locale, UserId};
+use smoke_domain::types::{Level, Locale, UserId};
 
 use crate::i18n::Tr;
 use crate::{labels, time};
@@ -47,32 +47,60 @@ fn tick_values(period: Period, schedule: &DailySchedule) -> Vec<i64> {
         .collect()
 }
 
-/// Intensity over time: one line per person on the 0–10 axis, PM2.5 readings on their own axis
-/// on the right (spec §9). The x axis is milliseconds since the epoch.
+/// The colour tokens of the people's lines, in turn (`static/js/graphs.js` reads each token's
+/// value from the stylesheet, so dark mode and the palette live in one place).
+const PERSON_TOKENS: [&str; 4] = ["accent", "series-2", "series-3", "series-4"];
+
+fn points<'a>(levels: impl Iterator<Item = &'a (DateTime<Utc>, Level)>) -> Vec<Value> {
+    levels
+        .map(|(at, level)| json!({ "x": at.timestamp_millis(), "y": level.get() }))
+        .collect()
+}
+
+/// Intensity over time on the 0–10 axis and PM2.5 readings on their own axis on the right
+/// (spec §9). Each dataset names its `group`: one line per person ("person"), the same reports
+/// as one line ("everyone", hidden until the switch shows it, and left out when `everyone` is
+/// false because a person is chosen) and the readings ("pm25"). The x axis is milliseconds since
+/// the epoch.
 pub(crate) fn intensity_chart(
     tr: Tr,
     lines: &[PersonLine],
     names: &HashMap<UserId, String>,
     readings: &[Pm25Reading],
+    everyone: bool,
     period: Period,
-    (from, to): (DateTime<Utc>, DateTime<Utc>),
     schedule: &DailySchedule,
 ) -> Value {
+    let (from, to) = period.span(schedule);
     let mut datasets: Vec<Value> = lines
         .iter()
-        .map(|line| {
-            let points: Vec<Value> = line
-                .points
-                .iter()
-                .map(|(at, level)| json!({ "x": at.timestamp_millis(), "y": level.get() }))
-                .collect();
+        .zip(PERSON_TOKENS.iter().cycle())
+        .map(|(line, token)| {
             json!({
                 "label": names.get(&line.user).map_or("", String::as_str),
-                "data": points,
+                "data": points(line.points.iter()),
                 "yAxisID": "level",
+                "group": "person",
+                "token": token,
             })
         })
         .collect();
+    if everyone && !lines.is_empty() {
+        let mut all: Vec<_> = lines
+            .iter()
+            .flat_map(|line| &line.points)
+            .copied()
+            .collect();
+        all.sort_by_key(|&(at, _)| at);
+        datasets.push(json!({
+            "label": tr.t("graphs-everyone"),
+            "data": points(all.iter()),
+            "yAxisID": "level",
+            "group": "everyone",
+            "token": "accent",
+            "hidden": true,
+        }));
+    }
     if !readings.is_empty() {
         let points: Vec<Value> = readings
             .iter()
@@ -83,6 +111,8 @@ pub(crate) fn intensity_chart(
             "data": points,
             "yAxisID": "pm25",
             "borderDash": [6, 4],
+            "group": "pm25",
+            "token": "amber",
         }));
     }
     json!({
@@ -141,7 +171,7 @@ pub(crate) fn count_chart(
         "type": "bar",
         "data": {
             "labels": labels,
-            "datasets": [{ "label": label, "data": counts }],
+            "datasets": [{ "label": label, "data": counts, "token": "accent" }],
         },
         "options": {
             "indexAxis": index,
@@ -186,8 +216,16 @@ pub(crate) fn area_chart(tr: Tr, labels: Vec<String>, levels: &[(NaiveDate, Area
         "data": {
             "labels": labels,
             "datasets": [
-                { "label": tr.t("log-inside"), "data": series(|l| l.inside.map(|v| v.get())) },
-                { "label": tr.t("log-common"), "data": series(|l| l.common.map(|v| v.get())) },
+                {
+                    "label": tr.t("log-inside"),
+                    "data": series(|l| l.inside.map(|v| v.get())),
+                    "token": "accent",
+                },
+                {
+                    "label": tr.t("log-common"),
+                    "data": series(|l| l.common.map(|v| v.get())),
+                    "token": "amber",
+                },
             ],
         },
         "options": {

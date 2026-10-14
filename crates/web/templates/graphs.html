@@ -30,12 +30,14 @@
   </fieldset>
   {% if let Some(people) = filters.people %}
   {% call c::field(tr.t("graphs-by")) %}
+  <person-filter data-search="{{ tr.t("graphs-search-people") }}" data-close="{{ tr.t("close") }}">
   <select name="by">
     <option value="">{{ tr.t("graphs-everyone") }}</option>
     {% for person in people %}
     <option value="{{ person.value }}" data-role="{{ person.role }}"{% if person.selected %} selected{% endif %}>{{ person.name }}</option>
     {% endfor %}
   </select>
+  </person-filter>
   {% endcall %}
   {% endif %}
   <fieldset class="stack">
@@ -45,8 +47,8 @@
     </div>
   </fieldset>
   <label class="field">
-    <span class="split">{{ tr.t("graphs-min-level") }} <output for="min-level">{{ filters.min_label }}</output></span>
-    <input type="range" id="min-level" name="min" min="0" max="10" step="1" value="{{ filters.min_level }}">
+    <span class="split">{{ tr.t("graphs-min-level") }} <output id="min-level-value" for="min-level">{{ filters.min_label }}</output></span>
+    <input type="range" id="min-level" name="min" min="0" max="10" step="1" value="{{ filters.min_level }}" data-output="min-level-value" data-zero="{{ tr.t("graphs-level-any") }}">
   </label>
   <label class="inline-field">{{ tr.t("graphs-hide-clean") }} <input type="checkbox" name="clean" value="hide"{% if filters.hide_clean %} checked{% endif %}></label>
   <div class="actions">
@@ -57,21 +59,32 @@
 {% endcall %}
 {% if own_only %}<p class="hint">{{ tr.t("graphs-own-only") }}</p>{% endif %}
 {% if empty %}
-<p>{{ tr.t("graphs-none") }}</p>
+<p class="card muted">{{ tr.t("graphs-none") }}</p>
 {% else %}
-<section>
-  <h2>{{ tr.t("graphs-intensity") }}</h2>
+<section class="card" data-series-chart>
+  <h2 data-series-title>{{ tr.t("graphs-series-both-title") }}</h2>
+  <div class="segmented" data-series hidden>
+    {% call c::series("series", "both", tr.t("graphs-series-both"), tr.t("graphs-series-both-title"), true) %}{% endcall %}
+    {% call c::series("series", "intensity", tr.t("graphs-series-intensity"), tr.t("graphs-intensity"), false) %}{% endcall %}
+    {% call c::series("series", "pm25", tr.t("graphs-series-pm25"), tr.t("graphs-series-pm25-title"), false) %}{% endcall %}
+  </div>
+  {% if everyone %}
+  <div class="segmented" data-lines hidden>
+    {% call c::series("lines", "person", tr.t("graphs-lines-person"), "", true) %}{% endcall %}
+    {% call c::series("lines", "everyone", tr.t("graphs-everyone"), "", false) %}{% endcall %}
+  </div>
+  {% endif %}
   <div class="chart">
-    <canvas data-chart="{{ intensity }}" role="img" aria-label="{{ tr.t("graphs-intensity") }}">{{ tr.t("graphs-needs-js") }}</canvas>
+    <canvas data-chart="{{ intensity }}" role="img" aria-label="{{ tr.t("graphs-series-both-title") }}">{{ tr.t("graphs-needs-js") }}</canvas>
   </div>
 </section>
-<section>
+<section class="card">
   <h2>{{ tr.t(events_key) }}</h2>
   <div class="chart">
     <canvas data-chart="{{ events }}" role="img" aria-label="{{ tr.t(events_key) }}">{{ tr.t("graphs-needs-js") }}</canvas>
   </div>
 </section>
-<section>
+<section class="card">
   <h2>{{ tr.t("graphs-rooms") }}</h2>
   {% if heatmap.is_empty() %}
   <p>{{ tr.t("graphs-rooms-none") }}</p>
@@ -91,7 +104,7 @@
   </div>
   {% endif %}
 </section>
-<section>
+<section class="card">
   <h2>{{ tr.t("log-symptoms") }}</h2>
   {% if let Some(symptoms) = symptoms %}
   <div class="chart">
@@ -101,7 +114,7 @@
   <p>{{ tr.t("graphs-symptoms-none") }}</p>
   {% endif %}
 </section>
-<section>
+<section class="card">
   <h2>{{ tr.t("graphs-areas") }}</h2>
   <p class="hint">{{ tr.t("graphs-areas-hint") }}</p>
   <div class="chart">

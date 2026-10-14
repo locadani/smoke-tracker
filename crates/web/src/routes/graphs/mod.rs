@@ -42,6 +42,8 @@ struct GraphsPage {
     own_only: bool,
     empty: bool,
     intensity: String,
+    /// The By person | Everyone switch: for those who see everyone, while no person is chosen.
+    everyone: bool,
     events_key: &'static str,
     events: String,
     hours: std::ops::Range<u8>,
@@ -96,7 +98,8 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
         .collect();
     let areas = area_levels(&reports, &rooms, period, schedule);
     let lines = intensity_lines(&reports);
-    let intensity = intensity_chart(tr, &lines, &names, &readings, period, span, schedule);
+    let everyone = !own_only && filter.person.is_none();
+    let intensity = intensity_chart(tr, &lines, &names, &readings, everyone, period, schedule);
     page(
         StatusCode::OK,
         &GraphsPage {
@@ -106,6 +109,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
             own_only,
             empty: reports.is_empty() && readings.is_empty(),
             intensity: intensity.to_string(),
+            everyone,
             events_key: match period.granularity() {
                 Granularity::Day => "graphs-events-day",
                 Granularity::Week => "graphs-events-week",

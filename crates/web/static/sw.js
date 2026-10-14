@@ -12,6 +12,7 @@ const PRECACHE = [
   "/static/js/dialog.js",
   "/static/js/install.js",
   "/static/js/menu.js",
+  "/static/js/range-output.js",
   "/static/js/service-worker.js",
   "/static/htmx-2.0.11.min.js",
   "/static/favicon.svg",
