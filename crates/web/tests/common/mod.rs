@@ -20,7 +20,7 @@ use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Level, Pm25, RoomId};
+use smoke_domain::types::{Level, Pm25, RoomId, SymptomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -103,6 +103,16 @@ impl TestApp {
             .id
     }
 
+    /// The id of a starter symptom, e.g. `symptom("symptom-cough")`.
+    pub async fn symptom(&self, key: &str) -> SymptomId {
+        let symptoms = self.store.symptoms().await.unwrap();
+        symptoms
+            .iter()
+            .find(|s| s.i18n_key.as_deref() == Some(key))
+            .unwrap()
+            .id
+    }
+
     /// Logs a report through the domain, as the Log form would, at `at` (RFC 3339): every room
     /// in `rooms` at `level`, or the living room alone when `rooms` is empty.
     pub async fn log(
@@ -122,25 +132,27 @@ impl TestApp {
             .into_iter()
             .map(|room| RoomLevel { room, level })
             .collect();
-        self.log_values(user, at, rooms, choice).await
+        self.log_values(user, at, rooms, &[], choice).await
     }
 
     /// Logs "No smell" for the whole home through the domain, at `at` (RFC 3339).
     pub async fn no_smell(&self, user: &User, at: &str) -> Logged {
         let choice = EventChoice::New { replacing: None };
-        self.log_values(user, at, vec![], choice).await
+        self.log_values(user, at, vec![], &[], choice).await
     }
 
-    async fn log_values(
+    /// Logs a report with these room levels and symptoms through the domain, at `at`.
+    pub async fn log_values(
         &self,
         user: &User,
         at: &str,
         rooms: Vec<RoomLevel>,
+        symptoms: &[SymptomId],
         choice: EventChoice,
     ) -> Logged {
         let entry = SmellEntry {
             observed_at: t(at),
-            values: ReportValues::new(rooms, vec![], None).unwrap(),
+            values: ReportValues::new(rooms, symptoms.to_vec(), None).unwrap(),
             pm25: None,
         };
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();

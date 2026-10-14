@@ -116,8 +116,27 @@ intensity-9-desc = Sigara içen birinin yanında durmak gibi.
 intensity-10-name = Dayanılmaz
 intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
+guide-log-title = Nasıl kaydedilir
+guide-log-happened = Ne oldu
+guide-log-action = Doğru adım
+guide-log-mistake = Bir hata yaptım (yanlış sayı, unutulan oda, yanlış belirti)
+guide-log-mistake-action = O bildirimi düzelt (düzenleme; geçmişte kayıtlı kalır)
+guide-log-changed = Durum değişti (daha güçlü/daha zayıf, bir odada başladı ya da bitti, belirtiler başladı)
+guide-log-changed-action = Aynı olaya yeni bir bildirim ekle
+guide-log-gone = Koku tamamen geçti ve daha sonra geri geldi
+guide-log-gone-action = Yeni bir olay başlat
+guide-log-rules = Temel kurallar
+guide-log-rule-1 = Bir değişikliği göstermek için asla düzenleme yapma; bildirim ekle. Düzenlemek geçmişi değiştirir; eklemek şimdiyi kaydeder.
+guide-log-rule-2 = Bir odanın seviyesi 2 veya daha fazla değiştiğinde, bir odada koku başladığında ya da geçtiğinde (0 olarak kaydet) veya yeni bir belirti ortaya çıktığında bildirim ekle. Her bildirim yalnızca kontrol ettiğin odaları listeler: eklemediğin bir oda "kontrol edilmedi" demektir, asla "temiz" değil.
+guide-log-rule-3 = Aynı olay olup olmadığından emin değil misin? Koku bir noktada tamamen geçtiyse, bu yeni bir olaydır.
+guide-log-rule-4 = Koku geçince olayı kapat. Unutman sorun değil ({ $hour } otomatik kapanış), ama kapatmak süreleri doğru tutar.
+guide-log-rule-5 = Koku yok mu? Koku yok olarak kaydet. Kontrol ettiğinin kaydı kalır.
+guide-log-sensitivity-title = Farklı hassasiyetler
+guide-log-sensitivity = Herkes kendi 1–10 ölçeğine göre puanlar. Farklı değerler içeren çakışan bildirimler olduğu gibi saklanır. Grafikler kişi başına bir çizgi gösterir; PM2.5 ölçümü nesnel referanstır.
+
 nav-log = Kaydet
 nav-events = Olaylar
+nav-graphs = Grafikler
 nav-people = Kişiler
 nav-settings = Ayarlar
 
@@ -256,6 +275,26 @@ install-continue = Uygulamaya devam et
 offline-title = Bağlantı yok
 offline-text = Smoke Tracker'ın kaydettiklerinizi saklamak için internete ihtiyacı var. Yeniden çevrimiçi olduğunuzda tekrar deneyin.
 offline-retry = Tekrar dene
+
+graphs-title = Grafikler
+graphs-month = Tek bir ayı göster
+graphs-year = Tüm yılı göster
+graphs-own-only = Bu grafikler yalnızca kendi bildirimlerinizi ve ölçümlerinizi gösterir.
+graphs-none = Bu dönemde hiçbir kayıt yok.
+graphs-needs-js = Bu grafik için JavaScript gerekir.
+graphs-intensity = Zaman içinde koku yoğunluğu
+graphs-pm25 = PM2.5 (µg/m³)
+graphs-events-day = Günlük olay sayısı
+graphs-events-week = Haftalık olay sayısı
+graphs-events-label = Olaylar
+graphs-rooms = Günün saatlerine göre odalar
+graphs-rooms-hint = Her odaya her saatte verilen ortalama seviye; 0 kontrol edildi ve temiz demektir. Boş bir hücre, o saatte o odayı kimsenin kontrol etmediği anlamına gelir.
+graphs-rooms-none = Bu dönemde hiçbir oda kontrol edilmedi.
+graphs-room = Oda
+graphs-symptoms-label = Bildirimler
+graphs-symptoms-none = Bu dönemde hiçbir belirti bildirilmedi.
+graphs-areas = Ev içi ve ortak alanlar karşılaştırması
+graphs-areas-hint = Her çubuk, o gün veya hafta bildirilen en yüksek seviyedir.
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

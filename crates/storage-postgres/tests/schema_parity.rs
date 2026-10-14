@@ -66,11 +66,11 @@ async fn postgres_columns(url: &str) -> Columns {
 
 #[tokio::test]
 async fn sqlite_and_postgres_schemas_have_the_same_columns() {
-    let Some(url) = common::fresh_database().await else {
+    let Some(database) = common::fresh_database().await else {
         return;
     };
     let sqlite = sqlite_columns().await;
-    let postgres = postgres_columns(&url).await;
+    let postgres = postgres_columns(&database.url).await;
     let only_sqlite: Vec<_> = sqlite.difference(&postgres).collect();
     let only_postgres: Vec<_> = postgres.difference(&sqlite).collect();
     assert!(

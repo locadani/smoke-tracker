@@ -1,3 +1,6 @@
 # Machine-generated files: GitHub collapses them in pull-request diffs.
 Cargo.lock linguist-generated=true
 crates/*/.sqlx/** linguist-generated=true
+
+# Third-party libraries, vendored byte for byte: left out of the language statistics.
+crates/web/static/*.min.js linguist-vendored=true

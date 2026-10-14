@@ -116,8 +116,27 @@ intensity-9-desc = Like standing next to someone smoking.
 intensity-10-name = Unbearable
 intensity-10-desc = Like a smoke-filled room. You must leave.
 
+guide-log-title = How to log
+guide-log-happened = What happened
+guide-log-action = Correct action
+guide-log-mistake = I made a mistake (wrong number, forgot a room, wrong symptom)
+guide-log-mistake-action = Correct that report (edit; recorded in history)
+guide-log-changed = The situation changed (stronger/weaker, a room started or stopped, symptoms started)
+guide-log-changed-action = Add a new report to the same event
+guide-log-gone = The smell went away completely and came back later
+guide-log-gone-action = Start a new event
+guide-log-rules = Rules of thumb
+guide-log-rule-1 = Never edit to show a change; add a report. Editing changes the past; adding records the present.
+guide-log-rule-2 = Add a report when a room's level changes by 2 or more, a room starts or clears (log it at 0), or a new symptom appears. Each report lists only the rooms you checked: a room you leave out is "not checked", never "clean".
+guide-log-rule-3 = Unsure whether it's the same event? If the smell was completely gone at some point, it's a new one.
+guide-log-rule-4 = Close the event when the smell is gone. Forgetting is fine ({ $hour } auto-close), but closing gives accurate durations.
+guide-log-rule-5 = Nothing smells? Log No smell. It keeps a record that you checked.
+guide-log-sensitivity-title = Different sensitivities
+guide-log-sensitivity = Each person rates on their own 1–10 scale. Overlapping reports with different values are kept as-is. Graphs show one line per person; the PM2.5 reading is the objective reference.
+
 nav-log = Log
 nav-events = Events
+nav-graphs = Graphs
 nav-people = People
 nav-settings = Settings
 
@@ -256,6 +275,26 @@ install-continue = Continue to the app
 offline-title = No connection
 offline-text = Smoke Tracker needs the internet to save what you log. Try again when you are back online.
 offline-retry = Try again
+
+graphs-title = Graphs
+graphs-month = Show one month
+graphs-year = Show the whole year
+graphs-own-only = These graphs show only your own reports and readings.
+graphs-none = Nothing was logged in this period.
+graphs-needs-js = This graph needs JavaScript.
+graphs-intensity = Smell intensity over time
+graphs-pm25 = PM2.5 (µg/m³)
+graphs-events-day = Events per day
+graphs-events-week = Events per week
+graphs-events-label = Events
+graphs-rooms = Rooms by hour of day
+graphs-rooms-hint = The average level each room was given at each hour, 0 meaning checked and clean. An empty cell means nobody checked that room at that hour.
+graphs-rooms-none = No room was checked in this period.
+graphs-room = Room
+graphs-symptoms-label = Reports
+graphs-symptoms-none = No symptoms were reported in this period.
+graphs-areas = Inside vs common areas
+graphs-areas-hint = Each bar is the highest level reported in that day or week.
 
 error-not-found-title = Page not found
 error-not-found = This page does not exist.

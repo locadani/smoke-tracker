@@ -7,6 +7,7 @@ pub mod audit;
 pub mod clock;
 pub mod error;
 pub mod events;
+pub mod graphs;
 pub mod history;
 pub mod lists;
 pub mod logbook;

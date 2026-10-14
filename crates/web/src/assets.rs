@@ -28,7 +28,9 @@ macro_rules! asset {
 const ASSETS: &[Asset] = &[
     asset!("app.css", "text/css; charset=utf-8"),
     asset!("app.js", "text/javascript; charset=utf-8"),
+    asset!("chart-4.5.1.umd.min.js", "text/javascript; charset=utf-8"),
     asset!("favicon.svg", "image/svg+xml"),
+    asset!("graphs.js", "text/javascript; charset=utf-8"),
     asset!("htmx-2.0.11.min.js", "text/javascript; charset=utf-8"),
     asset!("icon-180.png", "image/png"),
     asset!("icon-192.png", "image/png"),
@@ -84,6 +86,10 @@ mod tests {
 
     /// The published `dist/htmx.min.js` of htmx.org 2.0.11 on npm.
     const HTMX_SHA256: &str = "d6fdc75f204e6bdefa99b69bf1e6d4ac69b8a364f77929f45c13476b4000f717";
+
+    /// The published `dist/chart.umd.min.js` of chart.js 4.5.1 on npm (MIT licence).
+    const CHART_JS_SHA256: &str =
+        "48444a82d4edcb5bec0f1965faacdde18d9c17db3063d042abada2f705c9f54a";
 
     #[test]
     fn every_file_in_the_static_folder_is_served() {
@@ -141,8 +147,14 @@ mod tests {
     }
 
     #[test]
-    fn the_vendored_htmx_is_the_published_release() {
-        let htmx = ASSETS.iter().find(|a| a.path.starts_with("htmx-")).unwrap();
-        assert_eq!(hex::encode(Sha256::digest(htmx.body)), HTMX_SHA256);
+    fn the_vendored_libraries_are_the_published_releases() {
+        for (prefix, sha256) in [("htmx-", HTMX_SHA256), ("chart-", CHART_JS_SHA256)] {
+            let library = ASSETS.iter().find(|a| a.path.starts_with(prefix)).unwrap();
+            assert_eq!(
+                hex::encode(Sha256::digest(library.body)),
+                sha256,
+                "{prefix}"
+            );
+        }
     }
 }

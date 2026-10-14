@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("guide-log-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("guide-log-title") }}</h1>
+<table class="guide">
+  <thead>
+    <tr><th scope="col">{{ tr.t("guide-log-happened") }}</th><th scope="col">{{ tr.t("guide-log-action") }}</th></tr>
+  </thead>
+  <tbody>
+    {% for situation in situations %}
+    <tr><td>{{ situation.happened }}</td><td>{{ situation.action }}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<h2>{{ tr.t("guide-log-rules") }}</h2>
+<ol class="rules">
+  {% for rule in rules %}
+  <li>{{ rule }}</li>
+  {% endfor %}
+</ol>
+<h2>{{ tr.t("guide-log-sensitivity-title") }}</h2>
+<p>{{ tr.t("guide-log-sensitivity") }}</p>
+<p><a href="/guide/rating">{{ tr.t("rating-title") }}</a> · <a href="/">{{ tr.t("error-back-home") }}</a></p>
+{% endblock %}
