@@ -74,10 +74,24 @@ impl Tr {
 
     /// A message with one argument, e.g. `tr.t1("signed-in-as", "username", name)`.
     pub(crate) fn t1(&self, key: &str, name: &str, value: &str) -> String {
-        let args: HashMap<Cow<'static, str>, FluentValue> = HashMap::from([(
-            Cow::Owned(name.to_owned()),
-            FluentValue::from(value.to_owned()),
-        )]);
+        self.with_args(key, &[(name, value)])
+    }
+
+    /// A message with two arguments, each a `(name, value)` pair.
+    pub(crate) fn t2(&self, key: &str, first: (&str, &str), second: (&str, &str)) -> String {
+        self.with_args(key, &[first, second])
+    }
+
+    fn with_args(&self, key: &str, args: &[(&str, &str)]) -> String {
+        let args: HashMap<Cow<'static, str>, FluentValue> = args
+            .iter()
+            .map(|&(name, value)| {
+                (
+                    Cow::Owned(name.to_owned()),
+                    FluentValue::from(value.to_owned()),
+                )
+            })
+            .collect();
         LOCALES.lookup_with_args(language(self.0), key, &args)
     }
 
@@ -174,7 +188,7 @@ mod tests {
             .collect()
     }
 
-    /// Every string literal passed as the key to `tr.t`, `tr.t1` or `tr.n` in the templates
+    /// Every string literal passed as the key to `tr.t`, `tr.t1`, `tr.t2` or `tr.n` in the templates
     /// and the Rust sources.
     fn literal_keys() -> BTreeSet<String> {
         fn files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
@@ -194,7 +208,7 @@ mod tests {
         let mut keys = BTreeSet::new();
         for path in paths {
             let text = fs::read_to_string(path).unwrap();
-            for call in ["tr.t(\"", "tr.t1(\"", "tr.n(\""] {
+            for call in ["tr.t(\"", "tr.t1(\"", "tr.t2(\"", "tr.n(\""] {
                 for (start, _) in text.match_indices(call) {
                     let rest = &text[start + call.len()..];
                     keys.insert(rest[..rest.find('"').unwrap()].to_owned());

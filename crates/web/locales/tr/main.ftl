@@ -14,8 +14,9 @@ logout = Çıkış yap
 account-menu = Hesap: { $username }
 
 log-title = Koku kaydet
-event-none = Devam eden bir koku olayı yok.
-event-open-since = { $time } saatinden beri süren bir koku olayı var.
+event-banner-title = Koku olayı sürüyor
+event-banner-since = { $time } itibarıyla
+event-banner-peak = en yüksek seviye { $level } ({ $room })
 log-intensity = Yoğunluk
 log-how-to-rate = Nasıl puanlanır
 log-rooms = Odalar

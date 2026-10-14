@@ -5,9 +5,10 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use chrono::{DateTime, Utc};
+use chrono_tz::Tz;
 use serde::Deserialize;
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{Room, Symptom, User};
+use smoke_domain::records::{Event, Room, RoomLevel, SmellReport, Symptom, User};
 use smoke_domain::repos::Store;
 use smoke_domain::starter::BEDROOM_KEY;
 use smoke_domain::summary::{MonthSummary, summarise};
@@ -138,14 +139,48 @@ pub(crate) fn fields(
     }
 }
 
-/// What the Log screen says about the open event.
-pub(crate) enum Status {
-    /// No event is open.
-    None,
-    /// The viewer may see the open event, which started at this time.
-    Open(String),
-    /// An event is open but the viewer may not know about it, so the screen says nothing.
-    Hidden,
+/// The banner of the open event (look-and-feel spec §5, §6.2), for those who may open it.
+pub(crate) struct Banner {
+    /// When the event started.
+    since: String,
+    /// "3 reports · highest level 6 (Bedroom)", over the reports the viewer may see.
+    detail: String,
+}
+
+/// The highest level any room reached in `reports`, with that room. On a tie the room of the
+/// most recent report wins (by observed time, then recorded time), and within one report the
+/// later room. `None` while every level is 0.
+pub(crate) fn peak<'a>(reports: impl IntoIterator<Item = &'a SmellReport>) -> Option<RoomLevel> {
+    reports
+        .into_iter()
+        .flat_map(|report| {
+            let when = (report.observed_at, report.recorded_at);
+            report.values.rooms().iter().map(move |&room| (room, when))
+        })
+        .filter(|(room, _)| !room.level.is_clean())
+        .max_by_key(|&(room, when)| (room.level, when))
+        .map(|(room, _)| room)
+}
+
+fn banner(
+    tr: Tr,
+    event: &Event,
+    visible: &[&SmellReport],
+    rooms: &[Room],
+    now: DateTime<Utc>,
+    tz: Tz,
+) -> Banner {
+    let mut detail = tr.n("summary-reports", &visible.len());
+    if let Some(top) = peak(visible.iter().copied()) {
+        let room = labels::room_by_id(tr, rooms, top.room);
+        let level = top.level.get().to_string();
+        detail.push_str(" · ");
+        detail.push_str(&tr.t2("event-banner-peak", ("level", &level), ("room", &room)));
+    }
+    Banner {
+        since: time::since(tr.0, event.opened_at, now, tz),
+        detail,
+    }
 }
 
 /// The ids a submitted form may name: every visible room and symptom, plus those in `keep` (a
@@ -184,7 +219,8 @@ pub(crate) struct FormView {
 pub(crate) struct LogPage {
     tr: Tr,
     signed_in: Option<SignedIn>,
-    status: Status,
+    /// `None` when no event is open, or the viewer may not know about it.
+    banner: Option<Banner>,
     /// The open event, when the user may close it.
     close_event: Option<i64>,
     /// "The event from … was auto-closed", shown while another event is open (spec §7.4).
@@ -297,15 +333,99 @@ pub(crate) async fn log_page<S: Store>(
         close_event: shown
             .filter(|e| can(&actor, Action::ManageEvent { owner: e.owner_id }, now))
             .map(|e| e.id.0),
-        status: match (&open, shown) {
-            (None, _) => Status::None,
-            (Some(_), Some(e)) => Status::Open(time::since(tr.0, e.opened_at, now, schedule.tz())),
-            (Some(_), None) => Status::Hidden,
-        },
+        banner: shown.map(|event| {
+            let visible: Vec<&SmellReport> = open_reports
+                .iter()
+                .filter(|r| can_see(&actor, r.user_id, now))
+                .collect();
+            banner(tr, event, &visible, &rooms, now, schedule.tz())
+        }),
         notice,
         saved,
         summary,
         levels: levels(tr),
         form,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use smoke_domain::records::ReportValues;
+    use smoke_domain::types::{EventId, Level, ReportId, UserId};
+
+    use super::*;
+
+    fn report(observed: &str, recorded: &str, rooms: &[(i64, u8)]) -> SmellReport {
+        SmellReport {
+            id: ReportId(1),
+            event_id: Some(EventId(1)),
+            user_id: UserId(1),
+            observed_at: observed.parse().unwrap(),
+            recorded_at: recorded.parse().unwrap(),
+            values: ReportValues::new(
+                rooms
+                    .iter()
+                    .map(|&(room, level)| RoomLevel {
+                        room: RoomId(room),
+                        level: Level::new(level).unwrap(),
+                    })
+                    .collect(),
+                vec![],
+                None,
+            )
+            .unwrap(),
+            deleted_at: None,
+        }
+    }
+
+    fn top(reports: &[SmellReport]) -> Option<(i64, u8)> {
+        peak(reports).map(|room| (room.room.0, room.level.get()))
+    }
+
+    #[test]
+    fn the_peak_is_the_highest_room_level_of_the_event() {
+        let reports = [
+            report(
+                "2026-01-15T18:00:00Z",
+                "2026-01-15T18:00:00Z",
+                &[(1, 3), (2, 6)],
+            ),
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(3, 4)]),
+        ];
+        assert_eq!(top(&reports), Some((2, 6)));
+    }
+
+    #[test]
+    fn on_a_tie_the_most_recently_reported_room_wins() {
+        let reports = [
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(2, 6)]),
+            report("2026-01-15T18:00:00Z", "2026-01-15T20:00:00Z", &[(1, 6)]),
+        ];
+        assert_eq!(
+            top(&reports),
+            Some((2, 6)),
+            "by observed time, not list order"
+        );
+        let same_time = [
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(1, 6)]),
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:30:00Z", &[(3, 6)]),
+        ];
+        assert_eq!(top(&same_time), Some((3, 6)), "then by recorded time");
+        let one_report = [report(
+            "2026-01-15T19:00:00Z",
+            "2026-01-15T19:00:00Z",
+            &[(1, 6), (4, 6)],
+        )];
+        assert_eq!(top(&one_report), Some((4, 6)), "then the later room");
+    }
+
+    #[test]
+    fn an_event_at_zero_or_without_rooms_has_no_peak() {
+        let reports = [
+            report("2026-01-15T19:00:00Z", "2026-01-15T19:00:00Z", &[(1, 0)]),
+            report("2026-01-15T19:10:00Z", "2026-01-15T19:10:00Z", &[]),
+        ];
+        assert_eq!(top(&reports), None);
+        assert_eq!(top(&[]), None);
+    }
 }

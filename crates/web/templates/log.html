@@ -11,19 +11,17 @@
   <button type="submit" class="link">{{ tr.t("notice-dismiss") }}</button>
 </form>
 {% endif %}
-<div class="status">
-  {% match status %}
-  {% when Status::Open with (since) %}<p>{{ tr.t1("event-open-since", "time", since) }}</p>
-  {% when Status::None %}<p>{{ tr.t("event-none") }}</p>
-  {% when Status::Hidden %}
-  {% endmatch %}
+{% if let Some(banner) = banner %}
+<section class="banner">
+  <p><strong>{{ tr.t("event-banner-title") }}</strong> {{ tr.t1("event-banner-since", "time", banner.since) }}<br>{{ banner.detail }}</p>
   {% if let Some(id) = close_event %}
   <form method="post" action="/events/{{ id }}/close">
     <input type="hidden" name="return_to" value="log">
-    <button type="submit" class="secondary">{{ tr.t("event-close") }}</button>
+    <button type="submit" class="button">{{ tr.t("event-close") }}</button>
   </form>
   {% endif %}
-</div>
+</section>
+{% endif %}
 <p class="summary">
   {{ tr.t("summary-this-month") }} {{ tr.n("summary-events", summary.events) }} · {{ tr.n("summary-reports", summary.reports) }}{% if let Some(days) = summary.bedroom_days %} · {{ tr.n("summary-bedroom-days", days) }}{% endif %} · {{ tr.n("summary-checks", summary.checks) }}
 </p>

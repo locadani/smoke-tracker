@@ -14,8 +14,9 @@ logout = Esci
 account-menu = Account: { $username }
 
 log-title = Registra un odore
-event-none = Nessun evento di fumo in corso.
-event-open-since = Evento di fumo in corso dalle { $time }.
+event-banner-title = Evento di odore in corso
+event-banner-since = dalle { $time }
+event-banner-peak = livello massimo { $level } ({ $room })
 log-intensity = Intensità
 log-how-to-rate = Come valutare
 log-rooms = Stanze

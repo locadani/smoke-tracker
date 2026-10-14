@@ -14,8 +14,9 @@ logout = Sign out
 account-menu = Account: { $username }
 
 log-title = Log a smell
-event-none = No smell event in progress.
-event-open-since = Smell event in progress since { $time }.
+event-banner-title = Smell event in progress
+event-banner-since = since { $time }
+event-banner-peak = highest level { $level } ({ $room })
 log-intensity = Intensity
 log-how-to-rate = How to rate
 log-rooms = Rooms

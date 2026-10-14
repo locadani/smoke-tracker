@@ -23,7 +23,10 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
     assert_eq!(response.status(), StatusCode::OK);
     let html = text(response).await;
     assert!(html.contains("<h1>Log a smell</h1>"), "{html}");
-    assert!(html.contains("No smell event in progress."), "{html}");
+    assert!(
+        !Page::parse(&html).exists(".banner"),
+        "no event, no banner: {html}"
+    );
     assert!(
         html.contains(r#"<form method="post" action="/log""#),
         "{html}"
@@ -80,10 +83,15 @@ async fn with_an_event_open_the_form_offers_an_update_with_my_last_rooms() {
     let cookie = app.sign_in("daniele").await;
 
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains("Smell event in progress since 19:05."),
-        "{html}"
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.text(".banner > p"),
+        "Smell event in progress since 19:05 2 reports · highest level 6 (Kitchen)"
     );
+    assert!(page.exists(&format!(
+        r#".banner form[action="/events/{}/close"] button"#,
+        first.report.event_id.unwrap().0
+    )));
     assert!(
         html.contains(">Update: situation changed</button>"),
         "{html}"
@@ -137,13 +145,10 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
 
     let cookie = app.sign_in("guest").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    for hidden in [
-        "since 19:05",
-        "Update: situation changed",
-        "No smell event in progress.",
-    ] {
+    for hidden in ["since 19:05", "Update: situation changed"] {
         assert!(!html.contains(hidden), "{hidden}: {html}");
     }
+    assert!(!Page::parse(&html).exists(".banner"), "{html}");
     assert!(html.contains(">Log</button>"), "{html}");
 
     app.log(
@@ -155,9 +160,10 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
     )
     .await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(
-        html.contains("Smell event in progress since 19:05."),
-        "{html}"
+    assert_eq!(
+        Page::parse(&html).text(".banner > p"),
+        "Smell event in progress since 19:05 1 report · highest level 3 (Living room)",
+        "the guest's own report only"
     );
     assert!(
         html.contains(">Update: situation changed</button>"),
@@ -172,10 +178,9 @@ async fn guests_see_the_open_event_only_if_they_own_it_or_reported_in_it() {
     let cookie = app.sign_in("stranger").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
     assert!(!html.contains("since 19:05"), "{html}");
-    assert!(!html.contains("No smell event in progress."), "{html}");
     let cookie = app.sign_in("guest").await;
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(html.contains("since 19:05."), "{html}");
+    assert!(html.contains("since 19:05"), "{html}");
     assert!(!html.contains(r#"action="/log""#), "{html}");
 }
 
@@ -246,7 +251,7 @@ async fn opening_the_log_screen_runs_the_auto_close_sweep() {
     app.at("2026-01-16T07:00:00Z");
 
     let html = text(app.send(get_with("/", &cookie)).await).await;
-    assert!(html.contains("No smell event in progress."), "{html}");
+    assert!(!Page::parse(&html).exists(".banner"), "auto-closed: {html}");
     let event = app
         .store
         .event(logged.report.event_id.unwrap())
