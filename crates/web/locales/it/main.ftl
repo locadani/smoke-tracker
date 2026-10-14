@@ -116,8 +116,27 @@ intensity-9-desc = Come stare accanto a qualcuno che fuma.
 intensity-10-name = Insopportabile
 intensity-10-desc = Come una stanza piena di fumo. Devi uscire.
 
+guide-log-title = Come registrare
+guide-log-happened = Cosa è successo
+guide-log-action = Cosa fare
+guide-log-mistake = Ho sbagliato (numero sbagliato, stanza dimenticata, sintomo sbagliato)
+guide-log-mistake-action = Correggi quella segnalazione (modifica; resta nella cronologia)
+guide-log-changed = La situazione è cambiata (più forte/più debole, una stanza è iniziata o finita, sono iniziati sintomi)
+guide-log-changed-action = Aggiungi una nuova segnalazione allo stesso evento
+guide-log-gone = L'odore è sparito del tutto ed è tornato più tardi
+guide-log-gone-action = Inizia un nuovo evento
+guide-log-rules = Regole pratiche
+guide-log-rule-1 = Non modificare mai per mostrare un cambiamento: aggiungi una segnalazione. Modificare cambia il passato; aggiungere registra il presente.
+guide-log-rule-2 = Aggiungi una segnalazione quando il livello di una stanza cambia di 2 o più, quando in una stanza l'odore inizia o sparisce (registrala a 0) o quando compare un nuovo sintomo. Ogni segnalazione elenca solo le stanze che hai controllato: una stanza che non indichi è "non controllata", mai "pulita".
+guide-log-rule-3 = Non sai se è lo stesso evento? Se a un certo punto l'odore era sparito del tutto, è un evento nuovo.
+guide-log-rule-4 = Chiudi l'evento quando l'odore è sparito. Se te ne dimentichi va bene (chiusura automatica alle { $hour }), ma chiudendolo le durate sono precise.
+guide-log-rule-5 = Non senti odore? Registra Nessun odore. Resta traccia che hai controllato.
+guide-log-sensitivity-title = Sensibilità diverse
+guide-log-sensitivity = Ognuno valuta sulla propria scala da 1 a 10. Le segnalazioni sovrapposte con valori diversi restano così come sono. I grafici mostrano una linea per persona; la misura del PM2.5 è il riferimento oggettivo.
+
 nav-log = Registra
 nav-events = Eventi
+nav-graphs = Grafici
 nav-people = Persone
 nav-settings = Impostazioni
 
@@ -256,6 +275,26 @@ install-continue = Vai all'app
 offline-title = Nessuna connessione
 offline-text = Smoke Tracker ha bisogno di internet per salvare ciò che registri. Riprova quando sei di nuovo online.
 offline-retry = Riprova
+
+graphs-title = Grafici
+graphs-month = Mostra un mese
+graphs-year = Mostra l'intero anno
+graphs-own-only = Questi grafici mostrano solo le tue segnalazioni e misurazioni.
+graphs-none = Nessuna registrazione in questo periodo.
+graphs-needs-js = Questo grafico richiede JavaScript.
+graphs-intensity = Intensità dell'odore nel tempo
+graphs-pm25 = PM2.5 (µg/m³)
+graphs-events-day = Eventi al giorno
+graphs-events-week = Eventi alla settimana
+graphs-events-label = Eventi
+graphs-rooms = Stanze per ora del giorno
+graphs-rooms-hint = Il livello medio dato a ogni stanza in ogni ora; 0 significa controllata e pulita. Una cella vuota significa che nessuno ha controllato quella stanza a quell'ora.
+graphs-rooms-none = Nessuna stanza è stata controllata in questo periodo.
+graphs-room = Stanza
+graphs-symptoms-label = Segnalazioni
+graphs-symptoms-none = Nessun sintomo segnalato in questo periodo.
+graphs-areas = In casa e parti comuni a confronto
+graphs-areas-hint = Ogni barra è il livello più alto segnalato in quel giorno o in quella settimana.
 
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.

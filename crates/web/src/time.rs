@@ -1,7 +1,9 @@
 //! Times as people read and type them: in the configured time zone (`APP_TIMEZONE`), never the
 //! browser's, so every phone shows the same times.
 
-use chrono::{DateTime, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Utc};
+use std::ops::RangeInclusive;
+
+use chrono::{DateTime, Datelike, LocalResult, NaiveDate, NaiveDateTime, TimeZone, Utc};
 use chrono_tz::Tz;
 use smoke_domain::types::Locale;
 use thiserror::Error;
@@ -27,11 +29,31 @@ impl TimeInputError {
     }
 }
 
+/// The years a page accepts in its address, well inside chrono's range so that month and year
+/// arithmetic cannot overflow.
+pub(crate) const SUPPORTED_YEARS: RangeInclusive<i32> = 2000..=9999;
+
+/// The first day of a `YYYY-MM` month, as `?month=` carries it; `None` when it is not one.
+pub(crate) fn parse_month(value: &str) -> Option<NaiveDate> {
+    NaiveDate::parse_from_str(&format!("{value}-01"), "%Y-%m-%d")
+        .ok()
+        .filter(|first| SUPPORTED_YEARS.contains(&first.year()))
+}
+
 /// A calendar date as the language writes it with digits.
 pub(crate) fn date(locale: Locale, date: NaiveDate) -> String {
     let pattern = match locale {
         Locale::En | Locale::It => "%d/%m/%Y",
         Locale::Tr => "%d.%m.%Y",
+    };
+    date.format(pattern).to_string()
+}
+
+/// A day and month without the year: `15/01`, `15.01` in Turkish.
+pub(crate) fn day_month(locale: Locale, date: NaiveDate) -> String {
+    let pattern = match locale {
+        Locale::En | Locale::It => "%d/%m",
+        Locale::Tr => "%d.%m",
     };
     date.format(pattern).to_string()
 }
@@ -93,6 +115,18 @@ mod tests {
         assert_eq!(
             date_time(Locale::It, t("2026-07-01T22:30:00Z"), Rome),
             "02/07/2026 00:30"
+        );
+    }
+
+    #[test]
+    fn months_in_addresses_are_read_within_the_supported_years() {
+        assert_eq!(parse_month("2026-02"), "2026-02-01".parse().ok());
+        for bad in ["2026-13", "2026", "", "1999-12", "10000-01", "2026-02-01"] {
+            assert_eq!(parse_month(bad), None, "{bad}");
+        }
+        assert_eq!(
+            day_month(Locale::Tr, "2026-01-05".parse().unwrap()),
+            "05.01"
         );
     }
 

@@ -14,6 +14,7 @@ body {
 
 .bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   padding: var(--gap) 0;
@@ -366,4 +367,83 @@ button.current {
   width: 1.25em;
   height: 1.25em;
   vertical-align: text-bottom;
+}
+
+.chart {
+  position: relative;
+  height: 18rem;
+}
+
+.scroll {
+  overflow-x: auto;
+}
+
+table.heatmap {
+  border-collapse: collapse;
+  font-size: 0.75rem;
+}
+
+table.heatmap th,
+table.heatmap td {
+  min-width: 1.25rem;
+  padding: 0.25rem 0.125rem;
+  text-align: center;
+}
+
+table.heatmap tbody th {
+  text-align: left;
+  white-space: nowrap;
+}
+
+.heat-0 {
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+
+.heat-1 {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.heat-2 {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+.heat-3 {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.heat-4 {
+  background: color-mix(in srgb, var(--accent) 36%, transparent);
+}
+
+.heat-5 {
+  background: color-mix(in srgb, var(--accent) 44%, transparent);
+}
+
+.heat-6 {
+  background: color-mix(in srgb, var(--accent) 54%, transparent);
+  color: #fff;
+}
+
+.heat-7 {
+  background: color-mix(in srgb, var(--accent) 64%, transparent);
+  color: #fff;
+}
+
+.heat-8 {
+  background: color-mix(in srgb, var(--accent) 76%, transparent);
+  color: #fff;
+}
+
+.heat-9 {
+  background: color-mix(in srgb, var(--accent) 88%, transparent);
+  color: #fff;
+}
+
+.heat-10 {
+  background: color-mix(in srgb, var(--accent) 100%, transparent);
+  color: #fff;
+}
+
+.rules li {
+  margin: 0.5rem 0;
 }
