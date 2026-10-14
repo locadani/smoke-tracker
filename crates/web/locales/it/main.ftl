@@ -118,6 +118,7 @@ intensity-10-desc = Come una stanza piena di fumo. Devi uscire.
 
 nav-log = Registra
 nav-events = Eventi
+nav-graphs = Grafici
 nav-people = Persone
 nav-settings = Impostazioni
 
@@ -256,6 +257,18 @@ install-continue = Vai all'app
 offline-title = Nessuna connessione
 offline-text = Smoke Tracker ha bisogno di internet per salvare ciò che registri. Riprova quando sei di nuovo online.
 offline-retry = Riprova
+
+graphs-title = Grafici
+graphs-month = Mostra un mese
+graphs-year = Mostra l'intero anno
+graphs-own-only = Questi grafici mostrano solo le tue segnalazioni e misurazioni.
+graphs-none = Nessuna registrazione in questo periodo.
+graphs-needs-js = Questo grafico richiede JavaScript.
+graphs-intensity = Intensità dell'odore nel tempo
+graphs-pm25 = PM2.5 (µg/m³)
+graphs-events-day = Eventi al giorno
+graphs-events-week = Eventi alla settimana
+graphs-events-label = Eventi
 
 error-not-found-title = Pagina non trovata
 error-not-found = Questa pagina non esiste.

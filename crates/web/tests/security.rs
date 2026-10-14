@@ -234,6 +234,8 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
         .await,
         text(app.send(get_with("/install?welcome", &cookie)).await).await,
         text(app.send(get("/offline")).await).await,
+        text(app.send(get_with("/graphs", &cookie)).await).await,
+        text(app.send(get_with("/graphs?year=2026", &cookie)).await).await,
         text(app.send(get("/missing")).await).await,
         text(app.attempt("daniele", "not the password").await).await,
     ];

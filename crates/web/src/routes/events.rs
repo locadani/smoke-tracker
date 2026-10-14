@@ -90,9 +90,6 @@ fn day(days: &mut BTreeMap<NaiveDate, Day>, tr: Tr, date: NaiveDate) -> &mut Day
     })
 }
 
-/// The years the month list accepts, well inside chrono's range so month arithmetic cannot overflow.
-const SUPPORTED_YEARS: std::ops::RangeInclusive<i32> = 2000..=9999;
-
 pub(crate) async fn list<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
@@ -106,8 +103,8 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
     let actor = user.actor();
     let first = query
         .month
-        .and_then(|m| NaiveDate::parse_from_str(&format!("{m}-01"), "%Y-%m-%d").ok())
-        .filter(|first| SUPPORTED_YEARS.contains(&first.year()))
+        .as_deref()
+        .and_then(time::parse_month)
         .unwrap_or_else(|| schedule.local_date(now));
     let (from, to) = schedule.month_span(first);
     let events = state.store.events_between(from, to).await?;

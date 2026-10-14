@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("graphs-title") }}{% endblock %}
+{% block scripts %}
+  <script src="/static/chart-4.5.1.umd.min.js" defer></script>
+  <script src="/static/graphs.js" defer></script>
+{% endblock %}
+{% block content %}
+<h1>{{ tr.t("graphs-title") }}</h1>
+<nav class="months">
+  <a href="/graphs?{{ previous }}">{{ tr.t("events-previous") }}</a>
+  <strong>{{ label }}</strong>
+  <a href="/graphs?{{ next }}">{{ tr.t("events-next") }}</a>
+</nav>
+<p><a href="/graphs?{{ other }}">{{ tr.t(other_key) }}</a></p>
+{% if own_only %}
+<p class="hint">{{ tr.t("graphs-own-only") }}</p>
+{% endif %}
+{% if empty %}
+<p>{{ tr.t("graphs-none") }}</p>
+{% else %}
+<section>
+  <h2>{{ tr.t("graphs-intensity") }}</h2>
+  <div class="chart">
+    <canvas data-chart="{{ intensity }}" role="img" aria-label="{{ tr.t("graphs-intensity") }}">{{ tr.t("graphs-needs-js") }}</canvas>
+  </div>
+</section>
+<section>
+  <h2>{{ tr.t(events_key) }}</h2>
+  <div class="chart">
+    <canvas data-chart="{{ events }}" role="img" aria-label="{{ tr.t(events_key) }}">{{ tr.t("graphs-needs-js") }}</canvas>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

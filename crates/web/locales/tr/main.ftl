@@ -118,6 +118,7 @@ intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
 nav-log = Kaydet
 nav-events = Olaylar
+nav-graphs = Grafikler
 nav-people = Kişiler
 nav-settings = Ayarlar
 
@@ -256,6 +257,18 @@ install-continue = Uygulamaya devam et
 offline-title = Bağlantı yok
 offline-text = Smoke Tracker'ın kaydettiklerinizi saklamak için internete ihtiyacı var. Yeniden çevrimiçi olduğunuzda tekrar deneyin.
 offline-retry = Tekrar dene
+
+graphs-title = Grafikler
+graphs-month = Tek bir ayı göster
+graphs-year = Tüm yılı göster
+graphs-own-only = Bu grafikler yalnızca kendi bildirimlerinizi ve ölçümlerinizi gösterir.
+graphs-none = Bu dönemde hiçbir kayıt yok.
+graphs-needs-js = Bu grafik için JavaScript gerekir.
+graphs-intensity = Zaman içinde koku yoğunluğu
+graphs-pm25 = PM2.5 (µg/m³)
+graphs-events-day = Günlük olay sayısı
+graphs-events-week = Haftalık olay sayısı
+graphs-events-label = Olaylar
 
 error-not-found-title = Sayfa bulunamadı
 error-not-found = Bu sayfa mevcut değil.

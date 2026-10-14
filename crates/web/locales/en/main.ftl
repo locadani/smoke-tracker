@@ -118,6 +118,7 @@ intensity-10-desc = Like a smoke-filled room. You must leave.
 
 nav-log = Log
 nav-events = Events
+nav-graphs = Graphs
 nav-people = People
 nav-settings = Settings
 
@@ -256,6 +257,18 @@ install-continue = Continue to the app
 offline-title = No connection
 offline-text = Smoke Tracker needs the internet to save what you log. Try again when you are back online.
 offline-retry = Try again
+
+graphs-title = Graphs
+graphs-month = Show one month
+graphs-year = Show the whole year
+graphs-own-only = These graphs show only your own reports and readings.
+graphs-none = Nothing was logged in this period.
+graphs-needs-js = This graph needs JavaScript.
+graphs-intensity = Smell intensity over time
+graphs-pm25 = PM2.5 (µg/m³)
+graphs-events-day = Events per day
+graphs-events-week = Events per week
+graphs-events-label = Events
 
 error-not-found-title = Page not found
 error-not-found = This page does not exist.
