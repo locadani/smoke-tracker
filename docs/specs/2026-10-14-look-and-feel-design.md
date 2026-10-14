@@ -44,6 +44,7 @@ today; all existing tests pass; the few behaviour changes listed in §6 are the 
 | `--warn-bg` / `--warn-text` | `#FBEFD9` / `#6A4710` | `#332812` / `#F2D9A2` | event-in-progress banner, large-gap warning, guest role |
 | `--amber` | `#B7791F` | `#E0A84A` | PM2.5 series, common areas series |
 | `--danger` | `#A33A2A` | `#F09A8A` | "End access now" |
+| `--control-border` | `#7F8984` | `#6F7A74` | outline of **text inputs** (text, number, date-time, password, search, select, textarea) and of check squares; ≥ 3:1 (WCAG 1.4.11). Rooms, level buttons and chips keep `--line`, as they are identified by their text |
 
 Heatmap: an 11-step sequential green ramp from `--accent-soft` (0) to a deep green (10), with
 white text from level 6 (dark theme: reversed lightness). `theme-color` becomes `#2F6B5E`.
@@ -183,16 +184,61 @@ Settings (signed in) or stay at the page bottom (signed out).
 4. §9.1 and decision #121: the Install button lives in Settings, not the header.
 5. §7.7: the large-gap warning offers "Move to a new event" for the report after the gap.
 
-## 9. Testing
+## 9. Code standards
+
+From the research in `docs/research/2026-10-14-frontend-standards.md` and the user's choices
+(2026-10-14). Browser floor: **iOS 16** and current Chrome/Firefox.
+
+- **No duplication:** every visual pattern exists once — one CSS component per pattern, one
+  Askama macro per markup pattern, one JS module per behaviour, one icon sprite.
+- **CSS:**
+  - Source split into small files under `crates/web/css/` (reset, tokens, base, layout, one file
+    per component), joined at compile time with `concat!(include_str!(…))` into the single
+    served `/static/app.css`. No Node build step, still one request.
+  - First line `@layer reset, tokens, base, layout, components, utilities;` and every rule inside
+    a layer.
+  - CUBE-style naming: flat component classes (`.card`, `.chip`, `.tabbar`), a few composition
+    classes (`.stack`, `.cluster`), state through `data-*`/ARIA attributes and `:has()`; almost no
+    utility classes.
+  - Tokens as custom properties (§3.1); dark values in one `prefers-color-scheme: dark` block
+    (no `light-dark()` and no native nesting: iOS 16). Logical properties throughout.
+- **Templates:** `components.html` holds Askama macros (card, collapsible card, chip, button,
+  list row, tab bar, header and avatar menu, icon, field), imported with `{% import %}`; content
+  slots through `{% call %}`/`caller()`. Rust component structs only where there is logic.
+  Templates receive translated strings, not the translator, where a macro needs text.
+- **JavaScript:** `type="module"` entry plus one small module per behaviour; event delegation for
+  stateless behaviour; an autonomous custom element only for per-instance widgets (the person
+  search). Every page works without JavaScript first (progressive enhancement); htmx swaps keep
+  working.
+- **Accessibility, native HTML first:** `<details>` for collapsible cards and the avatar menu
+  (plus small JS: closes on outside tap and Escape); `<dialog>` for the rating sheet and the person
+  search; native radios for the 0–10 picker and segmented controls; native `<input type=range>`;
+  native `<select>` as the person filter's no-JS baseline. Targets ≥ 44 px, contrast per §3.1.
+- **Icons:** one sprite `static/icons.svg` (`<symbol>` + `currentColor`) used through the `icon`
+  macro; decorative icons `aria-hidden`, icon-only buttons get an `aria-label`; a test checks
+  every referenced id exists.
+- **Charts:** `graphs.js` reads colours from the CSS tokens with `getComputedStyle` and re-reads
+  them when the theme changes; animation off.
+- **Lint and format:** Biome (standalone binary) for JS and CSS, in CI.
+
+## 10. Testing
 
 - Existing route and template tests updated for the new markup; no behaviour test removed.
+- Rust HTML tests assert structure with the `scraper` crate (a shared helper in `tests/common`),
+  not string matching; one global test fails if any template has an inline `style=` or
+  `<script>` body.
+- **Accessibility job (CI, parallel to the others):** Playwright + `@axe-core/playwright` in a
+  small `tests/e2e/` folder (`package.json` + lock file, no `node_modules` committed). It starts
+  the app on SQLite, creates a resident with the `create-resident` command, seeds data by using
+  the app itself (sign in, log reports), and checks about 8 pages in light and dark at phone size.
+  Screenshots are kept as job artifacts only (no visual-regression baselines; no Lighthouse CI).
 - New tests: Save decision table (§6.1, every row); banner counts and tie rule; graph filter
   parsing and each filter's effect (domain unit tests + one route test per filter); guests never
   get the person filter; gap button posts to the move route and is hidden without permission;
   CSP still `'self'` only (no inline style/script in any template).
 - Manual: every screen on a phone in light and dark, compared with the canvas.
 
-## 10. Out of scope / future work
+## 11. Out of scope / future work
 
 - Long lists: People grouped Active / Expired, "Show all (n)" for many symptoms and room chips,
   two-column room grid, hidden list items grouped at the bottom of Settings.
