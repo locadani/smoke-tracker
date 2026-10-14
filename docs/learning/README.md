@@ -38,6 +38,7 @@ in [`docs/DECISIONS.md`](../DECISIONS.md) explain the choices.
 cd exercises
 cargo test --test ex01_newtypes     # one exercise
 cargo test --no-fail-fast           # all of them, to see the whole picture
+./progress.sh                       # which ones are done, partial or not started
 ```
 
 Every function starts as `todo!()`, so every test starts red. Open
