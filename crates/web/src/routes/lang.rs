@@ -16,6 +16,8 @@ use crate::state::AppState;
 #[derive(Deserialize)]
 pub(crate) struct LangForm {
     lang: String,
+    /// `settings` when posted from the Settings page, which it then shows again.
+    return_to: Option<String>,
 }
 
 /// Sets the `lang` cookie and, when signed in, saves the language to the account (audited).
@@ -25,7 +27,11 @@ pub(crate) async fn choose<S: Store + Clone + 'static>(
     user: Option<CurrentUser>,
     Form(form): Form<LangForm>,
 ) -> Result<Response, AppError> {
-    let target = if user.is_some() { "/" } else { "/login" };
+    let target = match (&user, form.return_to.as_deref()) {
+        (None, _) => "/login",
+        (Some(_), Some("settings")) => "/settings?saved=language",
+        (Some(_), _) => "/",
+    };
     let Ok(locale) = form.lang.parse::<Locale>() else {
         return Ok(Redirect::to(target).into_response());
     };

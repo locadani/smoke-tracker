@@ -8,8 +8,10 @@ pub mod config;
 mod cookies;
 mod error;
 mod forms;
+mod header;
 mod i18n;
 mod labels;
+mod qr;
 mod request_id;
 mod routes;
 mod security;
@@ -43,7 +45,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     auth::password::prepare_dummy_hash();
     let signed_in = Router::new()
         .route("/", get(routes::log::show::<S>))
-        .route("/guide/rating", get(routes::guide::rating))
+        .route("/guide/rating", get(routes::guide::rating::<S>))
         .route("/log", post(routes::entries::submit::<S>))
         .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
         .route("/events", get(routes::events::list::<S>))
@@ -56,6 +58,32 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::reports::correct_form::<S>).post(routes::reports::correct::<S>),
         )
         .route("/reports/{id}/move", post(routes::reports::relocate::<S>))
+        .route("/people", get(routes::people::list::<S>))
+        .route(
+            "/people/invite",
+            get(routes::people::links::form::<S>).post(routes::people::links::create::<S>),
+        )
+        .route("/people/{id}/link", post(routes::people::links::renew::<S>))
+        .route("/people/{id}/expire", post(routes::people::end_access::<S>))
+        .route(
+            "/people/{id}/reactivate",
+            post(routes::people::restore_access::<S>),
+        )
+        .route("/settings", get(routes::settings::show::<S>))
+        .route("/settings/password", post(routes::settings::change::<S>))
+        .route("/settings/rooms", post(routes::lists::create_room::<S>))
+        .route(
+            "/settings/rooms/{id}/hidden",
+            post(routes::lists::hide_room::<S>),
+        )
+        .route(
+            "/settings/symptoms",
+            post(routes::lists::create_symptom::<S>),
+        )
+        .route(
+            "/settings/symptoms/{id}/hidden",
+            post(routes::lists::hide_symptom::<S>),
+        )
         .route_layer(middleware::from_fn(auth::require_user));
     let pages = Router::new()
         .merge(signed_in)
@@ -64,7 +92,13 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             get(routes::login::form).post(routes::login::submit::<S>),
         )
         .route("/logout", post(routes::login::logout))
+        .route(
+            "/invite/{token}",
+            get(routes::accept::form::<S>).post(routes::accept::submit::<S>),
+        )
         .route("/lang", post(routes::lang::choose::<S>))
+        .route("/install", get(routes::install::show::<S>))
+        .route("/offline", get(routes::install::offline))
         .fallback(routes::not_found)
         .layer(CatchPanicLayer::custom(error::panic_response))
         .layer(middleware::from_fn_with_state(
@@ -85,6 +119,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
 
     Router::new()
         .route("/static/{*path}", get(assets::serve))
+        .route("/sw.js", get(assets::service_worker))
         .route("/healthz", get(assets::healthz))
         .merge(pages)
         .layer(DefaultBodyLimit::max(BODY_LIMIT_BYTES))
@@ -103,7 +138,18 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
 
 fn request_span(request: &Request) -> tracing::Span {
     let id = request_id::of(request.headers());
-    tracing::info_span!("request", id, method = %request.method(), path = request.uri().path())
+    let path = logged_path(request.uri().path());
+    tracing::info_span!("request", id, method = %request.method(), path)
+}
+
+/// The path as logs show it. An invite token works like a password until it is used, so it
+/// never reaches the logs (decision #119).
+pub(crate) fn logged_path(path: &str) -> &str {
+    if path.starts_with("/invite/") {
+        "/invite/…"
+    } else {
+        path
+    }
 }
 
 /// Serves `app` until `shutdown` completes, then finishes the requests in flight.
@@ -118,4 +164,16 @@ pub async fn serve(
     )
     .with_graceful_shutdown(shutdown)
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn invite_tokens_are_cut_from_logged_paths() {
+        assert_eq!(logged_path("/invite/0123abcd"), "/invite/…");
+        assert_eq!(logged_path("/events/3"), "/events/3");
+        assert_eq!(logged_path("/people/invite"), "/people/invite");
+    }
 }

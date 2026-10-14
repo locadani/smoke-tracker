@@ -21,6 +21,7 @@ use smoke_domain::types::{EventId, UserId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
+use crate::header::SignedIn;
 use crate::i18n::Tr;
 use crate::labels;
 use crate::routes::entries::read_time;
@@ -63,7 +64,7 @@ struct Day {
 #[template(path = "events.html")]
 struct ListPage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     month: String,
     previous: String,
     next: String,
@@ -184,7 +185,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         StatusCode::OK,
         &ListPage {
             tr,
-            signed_in: Some(user.username.to_string()),
+            signed_in: SignedIn::of(&user, now),
             month: first_of_month.format("%m/%Y").to_string(),
             previous: month_param(first_of_month - Months::new(1)),
             next: month_param(first_of_month + Months::new(1)),
@@ -209,7 +210,7 @@ struct Entry {
 #[template(path = "event.html")]
 struct DetailPage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     id: i64,
     date: String,
     span: String,
@@ -343,7 +344,7 @@ async fn detail<S: Store>(
     };
     Ok(DetailPage {
         tr,
-        signed_in: Some(user.username.to_string()),
+        signed_in: SignedIn::of(user, now),
         id: id.0,
         date: time::date(tr.0, state.config.schedule.local_date(event.opened_at)),
         span: span(tr, &event, tz),

@@ -13,11 +13,13 @@ use thiserror::Error;
 use crate::DomainError;
 use crate::audit::{AuditEntity, ChainedEntry};
 use crate::records::{
-    Closure, Event, NewEvent, NewReading, NewReport, NewRoom, NewSymptom, NewUser, PasswordHash,
-    Pm25Reading, ReportValues, Room, SmellReport, StoredSession, Symptom, User,
+    Closure, Event, Invite, NewEvent, NewInvite, NewReading, NewReport, NewRoom, NewSymptom,
+    NewUser, PasswordHash, Pm25Reading, ReportValues, Room, SmellReport, StoredSession, Symptom,
+    User,
 };
 use crate::types::{
-    EventId, Locale, Pm25, ReadingId, ReportId, RoomId, SymptomId, UserId, Username,
+    EventId, InviteId, Locale, Pm25, ReadingId, ReportId, RoomId, SymptomId, TokenHash, UserId,
+    Username,
 };
 use crate::verify::AuditState;
 
@@ -42,6 +44,8 @@ pub enum Conflict {
     ChainForked,
     #[error("the change breaks a data rule")]
     RuleViolated,
+    #[error("the invite has already been used")]
+    InviteUsed,
 }
 
 #[derive(Debug, Error)]
@@ -86,6 +90,21 @@ pub trait UserRepo: Send + Sync {
     ) -> impl Future<Output = StoreResult<Option<User>>> + Send;
     /// Every user, ordered by username.
     fn users(&self) -> impl Future<Output = StoreResult<Vec<User>>> + Send;
+}
+
+pub trait InviteRepo: Send + Sync {
+    /// The invite whose token has this hash, used or expired ones included.
+    fn invite_by_token(
+        &self,
+        token: &TokenHash,
+    ) -> impl Future<Output = StoreResult<Option<Invite>>> + Send;
+    /// The daily cleanup (spec §11): removes every invite that expired by `now`, used or not,
+    /// and returns how many there were. Not audited: invites are not evidence and have no
+    /// snapshot (decision #112).
+    fn delete_expired_invites(
+        &self,
+        now: DateTime<Utc>,
+    ) -> impl Future<Output = StoreResult<u64>> + Send;
 }
 
 pub trait ListRepo: Send + Sync {
@@ -165,6 +184,8 @@ pub trait AuditRepo: Send + Sync {
 }
 
 pub trait UserWrites: Send {
+    /// Reads inside the transaction, so a decision and the write that follows it see the same data.
+    fn user(&mut self, id: UserId) -> impl Future<Output = StoreResult<Option<User>>> + Send;
     /// Fails with [`DomainError`] if the expiry breaks the role rules
     /// ([`crate::permissions::check_expiry`]) and with [`Conflict::UsernameTaken`].
     fn create_user(&mut self, new: NewUser) -> impl Future<Output = StoreResult<User>> + Send;
@@ -187,6 +208,20 @@ pub trait UserWrites: Send {
         id: UserId,
         expires_at: Option<DateTime<Utc>>,
     ) -> impl Future<Output = StoreResult<User>> + Send;
+}
+
+pub trait InviteWrites: Send {
+    /// Audited as `invite`. Removes the user's earlier unused invites, so only the newest link
+    /// works (decision #112). `created_at` is now.
+    fn create_invite(&mut self, new: NewInvite)
+    -> impl Future<Output = StoreResult<Invite>> + Send;
+    /// Reads inside the transaction, so checking an invite and using it see the same data.
+    fn invite_by_token(
+        &mut self,
+        token: &TokenHash,
+    ) -> impl Future<Output = StoreResult<Option<Invite>>> + Send;
+    /// Sets `used_at` to now. Fails with [`Conflict::InviteUsed`] if it is already set.
+    fn use_invite(&mut self, id: InviteId) -> impl Future<Output = StoreResult<Invite>> + Send;
 }
 
 pub trait ListWrites: Send {
@@ -301,12 +336,26 @@ pub trait JobWrites: Send {
 
 /// Everything a write transaction can do.
 pub trait WriteTx:
-    Commit + UserWrites + ListWrites + EventWrites + ReportWrites + ReadingWrites + JobWrites
+    Commit
+    + UserWrites
+    + InviteWrites
+    + ListWrites
+    + EventWrites
+    + ReportWrites
+    + ReadingWrites
+    + JobWrites
 {
 }
 
 impl<T> WriteTx for T where
-    T: Commit + UserWrites + ListWrites + EventWrites + ReportWrites + ReadingWrites + JobWrites
+    T: Commit
+        + UserWrites
+        + InviteWrites
+        + ListWrites
+        + EventWrites
+        + ReportWrites
+        + ReadingWrites
+        + JobWrites
 {
 }
 
@@ -333,7 +382,9 @@ pub trait SessionRepo: Send + Sync {
         &self,
         session: &StoredSession,
     ) -> impl Future<Output = StoreResult<()>> + Send;
-    /// Inserts the session or replaces the stored one.
+    /// Updates a stored session. A session that no longer exists (ended by sign-out, a
+    /// password change or expiry) stays ended: a request that loaded it earlier and saves it
+    /// late never brings it back.
     fn save_session(&self, session: &StoredSession)
     -> impl Future<Output = StoreResult<()>> + Send;
     fn delete_session(&self, id_hash: &str) -> impl Future<Output = StoreResult<()>> + Send;
@@ -348,6 +399,7 @@ pub trait SessionRepo: Send + Sync {
 pub trait Store:
     Transactional<Tx: WriteTx>
     + UserRepo
+    + InviteRepo
     + ListRepo
     + EventRepo
     + ReportRepo
@@ -362,6 +414,7 @@ pub trait Store:
 impl<T> Store for T where
     T: Transactional<Tx: WriteTx>
         + UserRepo
+        + InviteRepo
         + ListRepo
         + EventRepo
         + ReportRepo

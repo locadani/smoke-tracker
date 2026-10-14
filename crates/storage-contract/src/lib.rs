@@ -12,9 +12,11 @@ pub mod audit;
 pub mod corrections;
 pub mod events;
 pub mod fixture;
+pub mod invites;
 pub mod lists;
 pub mod logbook;
 pub mod migrations;
+pub mod people;
 pub mod readings;
 pub mod reports;
 pub mod sessions;
@@ -46,6 +48,7 @@ macro_rules! contract_tests {
             lists::hiding_a_room_is_audited_once,
             lists::symptoms_can_be_created_and_hidden,
             lists::hiding_an_unknown_symptom_is_not_found,
+            lists::only_residents_edit_the_lists,
             events::a_new_event_can_be_the_open_event,
             events::only_one_event_can_be_open,
             events::closing_and_reopening_are_audited,
@@ -90,13 +93,27 @@ macro_rules! contract_tests {
             sessions::a_session_round_trips_until_it_expires,
             sessions::creating_a_session_twice_is_a_duplicate,
             sessions::a_session_for_an_unknown_user_is_refused,
-            sessions::saving_a_session_inserts_or_replaces_it,
+            sessions::saving_a_session_updates_it_but_never_recreates_it,
             sessions::deleting_a_session_removes_only_that_one,
             sessions::expired_sessions_are_swept,
             sessions::a_password_change_ends_the_users_sessions,
+            sessions::a_renewal_racing_a_password_change_cannot_revive_the_session,
             sessions::expiring_a_user_ends_their_sessions,
             sessions::a_rolled_back_password_change_keeps_the_sessions,
             sessions::sessions_are_not_audited,
+            invites::an_invite_is_found_by_its_token_hash_only,
+            invites::an_invite_is_used_once_and_that_is_audited,
+            invites::a_new_invite_replaces_the_users_unused_ones,
+            invites::an_invite_for_an_unknown_user_is_refused,
+            invites::expired_invites_are_removed_without_an_audit_entry,
+            people::an_invited_guest_sets_up_the_account_once,
+            people::a_link_stops_working_after_five_minutes,
+            people::a_reset_link_replaces_the_password_and_ends_every_session,
+            people::a_new_link_for_someone_who_never_set_up_is_a_setup_link,
+            people::only_residents_manage_people,
+            people::a_taken_username_is_refused_and_nothing_is_written,
+            people::expiry_and_reactivation_follow_the_role_rules,
+            people::a_password_change_needs_an_account_that_can_sign_in,
             logbook::logging_now_with_nothing_open_starts_an_open_event,
             logbook::same_smell_joins_the_open_event,
             logbook::a_new_event_closes_the_open_one_at_its_last_report,

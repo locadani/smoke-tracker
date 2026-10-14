@@ -22,6 +22,7 @@ use smoke_domain::types::{EventId, Level, Pm25, Role, RoomId, SymptomId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
+use crate::header::SignedIn;
 use crate::i18n::Tr;
 use crate::routes::log::{Draft, log_page, offered};
 use crate::routes::{notices, refusal};
@@ -321,7 +322,7 @@ struct Answer {
 #[template(path = "prompt.html")]
 struct PromptPage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     title: String,
     detail: Option<String>,
     /// The form as posted, re-sent with the answer.
@@ -434,7 +435,7 @@ async fn ask<S: Store>(
         StatusCode::OK,
         &PromptPage {
             tr,
-            signed_in: Some(user.username.to_string()),
+            signed_in: SignedIn::of(user, now),
             title,
             detail,
             hidden: form.without(&["choice", "asked"]),

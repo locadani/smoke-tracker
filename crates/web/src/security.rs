@@ -23,14 +23,20 @@ pub(crate) const CSP: &str = "default-src 'self'; script-src 'self'; style-src '
 const PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=(), payment=()";
 const HSTS: &str = "max-age=63072000";
 
-/// Adds the security headers. HSTS only over https; `Cache-Control: no-store` unless the
+/// Adds the security headers. Setup links send no `Referer` at all (their path is a password
+/// until used); everything else keeps `same-origin`. HSTS only over https; `Cache-Control: no-store` unless the
 /// response set its own (static assets do), so signed-in pages never sit in a shared cache.
 pub(crate) async fn headers(State(https): State<bool>, request: Request, next: Next) -> Response {
+    let referrer_policy = if request.uri().path().starts_with("/invite/") {
+        "no-referrer"
+    } else {
+        "same-origin"
+    };
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
     headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(REFERRER_POLICY, HeaderValue::from_static("same-origin"));
+    headers.insert(REFERRER_POLICY, HeaderValue::from_static(referrer_policy));
     headers.insert(X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
     headers.insert(
         HeaderName::from_static("cross-origin-opener-policy"),
@@ -66,7 +72,7 @@ pub(crate) async fn check_origin(
         let headers = request.headers();
         tracing::warn!(
             method = %request.method(),
-            path = ?request.uri().path(),
+            path = crate::logged_path(request.uri().path()),
             sec_fetch_site = ?headers.get("sec-fetch-site"),
             origin = ?headers.get(ORIGIN),
             "refused a cross-site request"

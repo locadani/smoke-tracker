@@ -39,7 +39,14 @@ async fn every_response_carries_the_security_headers() {
 #[tokio::test]
 async fn anonymous_requests_set_no_cookies() {
     let app = TestApp::new().await;
-    for path in ["/missing", "/static/app.css", "/healthz"] {
+    for path in [
+        "/missing",
+        "/static/app.css",
+        "/healthz",
+        "/sw.js",
+        "/install",
+        "/offline",
+    ] {
         let response = app.send(get(path)).await;
         assert!(set_cookies(&response).is_empty(), "{path}");
     }
@@ -181,8 +188,11 @@ fn the_event_handler_scan_finds_attributes_and_not_words() {
 #[tokio::test]
 async fn no_page_needs_inline_scripts_styles_or_eval() {
     let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
     app.add_user("daniele", Role::Resident, Locale::En).await;
     let cookie = app.sign_in("daniele").await;
+    app.send(post_form("/log", "action=no-smell", Some(&cookie)))
+        .await;
     app.send(post_form(
         "/log",
         "room=1&level-1=4&action=smell",
@@ -196,18 +206,47 @@ async fn no_page_needs_inline_scripts_styles_or_eval() {
             Some(&cookie),
         ))
         .await;
+    let past_check_question = app
+        .send(post_form(
+            "/log",
+            "action=no-smell&observed_at=2026-01-15T12:00",
+            Some(&cookie),
+        ))
+        .await;
     let pages = [
         text(question).await,
+        text(past_check_question).await,
         text(app.send(get_with("/events", &cookie)).await).await,
         text(app.send(get_with("/events/1", &cookie)).await).await,
         text(app.send(get_with("/reports/1", &cookie)).await).await,
-        text(app.send(get_with("/reports/1/correct", &cookie)).await).await,
+        text(app.send(get_with("/reports/2", &cookie)).await).await,
+        text(app.send(get_with("/reports/2/correct", &cookie)).await).await,
         text(app.send(get("/login")).await).await,
         text(app.send(get_with("/", &cookie)).await).await,
         text(app.send(get_with("/guide/rating", &cookie)).await).await,
+        text(app.send(get_with("/settings", &cookie)).await).await,
+        text(app.send(get_with("/people", &cookie)).await).await,
+        text(app.send(get_with("/people/invite", &cookie)).await).await,
+        text(
+            app.send(post_form("/people/1/link", "", Some(&cookie)))
+                .await,
+        )
+        .await,
+        text(app.send(get_with("/install?welcome", &cookie)).await).await,
+        text(app.send(get("/offline")).await).await,
         text(app.send(get("/missing")).await).await,
         text(app.attempt("daniele", "not the password").await).await,
     ];
+    assert!(pages[1].contains("No event: just a check"), "{}", pages[1]);
+    assert!(pages[4].contains("None: a no-smell check"), "{}", pages[4]);
+    let link = pages[13].find("/invite/").expect("a reset link");
+    let accept = &pages[13][link..link + "/invite/".len() + 64];
+    let accept_page = text(app.send(get(accept)).await).await;
+    assert!(
+        accept_page.contains("<h1>Choose a new password</h1>"),
+        "{accept_page}"
+    );
+    let pages = pages.into_iter().chain([accept_page]);
     for html in pages {
         assert!(
             html.contains(r#"<meta name="htmx-config" content='{"includeIndicatorStyles":false,"allowEval":false,"allowScriptTags":false}'>"#),

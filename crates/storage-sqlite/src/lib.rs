@@ -8,6 +8,7 @@ mod audit;
 mod convert;
 mod error;
 mod events;
+mod invites;
 mod jobs;
 mod lists;
 mod readings;

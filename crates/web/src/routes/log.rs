@@ -17,6 +17,7 @@ use smoke_domain::types::{Level, RoomArea, RoomId, SymptomId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
+use crate::header::SignedIn;
 use crate::i18n::Tr;
 use crate::routes::entries::level_field;
 use crate::routes::guide::{GuideRow, levels};
@@ -182,7 +183,7 @@ pub(crate) struct FormView {
 #[template(path = "log.html")]
 pub(crate) struct LogPage {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     status: Status,
     /// The open event, when the user may close it.
     close_event: Option<i64>,
@@ -292,7 +293,7 @@ pub(crate) async fn log_page<S: Store>(
 
     Ok(LogPage {
         tr,
-        signed_in: Some(user.username.to_string()),
+        signed_in: SignedIn::of(user, now),
         close_event: shown
             .filter(|e| can(&actor, Action::ManageEvent { owner: e.owner_id }, now))
             .map(|e| e.id.0),

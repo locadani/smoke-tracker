@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}{{ tr.t("people-title") }}{% endblock %}
+{% block content %}
+<h1>{{ tr.t("people-title") }}</h1>
+{% if let Some(saved) = saved %}
+<p class="notice" role="status">{{ tr.t(saved) }}</p>
+{% endif %}
+{% if let Some(error) = error %}
+<p class="notice" role="alert">{{ tr.t(error) }}</p>
+{% endif %}
+<p><a href="/people/invite">{{ tr.t("people-invite") }}</a></p>
+<ul class="people">
+  {% for person in people %}
+  <li>
+    <p><strong>{{ person.username }}</strong> · {{ tr.t(person.role) }} · {{ person.status }}{% if person.pending_setup %} · {{ tr.t("people-status-setup") }}{% endif %}</p>
+    <form method="post" action="/people/{{ person.id }}/link">
+      <button type="submit" class="secondary">{% if person.pending_setup %}{{ tr.t("people-new-setup-link") }}{% else %}{{ tr.t("people-reset-password") }}{% endif %}</button>
+    </form>
+    {% if person.can_expire %}
+    <form method="post" action="/people/{{ person.id }}/expire">
+      <button type="submit" class="secondary">{{ tr.t("people-expire") }}</button>
+    </form>
+    {% endif %}
+    {% if let Some(expiry) = person.reactivate %}
+    <form method="post" action="/people/{{ person.id }}/reactivate" class="stack">
+      {% include "expiry_fields.html" %}
+      <button type="submit" class="secondary">{{ tr.t("people-reactivate") }}</button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

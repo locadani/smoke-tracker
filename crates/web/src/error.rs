@@ -13,6 +13,7 @@ use axum::response::{Html, IntoResponse, Response};
 use smoke_domain::repos::StoreError;
 
 use crate::cookies;
+use crate::header::SignedIn;
 use crate::i18n::{LANG_COOKIE, Tr, negotiate};
 use crate::request_id;
 
@@ -23,6 +24,8 @@ pub(crate) enum AppError {
     Forbidden,
     /// The signed-in user's role does not allow this (spec §4).
     NotAllowed,
+    /// An invite or reset link that is unknown, used, or older than five minutes.
+    LinkInvalid,
     /// Anything unexpected. Logged with the request id; the user sees only the id.
     Internal(Box<dyn StdError + Send + Sync>),
 }
@@ -36,6 +39,7 @@ impl AppError {
         match self {
             Self::NotFound => StatusCode::NOT_FOUND,
             Self::Forbidden | Self::NotAllowed => StatusCode::FORBIDDEN,
+            Self::LinkInvalid => StatusCode::GONE,
             Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
@@ -46,6 +50,7 @@ impl AppError {
             Self::NotFound => ("error-not-found-title", "error-not-found"),
             Self::Forbidden => ("error-forbidden-title", "error-forbidden"),
             Self::NotAllowed => ("error-not-allowed-title", "error-not-allowed"),
+            Self::LinkInvalid => ("error-link-title", "error-link"),
             Self::Internal(_) => ("error-internal-title", "error-internal"),
         }
     }
@@ -124,7 +129,7 @@ pub(crate) fn panic_response(panic: Box<dyn Any + Send + 'static>) -> Response {
 #[template(path = "error.html")]
 struct ErrorTemplate {
     tr: Tr,
-    signed_in: Option<String>,
+    signed_in: Option<SignedIn>,
     title_key: &'static str,
     message_key: &'static str,
     request_id: String,
@@ -180,13 +185,15 @@ pub(crate) fn page(status: StatusCode, template: &impl Template) -> Result<Respo
 
 /// Every message key the error pages use, for the translation tests.
 #[cfg(test)]
-pub(crate) const KEYS: [&str; 8] = [
+pub(crate) const KEYS: [&str; 10] = [
     "error-not-found-title",
     "error-not-found",
     "error-forbidden-title",
     "error-forbidden",
     "error-not-allowed-title",
     "error-not-allowed",
+    "error-link-title",
+    "error-link",
     "error-internal-title",
     "error-internal",
 ];

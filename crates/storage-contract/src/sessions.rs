@@ -71,24 +71,24 @@ pub async fn a_session_for_an_unknown_user_is_refused<S: SessionRepo>(fx: &Fixtu
     );
 }
 
-pub async fn saving_a_session_inserts_or_replaces_it<
+pub async fn saving_a_session_updates_it_but_never_recreates_it<
     S: SessionRepo + Transactional<Tx: UserWrites>,
 >(
     fx: &Fixture<S>,
 ) {
     let user = add_user(fx, "daniele", Role::Resident).await;
     let anonymous = session("hash-a", None, start() + TimeDelta::days(1));
-    fx.store.save_session(&anonymous).await.unwrap();
-    assert_eq!(
-        fx.store.session("hash-a", start()).await.unwrap(),
-        Some(anonymous)
-    );
+    fx.store.create_session(&anonymous).await.unwrap();
     let signed_in = session("hash-a", Some(user.id), in_30_days());
     fx.store.save_session(&signed_in).await.unwrap();
     assert_eq!(
         fx.store.session("hash-a", start()).await.unwrap(),
-        Some(signed_in)
+        Some(signed_in.clone())
     );
+
+    fx.store.delete_session("hash-a").await.unwrap();
+    fx.store.save_session(&signed_in).await.unwrap();
+    assert_eq!(fx.store.session("hash-a", start()).await.unwrap(), None);
 }
 
 pub async fn deleting_a_session_removes_only_that_one<S: SessionRepo>(fx: &Fixture<S>) {
@@ -153,6 +153,34 @@ pub async fn a_password_change_ends_the_users_sessions<
             "{id_hash}"
         );
     }
+}
+
+/// A request loads its session, a password change on another device ends every session of
+/// the user, then the first request renews and saves the session it loaded: it must stay ended.
+pub async fn a_renewal_racing_a_password_change_cannot_revive_the_session<
+    S: SessionRepo + Transactional<Tx: UserWrites>,
+>(
+    fx: &Fixture<S>,
+) {
+    let user = add_user(fx, "daniele", Role::Resident).await;
+    fx.store
+        .create_session(&session("phone", Some(user.id), in_30_days()))
+        .await
+        .unwrap();
+    let loaded = fx.store.session("phone", start()).await.unwrap().unwrap();
+
+    let mut tx = fx.store.begin(Some(user.id)).await.unwrap();
+    tx.set_password(user.id, PasswordHash::new("new-hash".to_owned()))
+        .await
+        .unwrap();
+    tx.commit().await.unwrap();
+
+    let renewed = StoredSession {
+        expires_at: in_30_days() + TimeDelta::days(1),
+        ..loaded
+    };
+    fx.store.save_session(&renewed).await.unwrap();
+    assert_eq!(fx.store.session("phone", start()).await.unwrap(), None);
 }
 
 pub async fn expiring_a_user_ends_their_sessions<S: SessionRepo + Transactional<Tx: UserWrites>>(

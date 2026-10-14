@@ -3,6 +3,7 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::DomainError;
 
@@ -34,6 +35,8 @@ id_type!(
     RoomId,
     /// Identifies a symptom.
     SymptomId,
+    /// Identifies an invite (a one-time setup or password-reset link).
+    InviteId,
 );
 
 /// Defines a field-less enum stored as text: `as_str`, `FromStr`, `Display`, serde, and `ALL`.
@@ -124,6 +127,16 @@ str_enum!(
         Auto0400 => "auto_0400",
         /// It was created in the past, already over.
         Backdated => "backdated",
+    }
+);
+
+str_enum!(
+    /// What an invite link lets its holder do (spec §8.3).
+    InvitePurpose {
+        /// Choose the first password of a new account.
+        Setup => "setup",
+        /// Choose a new password for an existing account.
+        PasswordReset => "password_reset",
     }
 );
 
@@ -221,6 +234,27 @@ impl NewPassword {
 impl fmt::Debug for NewPassword {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("NewPassword(<redacted>)")
+    }
+}
+
+/// The SHA-256 of an invite token, as lowercase hex: the only form of the token the database
+/// keeps (spec §6), so a copy of the database holds no usable link.
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct TokenHash(String);
+
+impl TokenHash {
+    pub fn of(token: &str) -> Self {
+        Self(hex::encode(Sha256::digest(token.as_bytes())))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for TokenHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "TokenHash({}…)", &self.0[..8])
     }
 }
 
@@ -357,6 +391,10 @@ mod tests {
         for locale in Locale::ALL {
             assert_eq!(locale.as_str().parse::<Locale>().unwrap(), *locale);
         }
+        for purpose in InvitePurpose::ALL {
+            assert_eq!(purpose.as_str().parse::<InvitePurpose>().unwrap(), *purpose);
+        }
+        assert_eq!(InvitePurpose::PasswordReset.as_str(), "password_reset");
     }
 
     #[test]
@@ -449,6 +487,18 @@ mod tests {
             NewPassword::new("x".repeat(129)),
             Err(DomainError::InvalidPasswordLength(129))
         );
+    }
+
+    #[test]
+    fn a_token_hash_is_the_sha256_of_the_token_in_hex() {
+        let hash = TokenHash::of("abc");
+        assert_eq!(
+            hash.as_str(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(hash, TokenHash::of("abc"));
+        assert_ne!(hash, TokenHash::of("abd"));
+        assert_eq!(format!("{hash:?}"), "TokenHash(ba7816bf…)");
     }
 
     #[test]

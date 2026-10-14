@@ -99,7 +99,11 @@ legend {
 }
 
 .rooms legend,
-.rooms .group,
+.rooms .group {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .room:has(input[name="room"]:checked) {
   flex-basis: 100%;
   margin: 0;
@@ -270,4 +274,96 @@ select {
   font: inherit;
   padding: 0.75rem;
   border-radius: 0.5rem;
+}
+
+.choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+button.current {
+  background: var(--accent);
+  color: #fff;
+}
+
+.hint {
+  font-size: 0.875rem;
+  margin: 0;
+  opacity: 0.8;
+}
+
+.items {
+  list-style: none;
+  padding: 0;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+
+.people {
+  list-style: none;
+  padding: 0;
+}
+
+.people li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid rgb(128 128 128 / 30%);
+}
+
+.expiry input[type="date"] {
+  font: inherit;
+  padding: 0.5rem;
+  border-radius: 0.5rem;
+}
+
+.invite:has(input[name="role"]:checked) .expiry {
+  display: none;
+}
+
+.invite:has(input[name="role"][value="guest"]:checked) .expiry[data-role="guest"],
+.invite:has(input[name="role"][value="viewer"]:checked) .expiry[data-role="viewer"] {
+  display: flex;
+}
+
+.qr-code {
+  margin: 0;
+  max-width: 18rem;
+}
+
+.qr {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.link-text {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+}
+
+.install {
+  margin-left: auto;
+  margin-right: var(--gap);
+  font-size: 0.875rem;
+}
+
+@media (display-mode: standalone) {
+  .install {
+    display: none;
+  }
+}
+
+.steps li {
+  margin: 0.5rem 0;
+}
+
+.glyph {
+  width: 1.25em;
+  height: 1.25em;
+  vertical-align: text-bottom;
 }

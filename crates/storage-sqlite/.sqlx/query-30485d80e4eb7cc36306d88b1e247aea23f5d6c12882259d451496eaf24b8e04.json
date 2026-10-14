@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO invites (user_id, purpose, token_hash, created_by, created_at, expires_at) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id AS \"id!\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "invites",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "30485d80e4eb7cc36306d88b1e247aea23f5d6c12882259d451496eaf24b8e04"
+}
