@@ -1,18 +1,18 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<h1>{{ title }}</h1>
-{% if let Some(detail) = detail %}
-<p>{{ detail }}</p>
-{% endif %}
-<form method="post" action="/log" class="stack">
-  {% for (name, value) in hidden %}
-  <input type="hidden" name="{{ name }}" value="{{ value }}">
-  {% endfor %}
-  <input type="hidden" name="asked" value="{{ asked }}">
-  {% for answer in answers %}
-  <button type="submit" name="choice" value="{{ answer.choice }}"{% if !answer.primary %} class="secondary"{% endif %}>{{ answer.label }}</button>
-  {% endfor %}
-</form>
-<p><a href="/">{{ tr.t("prompt-cancel") }}</a></p>
+<section class="card">
+  <h1>{{ title }}</h1>
+  {% if let Some(detail) = detail %}<p class="muted">{{ detail }}</p>{% endif %}
+  <form method="post" action="/log" class="stack">
+    {% for (name, value) in hidden %}
+    <input type="hidden" name="{{ name }}" value="{{ value }}">
+    {% endfor %}
+    <input type="hidden" name="asked" value="{{ asked }}">
+    {% for answer in answers %}
+    <button type="submit" name="choice" value="{{ answer.choice }}" class="button"{% if !answer.primary %} data-variant="secondary"{% endif %}>{{ answer.label }}</button>
+    {% endfor %}
+  </form>
+  <a href="/" class="button" data-variant="quiet">{{ tr.t("prompt-cancel") }}</a>
+</section>
 {% endblock %}

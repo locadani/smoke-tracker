@@ -10,6 +10,25 @@ use smoke_domain::repos::{EventRepo, ReadingRepo, ReportRepo};
 use smoke_domain::types::{CloseReason, EventId, Locale, ReportId, Role};
 
 /// The value of the hidden `asked` field on a question page.
+/// The prompt's answers: the value each button posts, its label, and whether it is the
+/// primary one.
+fn answers(html: &str) -> Vec<(String, String, bool)> {
+    let page = Page::parse(html);
+    let buttons = "form[action='/log'] button[name=choice]";
+    let values = page.attrs(buttons, "value");
+    let labels = page.texts(buttons);
+    values
+        .into_iter()
+        .zip(labels)
+        .enumerate()
+        .map(|(index, (value, label))| {
+            let selector = format!("{buttons}:nth-of-type({})", index + 1);
+            let primary = !page.exists(&format!("{selector}[data-variant=secondary]"));
+            (value, label, primary)
+        })
+        .collect()
+}
+
 fn asked(html: &str) -> String {
     let start = html.find(r#"name="asked" value=""#).expect("a question") + 20;
     html[start..start + html[start..].find('"').unwrap()].to_owned()
@@ -70,8 +89,17 @@ async fn with_an_event_open_the_same_smell_question_comes_first() {
     assert!(html.contains("(started 19:05)"), "{html}");
     assert!(html.contains(r#"<input type="hidden" name="level-1" value="7">"#));
     let id = first.report.event_id.unwrap();
-    assert!(html.contains(&format!(r#"value="join-{id}">Yes, update</button>"#)));
-    assert!(html.contains(r#"value="new" class="secondary">No, it had stopped: new event"#));
+    assert_eq!(
+        answers(&html),
+        [
+            (format!("join-{id}"), "Yes, update".to_owned(), true),
+            (
+                "new".to_owned(),
+                "No, it had stopped: new event".to_owned(),
+                false
+            ),
+        ]
+    );
 
     let body = format!(
         "room=1&level-1=7&action=log&asked={}&choice=join-{id}",
@@ -177,9 +205,7 @@ async fn a_guest_sees_only_the_start_time_of_someone_elses_event() {
     assert!(past.contains("<h1>Which event was this?</h1>"), "{past}");
     let earlier = closed_earlier.report.event_id.unwrap();
     assert!(
-        past.contains(&format!(
-            r#"value="join-{earlier}" class="secondary">Started 11:00</button>"#
-        )),
+        answers(&past).contains(&(format!("join-{earlier}"), "Started 11:00".to_owned(), false)),
         "{past}"
     );
     assert!(
@@ -293,7 +319,7 @@ async fn a_past_report_after_the_end_of_the_chosen_event_moves_its_end() {
         !html.contains("Started 21:00"),
         "not started by then: {html}"
     );
-    assert!(html.contains(r#"value="new" class="secondary">New event</button>"#));
+    assert!(answers(&html).contains(&("new".to_owned(), "New event".to_owned(), false)));
 
     let body = format!(
         "room=1&level-1=5&action=log&observed_at=2026-01-15T12:00&asked=which-event&choice=join-{id}"
