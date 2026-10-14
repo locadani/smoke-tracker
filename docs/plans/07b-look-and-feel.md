@@ -32,7 +32,7 @@ committed, `node_modules` never).
 screens, §5 Log, §6 behaviour changes, §7 graphs, §9 code standards, §10 testing) and the main
 spec `docs/specs/2026-10-13-smoke-tracker-design.md` (§7.7, §9 screens 1, 5, §9.1 as amended
 on 2026-10-14). Research: `docs/research/2026-10-14-frontend-standards.md`. Decisions:
-`docs/DECISIONS.md` rows **#131–#140**, appended by Task 20. Canvas mockups:
+`docs/DECISIONS.md` rows **#135–#144**, appended by Task 20. Canvas mockups:
 `.superpowers/canvas/*.dc.html` (git-ignored; their inline styles are mockup-only).
 
 **Provenance:** every code block in this plan was compiled and tested before the plan was
@@ -55,26 +55,26 @@ leaves; apply the test hunks first. **Not verified locally:** the two new CI job
 
 Defaults were chosen so nothing blocks; each is a decision row (Task 20) and easy to change.
 
-1. **Log button and pre-ticked rooms** (#131): rooms ticked *without any level* count as no
+1. **Log button and pre-ticked rooms** (#135): rooms ticked *without any level* count as no
    rooms beside a PM2.5 value, so a reading typed during an event (whose rooms the form ticks
    for you) is saved as a reading instead of "pick a level". Spec wording proposal in
    `.superpowers/M7b-spec-proposals.md`.
-2. **Banner counts** (#132): only the reports the viewer may see are counted; a tie goes to the
+2. **Banner counts** (#136): only the reports the viewer may see are counted; a tie goes to the
    most recent report's room; no "highest level" while everything is 0.
-3. **Graph filters** (#133): any period up to **two years**, per day up to **62 days**; a room
+3. **Graph filters** (#137): any period up to **two years**, per day up to **62 days**; a room
    or area filter **keeps only the chosen rooms of each report** (a whole-home check drops out);
    "Hide clean checks" drops every report at 0 after that narrowing; the month/year switch
    and its `?month=`/`?year=` addresses are gone (old bookmarks show this month).
-4. **Everyone line and colours** (#134): the Everyone line exists only for those who see
+4. **Everyone line and colours** (#138): the Everyone line exists only for those who see
    everyone and while no person is chosen; four line colours (`accent`, `series-2…4`) repeat
    after four people.
-5. **Move to a new event** (#136) redirects to the moved report's page, as the move route does
+5. **Move to a new event** (#140) redirects to the moved report's page, as the move route does
    today.
 6. **Month and date labels stay numeric** ("10/2026", "Event of 14/10/2026"); the canvas shows
    "October 2026". Month names need 36 new strings; proposal in the spec-proposals file.
 7. **A collapsible card's action keeps its word when open** ("Change ⌃"); the canvas switches
    to "Hide". Only the chevron turns.
-8. **One new dev-dependency** (`scraper`) and **Node in one CI job** (#139); neither reaches the
+8. **One new dev-dependency** (`scraper`) and **Node in one CI job** (#143); neither reaches the
    binary or the image (`tests` is in `.dockerignore`).
 9. **About 75 new translation keys** in en/it/tr; the Italian and Turkish ones are drafts for
    native review. Removed keys: `log-pm25-only`, `log-error-pm25-missing`, `event-none`,
@@ -130,7 +130,7 @@ Defaults were chosen so nothing blocks; each is a decision row (Task 20) and eas
 - Node only inside `tests/e2e` (`npm ci` there); never install anything globally. Biome
   locally: `npx --yes @biomejs/biome@2.5.15 ci .` run from a scratch folder against the repo,
   or the standalone binary; CI uses the binary.
-- `docs/DECISIONS.md` is append-only; this plan adds rows **#131–#140** (Task 20).
+- `docs/DECISIONS.md` is append-only; this plan adds rows **#135–#144** (Task 20).
 
 ## Review Focus
 
@@ -3875,7 +3875,7 @@ index 0000000..04edad7
 
 **Proto commit:** `4ef1bbf` + `7ae8ced` (`git -C /Users/daniele/Documents/Personal/smoke-tracker-m7bproto show 4ef1bbf`)
 
-Spec §6.1. `entries::read` decides Log vs reading vs error; the form has two buttons (No smell secondary 2/5, Log primary 3/5, `name=action value=log`); `log-pm25-only` and `log-error-pm25-missing` go, `log-error-empty` comes; `log-submit` becomes "Log". The second proto commit adds the pre-ticked-rooms rule (decision #131): apply both diffs in this task. Tests: unit `the_log_button_decides_from_what_is_filled_in`, route `the_log_button_saves_what_the_form_holds`; existing tests post `action=log`.
+Spec §6.1. `entries::read` decides Log vs reading vs error; the form has two buttons (No smell secondary 2/5, Log primary 3/5, `name=action value=log`); `log-pm25-only` and `log-error-pm25-missing` go, `log-error-empty` comes; `log-submit` becomes "Log". The second proto commit adds the pre-ticked-rooms rule (decision #135): apply both diffs in this task. Tests: unit `the_log_button_decides_from_what_is_filled_in`, route `the_log_button_saves_what_the_form_holds`; existing tests post `action=log`.
 
 **Files** (status from the proto commit: A added, M modified, D deleted, R renamed):
 
@@ -13376,7 +13376,7 @@ index 0000000..158d5cd
 
 **Proto commit:** `6ef96dc` (`git -C /Users/daniele/Documents/Personal/smoke-tracker-m7bproto show 6ef96dc`)
 
-Decision rows #131–#140 (texts below), the ROADMAP row "7b Look & feel" before row 8, README (design system bullet, Biome and e2e commands, CI table row), Dependabot `npm` for `/tests/e2e`.
+Decision rows #135–#144 (texts below), the ROADMAP row "7b Look & feel" before row 8, README (design system bullet, Biome and e2e commands, CI table row), Dependabot `npm` for `/tests/e2e`.
 
 **Files** (status from the proto commit: A added, M modified, D deleted, R renamed):
 
@@ -13393,7 +13393,7 @@ M	docs/plans/ROADMAP.md
 - [ ] **Step 5: Commit** (`git add` the files listed above, nothing else) with this message, then check `git log -1 --format='%an%n%B'`:
 
 ```
-docs: decisions #131-#140, the 7b roadmap row, README and Dependabot for the e2e folder
+docs: decisions #135-#144, the 7b roadmap row, README and Dependabot for the e2e folder
 
 Records the look-and-feel changes (Log button, banner counts, graph filters, per-person and
 Everyone lines with token colours, Install in Settings amending #121, move from the gap
@@ -13528,4 +13528,4 @@ it in a browser at phone width in light and dark. Compare with `.superpowers/can
 | §9 code standards (CSS files and layers, macros, modules, custom element, sprite, Biome) | 1, 2, 3, 4, 17, 18 |
 | §10 testing (scraper, template scan, decision table, banner, filters, guests, gap button, CSP, accessibility job) | 2, 5, 6, 9, 14–16, 19 |
 | M6 carry-overs: duplicate query parameter, viewer graphs test, graphs.js try/catch | 15, 16, 17 |
-| Decisions #131–#140, ROADMAP row 7b | 20 |
+| Decisions #135–#144, ROADMAP row 7b | 20 |
