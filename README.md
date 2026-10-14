@@ -201,7 +201,7 @@ Pull requests into `main` need the checks marked *required* to pass.
 
 | Workflow | When | What |
 |---|---|---|
-| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `fmt`, `clippy -D warnings`, the whole test suite on SQLite and a Postgres service (required); the committed `sqlx` query data (required); Biome on the JavaScript and CSS; the accessibility job: the app started on SQLite, seeded through its own pages, and axe-core on its pages at phone size in light and dark, with the screenshots kept for 14 days; line coverage with `cargo-llvm-cov`, shown in the job summary and kept as an `lcov` artifact |
+| [`ci.yml`](.github/workflows/ci.yml) | push to `main`, pull requests | `fmt`, `clippy -D warnings`, the whole test suite on SQLite and a Postgres service (required); the committed `sqlx` query data (required); Biome on the JavaScript and CSS (required); the accessibility job (required): the app started on SQLite, seeded through its own pages, and axe-core on its pages at phone size in light and dark, with the screenshots kept for 14 days; line coverage with `cargo-llvm-cov`, shown in the job summary and kept as an `lcov` artifact |
 | [`security.yml`](.github/workflows/security.yml) | push, pull requests, weekly | `cargo-deny` (RustSec advisories, licences, sources), `gitleaks`, a Trivy scan of the container image (all required) |
 | [`codeql.yml`](.github/workflows/codeql.yml) | push, pull requests, weekly | CodeQL for the Rust code, the workflows and the project's own JavaScript |
 | [`deploy.yml`](.github/workflows/deploy.yml) | push to `main` | Builds, scans and deploys the image to Cloud Run |
