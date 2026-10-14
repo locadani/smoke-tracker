@@ -5,6 +5,8 @@ target
 .githooks
 .superpowers
 docs
+# Practice package, not part of the app.
+exercises
 data
 *.db
 *.db-*
