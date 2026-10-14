@@ -50,7 +50,12 @@ async fn people_lists_everyone_with_their_role_and_expiry() {
             "G guest until 22/01/2026 20:00 guest"
         ]
     );
-    assert_eq!(page.attrs(".person .tag", "data-tone"), ["accent", "warn"]);
+    assert_eq!(page.count(".person .tag"), 2);
+    assert_eq!(
+        page.attrs(".person .tag", "data-tone"),
+        ["warn"],
+        "residents keep the default tag"
+    );
     assert_eq!(
         page.text(r#"form[action="/people/2/expire"] button[data-variant=danger]"#),
         "End access now"

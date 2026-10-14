@@ -42,6 +42,16 @@ pub(crate) fn report_rooms(tr: Tr, rooms: &[Room], values: &ReportValues) -> Str
         .join(", ")
 }
 
+/// "3 reports · highest level 6": the count of reports, then `extra` after a dot when given.
+pub(crate) fn reports_with(tr: Tr, count: usize, extra: Option<String>) -> String {
+    let mut text = tr.n("summary-reports", &count);
+    if let Some(extra) = extra {
+        text.push_str(" · ");
+        text.push_str(&extra);
+    }
+    text
+}
+
 pub(crate) fn symptom(tr: Tr, symptom: &Symptom) -> String {
     match &symptom.i18n_key {
         Some(key) => tr.t(key),

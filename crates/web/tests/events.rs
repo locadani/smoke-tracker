@@ -50,7 +50,7 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
         ["Previous month", "Next month"]
     );
     assert_eq!(
-        page.texts("h2.day"),
+        page.texts("h2.overline"),
         ["12/01/2026", "11/01/2026", "10/01/2026"],
         "newest first"
     );

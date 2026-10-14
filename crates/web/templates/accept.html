@@ -11,10 +11,9 @@
     {% call c::field(tr.t("settings-password-new")) %}<input type="password" name="password" autocomplete="new-password" minlength="10" maxlength="128" required>{% endcall %}
     {% call c::field(tr.t("settings-password-repeat")) %}<input type="password" name="repeat" autocomplete="new-password" minlength="10" maxlength="128" required>{% endcall %}
     <p class="hint">{{ tr.t("accept-password-hint") }}</p>
-    <fieldset class="segmented">
-      <legend class="visually-hidden">{{ tr.t("language") }}</legend>
-      {% for language in tr.languages() %}{% call c::chip("radio", "lang", language.value, language.name, language.current) %}{% endcall %}{% endfor %}
-    </fieldset>
+    {% call c::segmented(tr.t("language")) %}
+    {% for language in tr.languages() %}{% call c::chip("radio", "lang", language.value, language.name, language.current) %}{% endcall %}{% endfor %}
+    {% endcall %}
     <button type="submit" class="button">{{ tr.t("accept-submit") }}</button>
   </form>
 </section>

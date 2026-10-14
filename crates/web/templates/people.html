@@ -12,15 +12,11 @@
 <section class="card">
   <div class="person">
     <span class="avatar" aria-hidden="true">{{ person.initial }}</span>
-    <span class="row-text"><strong>{{ person.username }}</strong><span>{{ person.status }}{% if person.pending_setup %} · {{ tr.t("people-status-setup") }}{% endif %}</span></span>
-    <span class="tag" data-tone="{{ person.tone }}">{{ tr.t(person.role) }}</span>
+    {% call c::row_text(person.username, person.status, "") %}{% endcall %}
+    <span class="tag"{% if let Some(tone) = person.tone %} data-tone="{{ tone }}"{% endif %}>{{ tr.t(person.role) }}</span>
   </div>
   <div class="cluster">
-    {% if person.pending_setup %}
-    {% call c::post_button("/people/{}/link"|format(person.id), tr.t("people-new-setup-link"), "secondary") %}{% endcall %}
-    {% else %}
-    {% call c::post_button("/people/{}/link"|format(person.id), tr.t("people-reset-password"), "secondary") %}{% endcall %}
-    {% endif %}
+    {% call c::post_button("/people/{}/link"|format(person.id), person.link_label, "secondary") %}{% endcall %}
     {% if person.can_expire %}{% call c::post_button("/people/{}/expire"|format(person.id), tr.t("people-expire"), "danger") %}{% endcall %}{% endif %}
   </div>
   {% if let Some(expiry) = person.reactivate %}

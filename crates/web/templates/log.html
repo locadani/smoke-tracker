@@ -8,7 +8,7 @@
 {% if let Some(notice) = notice %}
 <form method="post" action="/notices/dismiss" class="banner">
   <span>{{ notice }}</span>
-  <button type="submit" class="button">{{ tr.t("notice-dismiss") }}</button>
+  <button type="submit" class="button" data-variant="warn">{{ tr.t("notice-dismiss") }}</button>
 </form>
 {% endif %}
 {% if let Some(banner) = banner %}
@@ -17,7 +17,7 @@
   {% if let Some(id) = close_event %}
   <form method="post" action="/events/{{ id }}/close">
     <input type="hidden" name="return_to" value="log">
-    <button type="submit" class="button">{{ tr.t("event-close") }}</button>
+    <button type="submit" class="button" data-variant="warn">{{ tr.t("event-close") }}</button>
   </form>
   {% endif %}
 </section>
@@ -35,23 +35,20 @@
   {% call c::collapsible(tr.t("log-time"), form.time_hint(tr), tr.t("action-change"), !form.observed_at.is_empty()) %}
   <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" aria-label="{{ tr.t("log-time") }}">
   {% endcall %}
-  {% call f::rooms(form.fields, tr.t("log-rooms"), tr.t("log-how-to-rate"), tr.t("log-inside"), tr.t("log-common"), tr.t("log-level-hint")) %}{% endcall %}
-  {% call f::symptoms(form.fields, tr.t("log-symptoms")) %}{% endcall %}
-  <section class="card">
-    <label class="inline-field">
-      <span><strong>PM2.5</strong> <span class="muted">· {{ tr.t("optional") }}</span></span>
-      <span class="unit"><input type="number" name="pm25" min="0" max="1000" step="0.1" inputmode="decimal" value="{{ form.pm25 }}"> µg/m³</span>
-    </label>
-  </section>
-  {% call c::collapsible(tr.t("log-note"), tr.t("optional"), tr.t("action-add"), !form.note.is_empty()) %}
-  <textarea name="note" rows="3" maxlength="2000" aria-label="{{ tr.t("log-note") }}">{{ form.note }}</textarea>
+  {% call f::report_cards(form.fields, form.note) %}
+  {% call c::card("") %}
+  <label class="inline-field">
+    <span><strong>PM2.5</strong> <span class="muted">· {{ tr.t("optional") }}</span></span>
+    <span class="unit"><input type="number" name="pm25" min="0" max="1000" step="0.1" inputmode="decimal" value="{{ form.pm25 }}"> µg/m³</span>
+  </label>
+  {% endcall %}
   {% endcall %}
   <div class="actions">
     <button type="submit" name="action" value="no-smell" formnovalidate class="button" data-variant="secondary">{{ tr.t("log-no-smell") }}</button>
     <button type="submit" name="action" value="log" class="button">{% if form.update %}{{ tr.t("log-update") }}{% else %}{{ tr.t("log-submit") }}{% endif %}</button>
   </div>
 </form>
-{% call f::rating_sheet(form.fields.levels, tr.t("rating-title"), tr.t("close"), tr.t("rating-tip"), tr.t("rating-full-guide")) %}{% endcall %}
+{% call f::rating_sheet(form.fields) %}{% endcall %}
 {% else %}
 <p class="card">{{ tr.t("log-read-only") }}</p>
 {% endif %}

@@ -1,6 +1,7 @@
 // The switches above the intensity chart: Both, Intensity or PM2.5, and By person or Everyone.
 // Each dataset names its group ("person", "everyone", "pm25"); a switch shows the groups it
-// asks for and sets the chart's heading. Without JavaScript the switches stay hidden.
+// asks for and sets the chart's heading, read from the data-both, data-intensity and
+// data-pm25 attributes of the heading. Without JavaScript the switches stay hidden.
 const visible = {
   both: ["lines", "pm25"],
   intensity: ["lines"],
@@ -20,9 +21,11 @@ function apply(card) {
     const line = dataset.group === "pm25" || dataset.group === lines;
     dataset.hidden = !(shown.includes(group) && line);
   }
-  if (series?.dataset.title) {
-    card.querySelector("[data-series-title]").textContent = series.dataset.title;
-    chart.canvas.setAttribute("aria-label", series.dataset.title);
+  const heading = card.querySelector("[data-series-title]");
+  const title = heading.dataset[series?.value ?? "both"];
+  if (title) {
+    heading.textContent = title;
+    chart.canvas.setAttribute("aria-label", title);
   }
   chart.update("none");
 }

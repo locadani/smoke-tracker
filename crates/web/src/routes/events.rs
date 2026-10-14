@@ -138,11 +138,11 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
             continue;
         }
         let max = visible.iter().map(|r| r.values.intensity().get()).max();
-        let mut detail = tr.n("summary-reports", &visible.len());
-        if let Some(max) = max {
-            detail.push_str(" · ");
-            detail.push_str(&tr.t1("events-max-intensity", "level", &max.to_string()));
-        }
+        let detail = labels::reports_with(
+            tr,
+            visible.len(),
+            max.map(|max| tr.t1("events-max-intensity", "level", &max.to_string())),
+        );
         day(&mut days, tr, local).events.push(EventRow {
             id: event.id.0,
             span: span(tr, event, tz),

@@ -50,7 +50,7 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
         page.text(&format!("{bedroom} .level-hint")),
         "Pick a level from 0 to 10."
     );
-    assert_eq!(page.texts(".rooms > .group"), ["Inside", "Common areas"]);
+    assert_eq!(page.texts(".rooms > .overline"), ["Inside", "Common areas"]);
     let rooms = page.texts(".rooms .room-check");
     assert_eq!(rooms.first().map(String::as_str), Some("Living room"));
     assert_eq!(rooms.last().map(String::as_str), Some("Stairwell (shared)"));

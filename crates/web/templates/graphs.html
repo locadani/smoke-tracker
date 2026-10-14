@@ -62,27 +62,23 @@
 <p class="card muted">{{ tr.t("graphs-none") }}</p>
 {% else %}
 <section class="card" data-series-chart>
-  <h2 data-series-title>{{ tr.t("graphs-series-both-title") }}</h2>
+  <h2 data-series-title data-both="{{ tr.t("graphs-series-both-title") }}" data-intensity="{{ tr.t("graphs-intensity") }}" data-pm25="{{ tr.t("graphs-series-pm25-title") }}">{{ tr.t("graphs-series-both-title") }}</h2>
   <div class="segmented" data-series hidden>
-    {% call c::series("series", "both", tr.t("graphs-series-both"), tr.t("graphs-series-both-title"), true) %}{% endcall %}
-    {% call c::series("series", "intensity", tr.t("graphs-series-intensity"), tr.t("graphs-intensity"), false) %}{% endcall %}
-    {% call c::series("series", "pm25", tr.t("graphs-series-pm25"), tr.t("graphs-series-pm25-title"), false) %}{% endcall %}
+    {% call c::chip("radio", "series", "both", tr.t("graphs-series-both"), true) %}{% endcall %}
+    {% call c::chip("radio", "series", "intensity", tr.t("graphs-series-intensity"), false) %}{% endcall %}
+    {% call c::chip("radio", "series", "pm25", tr.t("graphs-series-pm25"), false) %}{% endcall %}
   </div>
   {% if everyone %}
   <div class="segmented" data-lines hidden>
-    {% call c::series("lines", "person", tr.t("graphs-lines-person"), "", true) %}{% endcall %}
-    {% call c::series("lines", "everyone", tr.t("graphs-everyone"), "", false) %}{% endcall %}
+    {% call c::chip("radio", "lines", "person", tr.t("graphs-lines-person"), true) %}{% endcall %}
+    {% call c::chip("radio", "lines", "everyone", tr.t("graphs-everyone"), false) %}{% endcall %}
   </div>
   {% endif %}
-  <div class="chart">
-    <canvas data-chart="{{ intensity }}" role="img" aria-label="{{ tr.t("graphs-series-both-title") }}">{{ tr.t("graphs-needs-js") }}</canvas>
-  </div>
+  {% call c::chart(intensity, tr.t("graphs-series-both-title"), tr.t("graphs-needs-js")) %}{% endcall %}
 </section>
 <section class="card">
   <h2>{{ tr.t(events_key) }}</h2>
-  <div class="chart">
-    <canvas data-chart="{{ events }}" role="img" aria-label="{{ tr.t(events_key) }}">{{ tr.t("graphs-needs-js") }}</canvas>
-  </div>
+  {% call c::chart(events, tr.t(events_key), tr.t("graphs-needs-js")) %}{% endcall %}
 </section>
 <section class="card">
   <h2>{{ tr.t("graphs-rooms") }}</h2>
@@ -107,9 +103,7 @@
 <section class="card">
   <h2>{{ tr.t("log-symptoms") }}</h2>
   {% if let Some(symptoms) = symptoms %}
-  <div class="chart">
-    <canvas data-chart="{{ symptoms }}" role="img" aria-label="{{ tr.t("log-symptoms") }}">{{ tr.t("graphs-needs-js") }}</canvas>
-  </div>
+  {% call c::chart(symptoms, tr.t("log-symptoms"), tr.t("graphs-needs-js")) %}{% endcall %}
   {% else %}
   <p>{{ tr.t("graphs-symptoms-none") }}</p>
   {% endif %}
@@ -117,9 +111,7 @@
 <section class="card">
   <h2>{{ tr.t("graphs-areas") }}</h2>
   <p class="hint">{{ tr.t("graphs-areas-hint") }}</p>
-  <div class="chart">
-    <canvas data-chart="{{ areas }}" role="img" aria-label="{{ tr.t("graphs-areas") }}">{{ tr.t("graphs-needs-js") }}</canvas>
-  </div>
+  {% call c::chart(areas, tr.t("graphs-areas"), tr.t("graphs-needs-js")) %}{% endcall %}
 </section>
 {% endif %}
 {% endblock %}

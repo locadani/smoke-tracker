@@ -18,48 +18,59 @@
 {% endmacro %}
 
 {# The Rooms card: "How to rate", then the rooms grouped Inside and Common areas. #}
-{% macro rooms(fields, title, how_to_rate, inside, common, hint) %}
+{% macro rooms(fields) %}
 <section class="card">
   <div class="split">
-    <h2>{{ title }}</h2>
-    <a href="/guide/rating" data-dialog="rating-guide" class="info">{% call c::icon("info") %}{% endcall %}{{ how_to_rate }}</a>
+    <h2>{{ fields.texts.rooms }}</h2>
+    <a href="/guide/rating" data-dialog="rating-guide" class="info">{% call c::icon("info") %}{% endcall %}{{ fields.texts.how_to_rate }}</a>
   </div>
   <fieldset class="rooms">
-    <legend class="visually-hidden">{{ title }}</legend>
-    <p class="group">{{ inside }}</p>
-    {% for choice in fields.inside %}{% call room(choice, fields.levels, hint) %}{% endcall %}{% endfor %}
+    <legend class="visually-hidden">{{ fields.texts.rooms }}</legend>
+    <p class="overline">{{ fields.texts.inside }}</p>
+    {% for choice in fields.inside %}{% call room(choice, fields.levels, fields.texts.level_hint) %}{% endcall %}{% endfor %}
     {% if !fields.common.is_empty() %}
-    <p class="group">{{ common }}</p>
-    {% for choice in fields.common %}{% call room(choice, fields.levels, hint) %}{% endcall %}{% endfor %}
+    <p class="overline">{{ fields.texts.common }}</p>
+    {% for choice in fields.common %}{% call room(choice, fields.levels, fields.texts.level_hint) %}{% endcall %}{% endfor %}
     {% endif %}
   </fieldset>
 </section>
 {% endmacro %}
 
 {# The Symptoms card: one chip each. #}
-{% macro symptoms(fields, title) %}
+{% macro symptoms(fields) %}
 <section class="card">
-  <h2 id="symptoms-title">{{ title }}</h2>
+  <h2 id="symptoms-title">{{ fields.texts.symptoms }}</h2>
   <fieldset class="cluster" aria-labelledby="symptoms-title">
     {% for symptom in fields.symptoms %}{% call c::chip("checkbox", "symptom", symptom.value, symptom.label, symptom.checked) %}{% endcall %}{% endfor %}
   </fieldset>
 </section>
 {% endmacro %}
 
+{# The cards the two forms share: Rooms, Symptoms, what the call block adds (the Log form's
+   PM2.5 card, empty on a correction) and the note, open when `note` is not empty. #}
+{% macro report_cards(fields, note) %}
+{% call rooms(fields) %}{% endcall %}
+{% call symptoms(fields) %}{% endcall %}
+{{ caller() }}
+{% call c::collapsible(fields.texts.note, fields.texts.optional, fields.texts.add, !note.is_empty()) %}
+<textarea name="note" rows="3" maxlength="2000" aria-label="{{ fields.texts.note }}">{{ note }}</textarea>
+{% endcall %}
+{% endmacro %}
+
 {# The compact intensity guide "How to rate" opens, as a bottom sheet (spec §5). Without
    JavaScript the link leads to the full guide instead. #}
-{% macro rating_sheet(levels, title, close, tip, full_guide) %}
+{% macro rating_sheet(fields) %}
 <dialog id="rating-guide" class="sheet" aria-labelledby="rating-guide-title">
   <div class="split">
-    <h2 id="rating-guide-title">{{ title }}</h2>
-    <form method="dialog"><button type="submit" class="button" data-variant="quiet" aria-label="{{ close }}" autofocus>{% call c::icon("close") %}{% endcall %}</button></form>
+    <h2 id="rating-guide-title">{{ fields.texts.rating_title }}</h2>
+    <form method="dialog"><button type="submit" class="button" data-variant="quiet" aria-label="{{ fields.texts.close }}" autofocus>{% call c::icon("close") %}{% endcall %}</button></form>
   </div>
   <table class="scale">
-    {% for level in levels.iter() %}
+    {% for level in fields.levels.iter() %}
     <tr><th scope="row"><span class="badge">{{ level.value }}</span></th><td>{{ level.name }}</td></tr>
     {% endfor %}
   </table>
-  <p class="muted">{{ tip }}</p>
-  <a href="/guide/rating">{{ full_guide }}</a>
+  <p class="muted">{{ fields.texts.rating_tip }}</p>
+  <a href="/guide/rating">{{ fields.texts.full_guide }}</a>
 </dialog>
 {% endmacro %}

@@ -7,6 +7,7 @@ use smoke_domain::types::Role;
 
 use crate::forms::Pairs;
 use crate::i18n::Tr;
+use crate::routes::log::Choice;
 
 /// The guest quick picks: (form value, translation key).
 const GUEST_PICKS: [(&str, &str); 5] = [
@@ -20,20 +21,13 @@ const GUEST_PICKS: [(&str, &str); 5] = [
 /// A viewer may have no end, or end on a chosen day.
 const VIEWER_PICKS: [(&str, &str); 2] = [("never", "expiry-never"), ("date", "expiry-date")];
 
-/// One radio button of the expiry fields.
-pub(crate) struct PickChoice {
-    pub(crate) value: &'static str,
-    pub(crate) label: String,
-    pub(crate) checked: bool,
-}
-
 /// The expiry fields for one role, named `<prefix>expiry` and `<prefix>expiry_date` (the
 /// `expiry` macro of `templates/components.html`).
 pub(crate) struct ExpiryFields {
     pub(crate) role: &'static str,
     pub(crate) pick_name: String,
     pub(crate) date_name: String,
-    pub(crate) picks: Vec<PickChoice>,
+    pub(crate) picks: Vec<Choice<&'static str>>,
     pub(crate) date: String,
 }
 
@@ -76,7 +70,7 @@ pub(crate) fn fields(
         date_name: format!("{prefix}expiry_date"),
         picks: picks
             .iter()
-            .map(|&(value, key)| PickChoice {
+            .map(|&(value, key)| Choice {
                 value,
                 label: tr.t(key),
                 checked: value == picked,

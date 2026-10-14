@@ -8,10 +8,9 @@
 <form method="post" action="/people/invite" class="card invite">
   {% call c::field(tr.t("login-username")) %}<input name="username" value="{{ username }}" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="32" required>{% endcall %}
   <p class="hint">{{ tr.t("invite-username-hint") }}</p>
-  <fieldset class="segmented">
-    <legend class="visually-hidden">{{ tr.t("invite-role") }}</legend>
-    {% for role in roles %}{% call c::chip("radio", "role", role.value, tr.t(role.key), role.checked) %}{% endcall %}{% endfor %}
-  </fieldset>
+  {% call c::segmented(tr.t("invite-role")) %}
+  {% for role in roles %}{% call c::chip("radio", "role", role.value, tr.t(role.key), role.checked) %}{% endcall %}{% endfor %}
+  {% endcall %}
   {% if let Some(expiry) = guest %}{% call c::expiry(expiry, tr.t("expiry-legend"), tr.t("expiry-date")) %}{% endcall %}{% endif %}
   {% if let Some(expiry) = viewer %}{% call c::expiry(expiry, tr.t("expiry-legend"), tr.t("expiry-date")) %}{% endcall %}{% endif %}
   <button type="submit" class="button">{{ tr.t("invite-submit") }}</button>

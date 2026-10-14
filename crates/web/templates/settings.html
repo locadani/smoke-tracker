@@ -3,14 +3,29 @@
 {% block title %}{{ tr.t("settings-title") }}{% endblock %}
 
 {# A room or symptom of the lists, with the button that hides it or shows it again. #}
-{% macro list_item(item, hidden, hide, show) %}
+{% macro list_item(item) %}
 <li>
   <form method="post" action="{{ item.action }}" class="row">
-    <span class="row-text">{% if item.hidden %}<s>{{ item.label }}</s><span class="visually-hidden">{{ hidden }}</span>{% else %}<strong>{{ item.label }}</strong>{% endif %}{% if !item.detail.is_empty() %}<span>{{ item.detail }}</span>{% endif %}</span>
+    {% call c::row_text(item.label, item.detail, item.gone) %}{% endcall %}
     <input type="hidden" name="hidden" value="{{ !item.hidden }}">
-    <button type="submit" class="button" data-variant="quiet">{% if item.hidden %}{{ show }}{% else %}{{ hide }}{% endif %}</button>
+    <button type="submit" class="button" data-variant="quiet">{{ item.toggle }}</button>
   </form>
 </li>
+{% endmacro %}
+
+{# The rooms or the symptoms with their Hide and Show buttons, and the form that adds one to
+   `action`. The call block adds fields to that form. #}
+{% macro list_form(items, action, field_label, add) %}
+<ul class="items">
+  {% for item in items %}{% call list_item(item) %}{% endcall %}{% endfor %}
+</ul>
+<form method="post" action="{{ action }}" class="stack">
+  <div class="split">
+    <input name="name" maxlength="60" required aria-label="{{ field_label }}" placeholder="{{ field_label }}">
+    <button type="submit" class="button" data-variant="secondary">{{ add }}</button>
+  </div>
+  {{ caller() }}
+</form>
 {% endmacro %}
 
 {% block content %}
@@ -18,7 +33,7 @@
 {% if let Some(saved) = notices.saved %}{% call c::notice(tr.t(saved), false) %}{% endcall %}{% endif %}
 <section class="card install">
   <div class="split">
-    <span class="row-text"><strong>{{ tr.t("install-app") }}</strong><span>{{ tr.t("install-card-hint") }}</span></span>
+    {% call c::row_text(tr.t("install-app"), tr.t("install-card-hint"), "") %}{% endcall %}
     <a href="/install" class="button" data-install>{{ tr.t("install-button") }}</a>
   </div>
 </section>
@@ -40,29 +55,15 @@
 {% call c::collapsible(tr.t("log-rooms"), "", tr.t("action-change"), notices.list_error.is_some()) %}
 {% if let Some(error) = notices.list_error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <p class="hint">{{ tr.t("settings-lists-hint") }}</p>
-<ul class="items">
-  {% for item in lists.rooms %}{% call list_item(item, tr.t("settings-list-hidden"), tr.t("settings-list-hide"), tr.t("settings-list-show")) %}{% endcall %}{% endfor %}
-</ul>
-<form method="post" action="/settings/rooms" class="stack">
-  <div class="split">
-    <input name="name" maxlength="60" required aria-label="{{ tr.t("settings-room-add") }}" placeholder="{{ tr.t("settings-room-add") }}">
-    <button type="submit" class="button" data-variant="secondary">{{ tr.t("settings-list-add") }}</button>
-  </div>
-  <fieldset class="segmented">
-    <legend class="visually-hidden">{{ tr.t("settings-room-area") }}</legend>
-    {% call c::chip("radio", "area", "inside", tr.t("log-inside"), true) %}{% endcall %}
-    {% call c::chip("radio", "area", "common", tr.t("log-common"), false) %}{% endcall %}
-  </fieldset>
-</form>
+{% call list_form(lists.rooms.iter(), "/settings/rooms", tr.t("settings-room-add"), tr.t("settings-list-add")) %}
+{% call c::segmented(tr.t("settings-room-area")) %}
+{% call c::chip("radio", "area", "inside", tr.t("log-inside"), true) %}{% endcall %}
+{% call c::chip("radio", "area", "common", tr.t("log-common"), false) %}{% endcall %}
+{% endcall %}
+{% endcall %}
 {% endcall %}
 {% call c::collapsible(tr.t("log-symptoms"), "", tr.t("action-change"), notices.list_error.is_some()) %}
-<ul class="items">
-  {% for item in lists.symptoms %}{% call list_item(item, tr.t("settings-list-hidden"), tr.t("settings-list-hide"), tr.t("settings-list-show")) %}{% endcall %}{% endfor %}
-</ul>
-<form method="post" action="/settings/symptoms" class="split">
-  <input name="name" maxlength="60" required aria-label="{{ tr.t("settings-symptom-add") }}" placeholder="{{ tr.t("settings-symptom-add") }}">
-  <button type="submit" class="button" data-variant="secondary">{{ tr.t("settings-list-add") }}</button>
-</form>
+{% call list_form(lists.symptoms.iter(), "/settings/symptoms", tr.t("settings-symptom-add"), tr.t("settings-list-add")) %}{% endcall %}
 {% endcall %}
 {% endif %}
 <section class="card rows">

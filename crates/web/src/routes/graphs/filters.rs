@@ -20,12 +20,20 @@ const RANGES: [(&str, &str); 4] = [
     ("year", "graphs-range-year"),
 ];
 
-/// The areas: (address value, translation key); "all" is no area.
-const AREAS: [(&str, &str); 3] = [
-    ("all", "graphs-area-all"),
-    ("inside", "log-inside"),
-    ("common", "log-common"),
+/// The areas: (address value, area, translation key); "all" is no area.
+const AREAS: [(&str, Option<RoomArea>, &str); 3] = [
+    ("all", None, "graphs-area-all"),
+    ("inside", Some(RoomArea::Inside), "log-inside"),
+    ("common", Some(RoomArea::Common), "log-common"),
 ];
+
+/// The translation key beside `value` in a (value, key) table; empty when `value` is not in it.
+fn key_of(table: &[(&str, &'static str)], value: &str) -> &'static str {
+    table
+        .iter()
+        .find(|(candidate, _)| *candidate == value)
+        .map_or("", |&(_, key)| key)
+}
 
 fn range_period(value: &str, today: NaiveDate) -> Option<Period> {
     match value {
@@ -90,11 +98,10 @@ pub(crate) fn read(query: &Pairs, today: NaiveDate, people: &[User]) -> Selectio
             .and_then(|&(value, _)| range_period(value, today).map(|p| (Some(value), p)))
             .unwrap_or((Some("month"), Period::month(today))),
     };
-    let area = match query.get("area") {
-        Some("inside") => Some(RoomArea::Inside),
-        Some("common") => Some(RoomArea::Common),
-        _ => None,
-    };
+    let area = AREAS
+        .iter()
+        .find(|(value, ..)| query.get("area") == Some(*value))
+        .and_then(|&(_, area, _)| area);
     let person = query
         .get("by")
         .and_then(|value| value.parse().ok())
@@ -125,13 +132,6 @@ pub(crate) fn read(query: &Pairs, today: NaiveDate, people: &[User]) -> Selectio
     }
 }
 
-/// A radio button with a text value.
-pub(crate) struct Pick {
-    pub(crate) value: &'static str,
-    pub(crate) label: String,
-    pub(crate) checked: bool,
-}
-
 /// A person the graphs can be narrowed to.
 pub(crate) struct PersonOption {
     pub(crate) value: i64,
@@ -144,15 +144,15 @@ pub(crate) struct PersonOption {
 pub(crate) struct FiltersView {
     /// "This month · Bedroom · daniele · 22–06 · level 5+".
     pub(crate) summary: String,
-    pub(crate) ranges: Vec<Pick>,
+    pub(crate) ranges: Vec<Choice<&'static str>>,
     /// The typed dates, empty while a quick pick is chosen.
     pub(crate) from: String,
     pub(crate) to: String,
-    pub(crate) areas: Vec<Pick>,
+    pub(crate) areas: Vec<Choice<&'static str>>,
     pub(crate) rooms: Vec<Choice>,
     /// `None` for guests, who see only their own data.
     pub(crate) people: Option<Vec<PersonOption>>,
-    pub(crate) times: Vec<Pick>,
+    pub(crate) times: Vec<Choice<&'static str>>,
     pub(crate) min_level: u8,
     /// What the minimum level reads as: "any" for 0, else "5+".
     pub(crate) min_label: String,
@@ -191,10 +191,7 @@ pub(crate) fn view(
         }
     };
     let mut summary = vec![match selection.range {
-        Some(range) => tr.t(RANGES
-            .iter()
-            .find(|(value, _)| *value == range)
-            .map_or("", |r| r.1)),
+        Some(range) => tr.t(key_of(&RANGES, range)),
         None => format!(
             "{}–{}",
             time::date(tr.0, period.first_day()),
@@ -207,20 +204,15 @@ pub(crate) fn view(
         .map(|&id| labels::room_by_id(tr, rooms, id))
         .filter(|name| !name.is_empty())
         .collect();
-    let area = match filter.area {
-        Some(RoomArea::Inside) => "inside",
-        Some(RoomArea::Common) => "common",
-        None => "all",
-    };
+    let (area_value, _, area_key) = AREAS
+        .iter()
+        .copied()
+        .find(|&(_, area, _)| area == filter.area)
+        .expect("AREAS lists every area and no area");
     if !room_names.is_empty() {
         summary.push(room_names.join(", "));
     } else if filter.area.is_some() {
-        summary.push(
-            tr.t(AREAS
-                .iter()
-                .find(|(value, _)| *value == area)
-                .map_or("", |a| a.1)),
-        );
+        summary.push(tr.t(area_key));
     }
     if let Some(person) = filter
         .person
@@ -241,7 +233,7 @@ pub(crate) fn view(
         summary: summary.join(" · "),
         ranges: RANGES
             .iter()
-            .map(|&(value, key)| Pick {
+            .map(|&(value, key)| Choice {
                 value,
                 label: tr.t(key),
                 checked: selection.range == Some(value),
@@ -251,10 +243,10 @@ pub(crate) fn view(
         to: date_value(period.last_day()),
         areas: AREAS
             .iter()
-            .map(|&(value, key)| Pick {
+            .map(|&(value, _, key)| Choice {
                 value,
                 label: tr.t(key),
-                checked: value == area,
+                checked: value == area_value,
             })
             .collect(),
         rooms: rooms
@@ -277,12 +269,12 @@ pub(crate) fn view(
                 })
                 .collect()
         }),
-        times: std::iter::once(Pick {
+        times: std::iter::once(Choice {
             value: "",
             label: tr.t("graphs-time-any"),
             checked: filter.day_part.is_none(),
         })
-        .chain(DayPart::ALL.into_iter().map(|part| Pick {
+        .chain(DayPart::ALL.into_iter().map(|part| Choice {
             value: day_part_value(part),
             label: format!("{} {}", tr.t(day_part_key(part)), hours(part)),
             checked: filter.day_part == Some(part),
@@ -299,8 +291,8 @@ pub(crate) fn view(
 pub(crate) fn keys() -> Vec<&'static str> {
     RANGES
         .iter()
-        .chain(&AREAS)
         .map(|&(_, key)| key)
+        .chain(AREAS.iter().map(|&(_, _, key)| key))
         .chain(DayPart::ALL.into_iter().map(day_part_key))
         .collect()
 }

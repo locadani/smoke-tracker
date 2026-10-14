@@ -10,7 +10,7 @@
 </nav>
 {% for day in days %}
 <section class="stack">
-  <h2 class="day">{{ day.date }}</h2>
+  <h2 class="overline">{{ day.date }}</h2>
   <div class="card rows">
     {% for event in day.events %}
     {% call c::row("/events/{}"|format(event.id), event.span, event.detail) %}<span class="badge" data-tone="warn">{{ event.badge }}</span>{% endcall %}

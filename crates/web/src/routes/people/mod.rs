@@ -33,12 +33,13 @@ pub(crate) struct PersonRow {
     /// The avatar's letter.
     pub(crate) initial: String,
     pub(crate) role: &'static str,
-    /// The role tag's colour: residents green, guests amber, viewers grey.
-    pub(crate) tone: &'static str,
-    /// "until 22/01/2026 19:05", "expired 15/01/2026 20:00" or "no end date".
+    /// The role tag's colour: guests amber, viewers grey; residents keep the default.
+    pub(crate) tone: Option<&'static str>,
+    /// "until 22/01/2026 19:05", "expired 15/01/2026 20:00" or "no end date", then "· setup
+    /// pending" while the person has not chosen a password yet.
     pub(crate) status: String,
-    /// Invited but has not chosen a password yet.
-    pub(crate) pending_setup: bool,
+    /// The button that issues a link: a new setup link, or a password reset.
+    pub(crate) link_label: String,
     pub(crate) can_expire: bool,
     /// The reactivation form, for expired accounts.
     pub(crate) reactivate: Option<ExpiryFields>,
@@ -54,11 +55,11 @@ struct PeoplePage {
     people: Vec<PersonRow>,
 }
 
-fn role_tone(role: Role) -> &'static str {
+fn role_tone(role: Role) -> Option<&'static str> {
     match role {
-        Role::Resident => "accent",
-        Role::Guest => "warn",
-        Role::Viewer => "muted",
+        Role::Resident => None,
+        Role::Guest => Some("warn"),
+        Role::Viewer => Some("muted"),
     }
 }
 
@@ -128,14 +129,25 @@ async fn people_page<S: Store>(
                 .filter(|(id, _)| *id == person.id)
                 .map(|(_, typed)| typed.clone())
                 .unwrap_or_default();
+            let pending_setup = person.password_hash.is_none();
+            let mut status = status(tr, person, now, tz);
+            if pending_setup {
+                status.push_str(" · ");
+                status.push_str(&tr.t("people-status-setup"));
+            }
+            let link_label = if pending_setup {
+                tr.t("people-new-setup-link")
+            } else {
+                tr.t("people-reset-password")
+            };
             PersonRow {
                 id: person.id.0,
                 username: person.username.to_string(),
                 initial: initial(person.username.as_str()),
                 role: role_key(person.role),
                 tone: role_tone(person.role),
-                status: status(tr, person, now, tz),
-                pending_setup: person.password_hash.is_none(),
+                status,
+                link_label,
                 can_expire: person.role != Role::Resident && !expired,
                 reactivate: expired
                     .then(|| expiry::fields(tr, person.role, "", &typed))

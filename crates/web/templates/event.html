@@ -17,7 +17,7 @@
     {% if let Some(report) = gap.movable %}
     <form method="post" action="/reports/{{ report }}/move">
       <input type="hidden" name="target" value="new">
-      <button type="submit" class="button">{{ tr.t1("event-gap-move", "time", entry.at) }}</button>
+      <button type="submit" class="button" data-variant="warn">{{ tr.t1("event-gap-move", "time", entry.at) }}</button>
     </form>
     {% endif %}
   </li>

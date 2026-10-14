@@ -66,9 +66,9 @@ impl Draft {
     }
 }
 
-/// A radio button, chip or checkbox.
-pub(crate) struct Choice {
-    pub(crate) value: i64,
+/// A radio button, chip or checkbox; `value` is an id or a word of the address.
+pub(crate) struct Choice<V = i64> {
+    pub(crate) value: V,
     pub(crate) label: String,
     pub(crate) checked: bool,
 }
@@ -87,9 +87,48 @@ impl RoomChoice {
     }
 }
 
+/// The translated headings and hints of the shared report fields, so the two forms and the
+/// rating sheet read them from one place.
+pub(crate) struct FieldTexts {
+    pub(crate) rooms: String,
+    pub(crate) how_to_rate: String,
+    pub(crate) inside: String,
+    pub(crate) common: String,
+    pub(crate) level_hint: String,
+    pub(crate) symptoms: String,
+    pub(crate) note: String,
+    pub(crate) optional: String,
+    pub(crate) add: String,
+    pub(crate) rating_title: String,
+    pub(crate) close: String,
+    pub(crate) rating_tip: String,
+    pub(crate) full_guide: String,
+}
+
+impl FieldTexts {
+    fn new(tr: Tr) -> Self {
+        Self {
+            rooms: tr.t("log-rooms"),
+            how_to_rate: tr.t("log-how-to-rate"),
+            inside: tr.t("log-inside"),
+            common: tr.t("log-common"),
+            level_hint: tr.t("log-level-hint"),
+            symptoms: tr.t("log-symptoms"),
+            note: tr.t("log-note"),
+            optional: tr.t("optional"),
+            add: tr.t("action-add"),
+            rating_title: tr.t("rating-title"),
+            close: tr.t("close"),
+            rating_tip: tr.t("rating-tip"),
+            full_guide: tr.t("rating-full-guide"),
+        }
+    }
+}
+
 /// The room, level and symptom fields shared by the Log form and the correction form
 /// (`templates/report_fields.html`).
 pub(crate) struct Fields {
+    pub(crate) texts: FieldTexts,
     pub(crate) inside: Vec<RoomChoice>,
     pub(crate) common: Vec<RoomChoice>,
     pub(crate) symptoms: Vec<Choice>,
@@ -129,6 +168,7 @@ pub(crate) fn fields(
             .collect()
     };
     Fields {
+        texts: FieldTexts::new(tr),
         inside: room_choices(RoomArea::Inside),
         common: room_choices(RoomArea::Common),
         symptoms: symptoms
@@ -175,16 +215,14 @@ fn banner(
     now: DateTime<Utc>,
     tz: Tz,
 ) -> Banner {
-    let mut detail = tr.n("summary-reports", &visible.len());
-    if let Some(top) = peak(visible.iter().copied()) {
+    let top_room = peak(visible.iter().copied()).map(|top| {
         let room = labels::room_by_id(tr, rooms, top.room);
         let level = top.level.get().to_string();
-        detail.push_str(" · ");
-        detail.push_str(&tr.t2("event-banner-peak", ("level", &level), ("room", &room)));
-    }
+        tr.t2("event-banner-peak", ("level", &level), ("room", &room))
+    });
     Banner {
         since: time::since(tr.0, event.opened_at, now, tz),
-        detail,
+        detail: labels::reports_with(tr, visible.len(), top_room),
     }
 }
 
