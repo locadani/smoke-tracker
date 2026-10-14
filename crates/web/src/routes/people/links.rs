@@ -16,7 +16,7 @@ use smoke_domain::types::{InvitePurpose, Role, TokenHash, UserId, Username};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::people::expiry::{self, ExpiryDraft, ExpiryFields};
 use crate::routes::people::{require_manager, role_key};
@@ -85,7 +85,7 @@ fn invite_page(
         status,
         &InvitePage {
             tr,
-            signed_in: SignedIn::of(user, now),
+            signed_in: SignedIn::of(user, now, Tab::People),
             error,
             username: draft.username,
             roles: ROLES
@@ -140,7 +140,7 @@ fn link_page<S>(
         StatusCode::OK,
         &LinkPage {
             tr,
-            signed_in: SignedIn::of(user, now),
+            signed_in: SignedIn::of(user, now, Tab::People),
             username: person.username.to_string(),
             setup: link.purpose == InvitePurpose::Setup,
             qr: qr::svg(&url),

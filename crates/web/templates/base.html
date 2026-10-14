@@ -1,3 +1,4 @@
+{% import "components.html" as c %}
 <!doctype html>
 <html lang="{{ tr.lang() }}">
 <head>
@@ -15,33 +16,23 @@
   {% block scripts %}{% endblock %}
 </head>
 <body>
-  <header class="bar">
+  {% block header %}
+  <header class="appbar">
     <span class="brand">{{ tr.t("app-name") }}</span>
-    <a href="/install" class="install" data-install>{{ tr.t("install-app") }}</a>
     {% if let Some(me) = signed_in %}
-    <nav class="menu">
-      <a href="/">{{ tr.t("nav-log") }}</a>
-      <a href="/events">{{ tr.t("nav-events") }}</a>
-      <a href="/graphs">{{ tr.t("nav-graphs") }}</a>
-      {% if me.people %}<a href="/people">{{ tr.t("nav-people") }}</a>{% endif %}
-      <a href="/settings">{{ tr.t("nav-settings") }}</a>
-    </nav>
-    <form method="post" action="/logout" class="who">
-      <span>{{ tr.t1("signed-in-as", "username", me.username) }}</span>
-      <button type="submit" class="link">{{ tr.t("logout") }}</button>
-    </form>
+    {% call c::account_menu(me.initial, tr.t1("account-menu", "username", me.username), tr.t1("signed-in-as", "username", me.username), tr.t("logout")) %}{% endcall %}
     {% endif %}
   </header>
+  {% endblock %}
   <main>
     {% block content %}{% endblock %}
   </main>
-  <footer>
-    <form method="post" action="/lang" class="languages">
-      <span>{{ tr.t("language") }}:</span>
-      <button type="submit" name="lang" value="en" lang="en" class="link">English</button>
-      <button type="submit" name="lang" value="it" lang="it" class="link">Italiano</button>
-      <button type="submit" name="lang" value="tr" lang="tr" class="link">Türkçe</button>
-    </form>
+  {% if let Some(me) = signed_in %}
+  {% call c::tabbar(me.tabs(tr), tr.t("nav-label")) %}{% endcall %}
+  {% else %}
+  <footer class="footer">
+    {% call c::languages(tr.languages(), tr.t("language"), "") %}{% endcall %}
   </footer>
+  {% endif %}
 </body>
 </html>

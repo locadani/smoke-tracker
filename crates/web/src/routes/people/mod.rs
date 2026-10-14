@@ -20,7 +20,7 @@ use smoke_domain::types::{Role, UserId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::people::expiry::{ExpiryDraft, ExpiryFields};
 use crate::routes::people_refusal;
@@ -135,7 +135,7 @@ async fn people_page<S: Store>(
         status_code,
         &PeoplePage {
             tr,
-            signed_in: SignedIn::of(user, now),
+            signed_in: SignedIn::of(user, now, Tab::People),
             saved,
             error,
             people,

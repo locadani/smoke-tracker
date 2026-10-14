@@ -67,3 +67,26 @@
   {% endfor %}
 </form>
 {% endmacro %}
+
+{# The avatar in the header and its menu: who is signed in, and Sign out. A <details>, so it
+   opens without JavaScript; js/menu.js closes it on an outside tap or Escape. #}
+{% macro account_menu(initial, label, signed_in, logout) %}
+<details class="menu" data-menu>
+  <summary class="avatar" aria-label="{{ label }}">{{ initial }}</summary>
+  <div class="menu-panel">
+    <p>{{ signed_in }}</p>
+    <form method="post" action="/logout">
+      <button type="submit" class="menu-item">{% call icon("logout") %}{% endcall %}{{ logout }}</button>
+    </form>
+  </div>
+</details>
+{% endmacro %}
+
+{# The bottom tab bar; the current page's link is marked aria-current. #}
+{% macro tabbar(tabs, label) %}
+<nav class="tabbar" aria-label="{{ label }}">
+  {% for tab in tabs %}
+  <a href="{{ tab.href }}"{% if tab.current %} aria-current="page"{% endif %}>{% call icon(tab.icon) %}{% endcall %}<span>{{ tab.label }}</span></a>
+  {% endfor %}
+</nav>
+{% endmacro %}

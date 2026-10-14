@@ -11,6 +11,7 @@ login-locked = Troppi tentativi. Riprova tra 15 minuti.
 login-expired = Questo account è scaduto. Chiedi a un residente di riattivarlo.
 signed-in-as = Accesso effettuato come { $username }.
 logout = Esci
+account-menu = Account: { $username }
 
 log-title = Registra un odore
 event-none = Nessun evento di fumo in corso.
@@ -139,6 +140,7 @@ nav-events = Eventi
 nav-graphs = Grafici
 nav-people = Persone
 nav-settings = Impostazioni
+nav-label = Menu principale
 
 events-title = Eventi
 events-none = Nessun evento questo mese.
@@ -262,6 +264,7 @@ expiry-date = alla fine di questo giorno:
 expiry-never = mai
 
 install-app = Installa l'app
+install-card-hint = Aprila dalla schermata Home, come ogni app.
 install-title = Aggiungi Smoke Tracker alla schermata Home
 install-welcome = Il tuo account è pronto.
 install-intro = Si aprirà come un'app, direttamente sulla schermata Registra: registrare richiede pochi secondi.

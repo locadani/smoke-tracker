@@ -11,6 +11,7 @@ login-locked = Çok fazla deneme. 15 dakika sonra tekrar deneyin.
 login-expired = Bu hesabın süresi doldu. Yeniden etkinleştirmesi için bir ev sakinine başvurun.
 signed-in-as = { $username } olarak giriş yapıldı.
 logout = Çıkış yap
+account-menu = Hesap: { $username }
 
 log-title = Koku kaydet
 event-none = Devam eden bir koku olayı yok.
@@ -139,6 +140,7 @@ nav-events = Olaylar
 nav-graphs = Grafikler
 nav-people = Kişiler
 nav-settings = Ayarlar
+nav-label = Ana menü
 
 events-title = Olaylar
 events-none = Bu ay olay yok.
@@ -262,6 +264,7 @@ expiry-date = bu günün sonunda:
 expiry-never = hiçbir zaman
 
 install-app = Uygulamayı yükle
+install-card-hint = Her uygulama gibi ana ekrandan açın.
 install-title = Smoke Tracker'ı ana ekranınıza ekleyin
 install-welcome = Hesabınız hazır.
 install-intro = Böylece doğrudan Kaydet ekranında bir uygulama gibi açılır ve kayıt birkaç saniye sürer.

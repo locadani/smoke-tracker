@@ -17,7 +17,7 @@ use smoke_domain::types::{EventId, ReportId, SymptomId, UserId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::entries::{Smell, joinable_events, read_time, read_values};
 use crate::routes::guide::{GuideRow, levels};
@@ -252,7 +252,7 @@ async fn report_page<S: Store>(
     let intensity = report.values.intensity().get();
     Ok(ReportPage {
         tr,
-        signed_in: SignedIn::of(user, now),
+        signed_in: SignedIn::of(user, now, Tab::Events),
         id: id.0,
         event: event.map(|event| EventLink {
             id: event.id.0,
@@ -333,7 +333,7 @@ async fn correct_page<S: Store>(
     let keep = (room_ids.as_slice(), report.values.symptoms());
     Ok(CorrectPage {
         tr,
-        signed_in: SignedIn::of(user, state.clock.now()),
+        signed_in: SignedIn::of(user, state.clock.now(), Tab::Events),
         id: report.id.0,
         levels: levels(tr),
         check: report.event_id.is_none(),

@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::clock::Clock;
 use smoke_domain::repos::UserRepo;
@@ -16,7 +17,10 @@ async fn only_residents_reach_people_and_see_it_in_the_menu() {
     app.add_user("lawyer", Role::Viewer, Locale::En).await;
     let resident = app.sign_in("daniele").await;
     let home = text(app.send(get_with("/", &resident)).await).await;
-    assert!(home.contains(r#"<a href="/people">People</a>"#), "{home}");
+    assert_eq!(
+        Page::parse(&home).text(r#"nav.tabbar a[href="/people"]"#),
+        "People"
+    );
     for name in ["guest", "lawyer"] {
         let cookie = app.sign_in(name).await;
         let home = text(app.send(get_with("/", &cookie)).await).await;

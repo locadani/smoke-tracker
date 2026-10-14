@@ -92,7 +92,10 @@ async fn household() -> (TestApp, String, String) {
 async fn residents_see_one_line_per_person_and_pm25_on_its_own_axis() {
     let (app, resident, _) = household().await;
     let html = text(app.send(get_with("/graphs?month=2026-01", &resident)).await).await;
-    assert!(html.contains(r#"<a href="/graphs">Graphs</a>"#), "{html}");
+    assert!(
+        html.contains(r#"<a href="/graphs" aria-current="page">"#),
+        "{html}"
+    );
     assert!(html.contains("<strong>01/2026</strong>"), "{html}");
     assert!(!html.contains("only your own"), "{html}");
     let intensity = &charts(&html)[0];

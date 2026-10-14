@@ -17,7 +17,7 @@
   <p class="hint">{{ tr.t("accept-password-hint") }}</p>
   <fieldset class="choices">
     <legend>{{ tr.t("language") }}</legend>
-    {% for language in languages %}
+    {% for language in tr.languages() %}
     <label class="chip"><input type="radio" name="lang" value="{{ language.value }}"{% if language.current %} checked{% endif %}><span lang="{{ language.value }}">{{ language.name }}</span></label>
     {% endfor %}
   </fieldset>

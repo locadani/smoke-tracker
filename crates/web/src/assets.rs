@@ -52,6 +52,10 @@ const STYLESHEET: (&str, &[&str]) = stylesheet!(
     "55-notice.css",
     "56-badge.css",
     "57-row.css",
+    "60-appbar.css",
+    "61-menu.css",
+    "62-tabbar.css",
+    "63-install.css",
     "90-utilities.css",
 );
 
@@ -74,6 +78,7 @@ const ASSETS: &[Asset] = &[
     asset!("js/dialog.js", "text/javascript; charset=utf-8"),
     asset!("js/graphs.js", "text/javascript; charset=utf-8"),
     asset!("js/install.js", "text/javascript; charset=utf-8"),
+    asset!("js/menu.js", "text/javascript; charset=utf-8"),
     asset!("js/service-worker.js", "text/javascript; charset=utf-8"),
     asset!("manifest.webmanifest", "application/manifest+json"),
     asset!("sw.js", "text/javascript; charset=utf-8"),

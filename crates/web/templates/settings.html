@@ -1,19 +1,20 @@
 {% extends "base.html" %}
+{% import "components.html" as c %}
 {% block title %}{{ tr.t("settings-title") }}{% endblock %}
 {% block content %}
 <h1>{{ tr.t("settings-title") }}</h1>
 {% if let Some(saved) = notices.saved %}
 <p class="notice" role="status">{{ tr.t(saved) }}</p>
 {% endif %}
-<section>
-  <h2>{{ tr.t("language") }}</h2>
-  <form method="post" action="/lang" class="choices">
-    <input type="hidden" name="return_to" value="settings">
-    {% for language in languages %}
-    <button type="submit" name="lang" value="{{ language.value }}" lang="{{ language.value }}"{% if language.current %} class="current" aria-pressed="true"{% else %} class="secondary" aria-pressed="false"{% endif %}>{{ language.name }}</button>
-    {% endfor %}
-  </form>
+<section class="card install">
+  <div class="split">
+    <span class="row-text"><strong>{{ tr.t("install-app") }}</strong><span>{{ tr.t("install-card-hint") }}</span></span>
+    <a href="/install" class="button" data-install>{{ tr.t("install-button") }}</a>
+  </div>
 </section>
+{% call c::card(tr.t("language")) %}
+{% call c::languages(tr.languages(), tr.t("language"), "settings") %}{% endcall %}
+{% endcall %}
 <section>
   <h2>{{ tr.t("settings-password") }}</h2>
   {% if let Some(error) = notices.password_error %}

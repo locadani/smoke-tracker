@@ -21,7 +21,7 @@ use smoke_domain::types::{EventId, UserId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::labels;
 use crate::routes::entries::read_time;
@@ -182,7 +182,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         StatusCode::OK,
         &ListPage {
             tr,
-            signed_in: SignedIn::of(&user, now),
+            signed_in: SignedIn::of(&user, now, Tab::Events),
             month: first_of_month.format("%m/%Y").to_string(),
             previous: month_param(first_of_month - Months::new(1)),
             next: month_param(first_of_month + Months::new(1)),
@@ -341,7 +341,7 @@ async fn detail<S: Store>(
     };
     Ok(DetailPage {
         tr,
-        signed_in: SignedIn::of(user, now),
+        signed_in: SignedIn::of(user, now, Tab::Events),
         id: id.0,
         date: time::date(tr.0, state.config.schedule.local_date(event.opened_at)),
         span: span(tr, &event, tz),

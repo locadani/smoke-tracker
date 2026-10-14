@@ -1,0 +1,8 @@
+/* .install: the Install card of Settings, pointless once the app runs installed. */
+@layer components {
+  @media (display-mode: standalone) {
+    .install {
+      display: none;
+    }
+  }
+}

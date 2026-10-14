@@ -22,7 +22,7 @@ use smoke_domain::types::{EventId, Level, Pm25, Role, RoomId, SymptomId};
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::log::{Draft, log_page, offered};
 use crate::routes::{notices, refusal};
@@ -435,7 +435,7 @@ async fn ask<S: Store>(
         StatusCode::OK,
         &PromptPage {
             tr,
-            signed_in: SignedIn::of(user, now),
+            signed_in: SignedIn::of(user, now, Tab::Log),
             title,
             detail,
             hidden: form.without(&["choice", "asked"]),

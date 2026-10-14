@@ -3,11 +3,12 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::types::{Locale, Role};
 
 #[tokio::test]
-async fn every_page_links_the_manifest_and_the_install_page() {
+async fn every_page_links_the_manifest() {
     let app = TestApp::new().await;
     for html in [
         text(app.send(get("/login")).await).await,
@@ -21,16 +22,34 @@ async fn every_page_links_the_manifest_and_the_install_page() {
             html.contains(r#"<link rel="apple-touch-icon" href="/static/icon-180.png">"#),
             "{html}"
         );
-        assert!(
-            html.contains(r#"<a href="/install" class="install" data-install>Install app</a>"#),
-            "{html}"
-        );
     }
     let manifest = app.send(get("/static/manifest.webmanifest")).await;
     assert_eq!(
         manifest.headers()["content-type"],
         "application/manifest+json"
     );
+}
+
+#[tokio::test]
+async fn settings_offers_the_install_card_instead_of_the_header() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let home = Page::parse(&text(app.send(get_with("/", &cookie)).await).await);
+    assert!(
+        !home.exists("[data-install]"),
+        "no install link outside Settings"
+    );
+    let settings = Page::parse(&text(app.send(get_with("/settings", &cookie)).await).await);
+    assert_eq!(settings.text(".install strong"), "Install app");
+    assert_eq!(
+        settings
+            .attr(".install a.button[data-install]", "href")
+            .as_deref(),
+        Some("/install")
+    );
+    let first_card = settings.attrs("main > section", "class");
+    assert_eq!(first_card.first().map(String::as_str), Some("card install"));
 }
 
 #[tokio::test]
@@ -85,7 +104,7 @@ async fn the_install_page_offers_the_button_and_the_iphone_steps() {
     let html = text(app.send(get_with("/install?welcome", &cookie)).await).await;
     assert!(html.contains("Hesabınız hazır."), "{html}");
     assert!(
-        html.contains(r#"<a href="/settings">"#),
+        Page::parse(&html).exists(r#"nav.tabbar a[href="/settings"][aria-current=page]"#),
         "signed in: {html}"
     );
 }

@@ -10,7 +10,7 @@ use smoke_domain::repos::Store;
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::state::AppState;
 
@@ -40,7 +40,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
         StatusCode::OK,
         &InstallPage {
             tr,
-            signed_in: user.and_then(|CurrentUser(user)| SignedIn::of(&user, now)),
+            signed_in: user.and_then(|CurrentUser(user)| SignedIn::of(&user, now, Tab::Settings)),
             welcome: query.welcome.is_some(),
         },
     )

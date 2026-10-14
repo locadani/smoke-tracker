@@ -3,4 +3,5 @@
 import "./dialog.js";
 import "./date-picks.js";
 import "./install.js";
+import "./menu.js";
 import "./service-worker.js";

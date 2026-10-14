@@ -25,7 +25,7 @@ use smoke_domain::types::{Locale, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::header::SignedIn;
+use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::labels;
 use crate::state::AppState;
@@ -355,7 +355,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
         StatusCode::OK,
         &GraphsPage {
             tr,
-            signed_in: SignedIn::of(&user, now),
+            signed_in: SignedIn::of(&user, now, Tab::Graphs),
             label,
             previous: address(period.previous()),
             next: address(period.next()),

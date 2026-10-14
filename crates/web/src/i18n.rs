@@ -31,6 +31,21 @@ fn language(locale: Locale) -> &'static LanguageIdentifier {
     }
 }
 
+/// The languages, each named in itself.
+const LANGUAGES: [(Locale, &str); 3] = [
+    (Locale::En, "English"),
+    (Locale::It, "Italiano"),
+    (Locale::Tr, "Türkçe"),
+];
+
+/// A language as the language buttons and radios offer it.
+pub(crate) struct LanguageChoice {
+    pub(crate) value: &'static str,
+    pub(crate) name: &'static str,
+    /// The language the page is in.
+    pub(crate) current: bool,
+}
+
 /// Translates for one language. Templates call `tr.t("app-name")`; a key missing from a language
 /// falls back to English.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +54,18 @@ pub(crate) struct Tr(pub Locale);
 impl Tr {
     pub(crate) fn lang(&self) -> &'static str {
         self.0.as_str()
+    }
+
+    /// Every language, the page's own marked current.
+    pub(crate) fn languages(&self) -> Vec<LanguageChoice> {
+        LANGUAGES
+            .iter()
+            .map(|&(locale, name)| LanguageChoice {
+                value: locale.as_str(),
+                name,
+                current: locale == self.0,
+            })
+            .collect()
     }
 
     pub(crate) fn t(&self, key: &str) -> String {
@@ -128,7 +155,7 @@ mod tests {
     use super::*;
     use crate::routes::login::Notice;
     use crate::routes::{self, entries, graphs, guide, lists, people, reports, settings};
-    use crate::{error, labels};
+    use crate::{error, header, labels};
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
 
@@ -212,6 +239,7 @@ mod tests {
             "the source scan found nothing"
         );
         used.extend(error::KEYS.map(str::to_owned));
+        used.extend(header::keys().into_iter().map(str::to_owned));
         used.extend(Notice::ALL.map(|notice| notice.key().to_owned()));
         used.extend(guide::keys());
         used.extend(labels::keys().into_iter().map(str::to_owned));

@@ -11,6 +11,7 @@ login-locked = Too many attempts. Try again in 15 minutes.
 login-expired = This account has expired. Ask a resident to reactivate it.
 signed-in-as = Signed in as { $username }.
 logout = Sign out
+account-menu = Account: { $username }
 
 log-title = Log a smell
 event-none = No smell event in progress.
@@ -139,6 +140,7 @@ nav-events = Events
 nav-graphs = Graphs
 nav-people = People
 nav-settings = Settings
+nav-label = Main menu
 
 events-title = Events
 events-none = No events this month.
@@ -262,6 +264,7 @@ expiry-date = at the end of this day:
 expiry-never = never
 
 install-app = Install app
+install-card-hint = Open it from your home screen, like any app.
 install-title = Add Smoke Tracker to your home screen
 install-welcome = Your account is ready.
 install-intro = It then opens like an app, straight on the Log screen, so logging takes a few seconds.
