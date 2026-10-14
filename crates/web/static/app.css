@@ -443,3 +443,7 @@ table.heatmap tbody th {
   background: color-mix(in srgb, var(--accent) 100%, transparent);
   color: #fff;
 }
+
+.rules li {
+  margin: 0.5rem 0;
+}

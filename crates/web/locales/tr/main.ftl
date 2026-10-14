@@ -116,6 +116,24 @@ intensity-9-desc = Sigara içen birinin yanında durmak gibi.
 intensity-10-name = Dayanılmaz
 intensity-10-desc = Dumanla dolu bir oda gibi. Çıkmak zorundasın.
 
+guide-log-title = Nasıl kaydedilir
+guide-log-happened = Ne oldu
+guide-log-action = Doğru adım
+guide-log-mistake = Bir hata yaptım (yanlış sayı, unutulan oda, yanlış belirti)
+guide-log-mistake-action = O bildirimi düzelt (düzenleme; geçmişte kayıtlı kalır)
+guide-log-changed = Durum değişti (daha güçlü/daha zayıf, bir odada başladı ya da bitti, belirtiler başladı)
+guide-log-changed-action = Aynı olaya yeni bir bildirim ekle
+guide-log-gone = Koku tamamen geçti ve daha sonra geri geldi
+guide-log-gone-action = Yeni bir olay başlat
+guide-log-rules = Temel kurallar
+guide-log-rule-1 = Bir değişikliği göstermek için asla düzenleme yapma; bildirim ekle. Düzenlemek geçmişi değiştirir; eklemek şimdiyi kaydeder.
+guide-log-rule-2 = Bir odanın seviyesi 2 veya daha fazla değiştiğinde, bir odada koku başladığında ya da geçtiğinde (0 olarak kaydet) veya yeni bir belirti ortaya çıktığında bildirim ekle. Her bildirim yalnızca kontrol ettiğin odaları listeler: eklemediğin bir oda "kontrol edilmedi" demektir, asla "temiz" değil.
+guide-log-rule-3 = Aynı olay olup olmadığından emin değil misin? Koku bir noktada tamamen geçtiyse, bu yeni bir olaydır.
+guide-log-rule-4 = Koku geçince olayı kapat. Unutman sorun değil ({ $hour } otomatik kapanış), ama kapatmak süreleri doğru tutar.
+guide-log-rule-5 = Koku yok mu? Koku yok olarak kaydet. Kontrol ettiğinin kaydı kalır.
+guide-log-sensitivity-title = Farklı hassasiyetler
+guide-log-sensitivity = Herkes kendi 1–10 ölçeğine göre puanlar. Farklı değerler içeren çakışan bildirimler olduğu gibi saklanır. Grafikler kişi başına bir çizgi gösterir; PM2.5 ölçümü nesnel referanstır.
+
 nav-log = Kaydet
 nav-events = Olaylar
 nav-graphs = Grafikler

@@ -46,6 +46,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     let signed_in = Router::new()
         .route("/", get(routes::log::show::<S>))
         .route("/guide/rating", get(routes::guide::rating::<S>))
+        .route("/guide/logging", get(routes::guide::logging::<S>))
         .route("/log", post(routes::entries::submit::<S>))
         .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
         .route("/events", get(routes::events::list::<S>))
