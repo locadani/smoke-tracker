@@ -2,8 +2,8 @@
 
 > Written against `main` at commit `5b52604` (milestone 6 merged). Code is cited as
 > `path::Symbol`, never by line number, so the note survives edits: if a symbol has been renamed,
-> search the file for the old name. Exercises for this note: 14 (expiry picks), 15 (assets, caching and an SVG drawing). Reading time: about
-> 45 minutes, plus the exercises.
+> search the file for the old name. Exercises for this note: 14 (expiry picks), 15 (assets,
+> caching and an SVG drawing). Reading time: about 45 minutes, plus the exercises.
 
 ## What you will learn
 
@@ -48,12 +48,15 @@ all together or not at all), and writes. When something goes wrong the function 
   an account with a link, or a new link for an existing one. Both start with a permission check.
 - `crates/domain/src/people.rs::usable_invite` and `crates/domain/src/people.rs::accept` look up
   a link and use it up.
-- `crates/domain/src/people.rs::expire`, `crates/domain/src/people.rs::reactivate` and
-  `crates/domain/src/people.rs::change_password` follow the same shape. All are generic over the
-  write-transaction traits (`T: UserWrites + InviteWrites`), like the logbook in note 04, and the
+- `crates/domain/src/people.rs::expire` and `crates/domain/src/people.rs::reactivate` also
+  check the manager permission first. `crates/domain/src/people.rs::change_password` is
+  different: it only checks that the actor can sign in. All of them are generic over the
+  write-transaction traits they need, like the logbook in note 04: `invite`, `issue_link` and
+  `accept` take `T: UserWrites + InviteWrites`, the other three only `T: UserWrites`. The
   permission check uses data read inside the transaction (#113).
 - `crates/domain/src/people.rs::PeopleError` has a hand-written `From<StoreError>`. Read the
-  arms: two storage conflicts mean something to the user, everything else passes through.
+  arms: two storage conflicts and invalid input mean something to the user, everything else passes
+  through.
 - `crates/web/src/routes/mod.rs::people_refusal` turns what is left into a 403, a 404 or an
   internal error. `crates/web/src/routes/people/mod.rs::require_manager` answers 403 to anyone
   but a resident, and the menu hides the link (#118).
@@ -354,8 +357,8 @@ and shorten the life of the secret so a leak matters less.
 
 **Why this way.** The mitigations are chosen by how long the secret lives, and the leaks that
 stay are written down. Alternative: put the token in a URL fragment (the part after `#`, which the
-browser never sends) and read it with script. It lost because the policy discourages extra
-script, for little gain. Alternative: a proxy that strips paths from the platform log. It lost
+browser never sends) and read it with script. It lost because it adds script to a page that
+needs none, for little gain. Alternative: a proxy that strips paths from the platform log. It lost
 because it is another moving part to run, for a link that is already short-lived. A fragment
 would be the better choice if the log were readable by people other than the owner.
 
