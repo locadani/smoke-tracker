@@ -8,7 +8,7 @@
 //! stores them in a struct whose fields are private, so every `ReportValues` that exists is
 //! already in canonical form. `sort_unstable_by_key`, `dedup`, `windows(2)`, `Iterator::max`,
 //! `Option::map`, `Option::filter` and `str::trim` are the tools. A `ReportValues` is the only
-//! way to build the data, so the getters can simply return borrowed slices.
+//! way to build the data, so the getters return borrowed slices.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoomLevel {

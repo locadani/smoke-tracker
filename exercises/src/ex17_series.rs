@@ -1,7 +1,7 @@
 //! Exercise 17: turning reports into chart numbers. `BTreeMap`, `or_default`, sorting and
 //! `Option` ordering.
 //!
-//! Practises: `docs/learning/06-graphs.md`, section 3.
+//! Practises: `docs/learning/06-graphs.md`, sections 3 and 4.
 //! Mirrors: `smoke_domain::graphs::{intensity_lines, room_hours, symptom_counts, area_levels,
 //! LevelTally}`.
 //! Run: `cargo test --test ex17_series`

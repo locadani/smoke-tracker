@@ -5,7 +5,7 @@
 //! Run: `cargo test --test ex03_text_enum`
 //!
 //! Hint: the pattern already captures the enum name and the `Variant => "text"` pairs. Inside
-//! the expansion, repeat a piece of code once per pair with `$( ... )+` (or `,` as separator):
+//! the expansion, repeat a piece of code once per pair with `$( ... ),+` (the `,` is the separator):
 //! `match self { $( $name::$variant => $text ),+ }` writes one arm per variant. Replace every
 //! `todo!()` in the expansion; `ALL` lists the variants in declaration order. `stringify!($name)`
 //! turns the enum's name into text.

@@ -24,7 +24,7 @@ impl Pairs {
         todo!()
     }
 
-    /// Every value of `name` parsed as an id, in order; `None` if one of them is not a number.
+    /// Every value of `name`, trimmed and parsed as an id, in order; `None` if one of them is not a number.
     /// A name that never appears gives `Some(vec![])`.
     pub fn ids(&self, name: &str) -> Option<Vec<i64>> {
         todo!()

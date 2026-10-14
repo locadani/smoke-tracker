@@ -6,8 +6,8 @@
 //! Run: `cargo test --test ex10_middleware`
 //!
 //! Hint: a middleware takes the next handler and returns a new handler that may act before and
-//! after calling it. Return `Box::new(move |request| { ... })`: `move` hands the closure its own
-//! copy of `next` (and any flag), and `Box<dyn Fn>` lets every layer have the same type. `Fn`
+//! after calling it. Return `Box::new(move |request| { ... })`: `move` makes the closure take
+//! ownership of `next` (and any flag), and `Box<dyn Fn>` lets every layer have the same type. `Fn`
 //! (not `FnMut`) is enough because the layers keep no state of their own.
 
 use std::any::Any;

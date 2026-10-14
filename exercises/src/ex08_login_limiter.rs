@@ -1,7 +1,8 @@
 //! Exercise 8: a sign-in limiter with a `HashMap`, and the same limiter shared between threads.
 //!
 //! Practises: `docs/learning/03-web-and-auth.md`, section 4.
-//! Mirrors: `smoke_web::auth::limiter::{LoginLimiter, Rule, PER_USERNAME}`.
+//! Mirrors: `smoke_web::auth::limiter::{LoginLimiter, Rule, PER_USERNAME}` (the
+//! `LoginLimiter` is called `Limiter` here, and `SharedLimiter` is its shared wrapper).
 //! Run: `cargo test --test ex08_login_limiter`
 //!
 //! The rule: after `max_failures` attempts for one key within `window` seconds, the key is
