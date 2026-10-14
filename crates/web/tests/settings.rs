@@ -194,12 +194,16 @@ async fn residents_add_rooms_and_symptoms_and_hide_them_from_the_forms() {
     let log = text(app.send(get_with("/", &cookie)).await).await;
     assert!(!log.contains("Balcony"), "{log}");
     let settings = text(app.send(get_with("/settings?saved=lists", &cookie)).await).await;
-    assert!(settings.contains("Lists saved."), "{settings}");
-    assert!(
-        settings.contains("Balcony · Common areas · <em>hidden</em>"),
-        "{settings}"
+    let page = Page::parse(&settings);
+    assert_eq!(page.text(".notice[role=status]"), "Lists saved.");
+    let balcony_row = format!(r#".items form[action="{hide}"]"#);
+    assert_eq!(page.text(&format!("{balcony_row} s")), "Balcony");
+    assert_eq!(
+        page.text(&format!("{balcony_row} .row-text")),
+        "Balcony hidden Common areas"
     );
-    assert!(settings.contains(">Show again</button>"), "{settings}");
+    assert_eq!(page.text(&format!("{balcony_row} button")), "Show again");
+    assert!(page.exists(&format!("{balcony_row} input[name=hidden][value=false]")));
 
     app.send(post_form(&hide, "hidden=false", Some(&cookie)))
         .await;

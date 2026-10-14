@@ -1,5 +1,14 @@
-/* .row: one line of a list card, divided from the next by a hairline. */
+/* .rows: a card of list lines. .row: one line, divided from the next by a hairline. */
 @layer components {
+  .rows {
+    gap: 0;
+    padding-block: var(--space-1);
+  }
+
+  .rows > h2 {
+    padding-block: var(--space-2);
+  }
+
   .row {
     display: flex;
     align-items: center;

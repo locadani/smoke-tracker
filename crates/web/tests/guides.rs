@@ -3,6 +3,7 @@
 mod common;
 
 use axum::http::StatusCode;
+use common::page::Page;
 use common::*;
 use smoke_domain::types::{Locale, Role};
 
@@ -35,13 +36,15 @@ async fn settings_and_the_rating_guide_lead_to_both_guides() {
     let app = TestApp::new().await;
     app.add_user("daniele", Role::Resident, Locale::En).await;
     let cookie = app.sign_in("daniele").await;
-    let settings = text(app.send(get_with("/settings", &cookie)).await).await;
-    for link in [
-        r#"<a href="/guide/rating">How to rate</a>"#,
-        r#"<a href="/guide/logging">How to log</a>"#,
-    ] {
-        assert!(settings.contains(link), "{link}: {settings}");
-    }
+    let settings = Page::parse(&text(app.send(get_with("/settings", &cookie)).await).await);
+    assert_eq!(
+        settings.attrs("section.rows a.row", "href"),
+        ["/guide/rating", "/guide/logging"]
+    );
+    assert_eq!(
+        settings.texts("section.rows a.row"),
+        ["How to rate", "How to log"]
+    );
     let rating = text(app.send(get_with("/guide/rating", &cookie)).await).await;
     assert!(
         rating.contains(r#"<a href="/guide/logging">How to log</a>"#),

@@ -23,8 +23,8 @@ pub(crate) struct ListItem {
     pub(crate) label: String,
     /// Where its Hide / Show button posts.
     pub(crate) action: String,
-    /// The translation key of a room's area; `None` for symptoms.
-    pub(crate) area: Option<&'static str>,
+    /// A room's area; empty for symptoms.
+    pub(crate) detail: String,
     pub(crate) hidden: bool,
 }
 
@@ -50,7 +50,7 @@ pub(crate) async fn view<S: Store>(state: &AppState<S>, tr: Tr) -> Result<ListsV
             .map(|room| ListItem {
                 action: format!("/settings/rooms/{}/hidden", room.id),
                 label: labels::room(tr, room),
-                area: Some(area_key(room.area)),
+                detail: tr.t(area_key(room.area)),
                 hidden: room.hidden_at.is_some(),
             })
             .collect(),
@@ -59,7 +59,7 @@ pub(crate) async fn view<S: Store>(state: &AppState<S>, tr: Tr) -> Result<ListsV
             .map(|symptom| ListItem {
                 action: format!("/settings/symptoms/{}/hidden", symptom.id),
                 label: labels::symptom(tr, symptom),
-                area: None,
+                detail: String::new(),
                 hidden: symptom.hidden_at.is_some(),
             })
             .collect(),
