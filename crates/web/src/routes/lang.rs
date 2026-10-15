@@ -43,9 +43,8 @@ pub(crate) async fn choose<S: Store + Clone + 'static>(
         tx.commit().await?;
     }
     let mut response = Redirect::to(target).into_response();
-    response.headers_mut().append(
-        SET_COOKIE,
-        cookies::lang(locale, state.config.base_url.is_https()),
-    );
+    response
+        .headers_mut()
+        .append(SET_COOKIE, cookies::lang(locale));
     Ok(response)
 }

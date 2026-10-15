@@ -18,36 +18,24 @@ use tower_sessions::session::{Id, Record};
 use tower_sessions::session_store::{self, ExpiredDeletion, SessionStore};
 use tower_sessions::{Expiry, SessionManagerLayer};
 
-use crate::config::BaseUrl;
-
 /// The signed-in user's id, as an `i64`.
 pub(crate) const USER_ID_KEY: &str = "user_id";
 /// When the session's lifetime was last extended, in microseconds since the Unix epoch.
 pub(crate) const RENEWED_AT_KEY: &str = "renewed_at";
-/// Over https the cookie is `__Host-` prefixed: Secure, `Path=/`, no `Domain`.
-pub(crate) const SECURE_COOKIE: &str = "__Host-session";
-/// Over plain http (localhost only) browsers refuse `Secure` cookies.
-pub(crate) const LOCAL_COOKIE: &str = "session";
+/// `__Host-` prefixed, so browsers require Secure, `Path=/` and no `Domain`. Chrome and Firefox
+/// accept it on http://localhost too; Safari does not (decision #145).
+pub(crate) const SESSION_COOKIE: &str = "__Host-session";
 pub(crate) const LIFETIME_DAYS: i64 = 30;
 
 /// Sessions live 30 days from their last renewal; [`crate::auth::load_user`] renews at most
 /// daily, so an active session never expires and an idle one ends after a month.
-pub(crate) fn layer<S>(
-    store: S,
-    clock: Arc<dyn Clock>,
-    base_url: &BaseUrl,
-) -> SessionManagerLayer<DbSessions<S>>
+pub(crate) fn layer<S>(store: S, clock: Arc<dyn Clock>) -> SessionManagerLayer<DbSessions<S>>
 where
     S: SessionRepo + Clone + 'static,
 {
-    let name = if base_url.is_https() {
-        SECURE_COOKIE
-    } else {
-        LOCAL_COOKIE
-    };
     SessionManagerLayer::new(DbSessions::new(store, clock))
-        .with_name(name)
-        .with_secure(base_url.is_https())
+        .with_name(SESSION_COOKIE)
+        .with_secure(true)
         .with_http_only(true)
         .with_same_site(SameSite::Lax)
         .with_path("/")

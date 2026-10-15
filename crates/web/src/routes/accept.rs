@@ -148,9 +148,8 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         }
     };
     let mut response = Redirect::to(target).into_response();
-    response.headers_mut().append(
-        SET_COOKIE,
-        cookies::lang(person.locale, state.config.base_url.is_https()),
-    );
+    response
+        .headers_mut()
+        .append(SET_COOKIE, cookies::lang(person.locale));
     Ok(response)
 }

@@ -25,13 +25,14 @@ pub(crate) fn accept_language(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// Remembers the language for a year. Not secret, but still `HttpOnly`: no script needs it.
-pub(crate) fn lang(locale: Locale, secure: bool) -> HeaderValue {
+/// Always Secure, like the session cookie (decision #145).
+pub(crate) fn lang(locale: Locale) -> HeaderValue {
     let cookie = Cookie::build((LANG_COOKIE, locale.as_str()))
         .path("/")
         .max_age(Duration::days(365))
         .same_site(SameSite::Lax)
         .http_only(true)
-        .secure(secure)
+        .secure(true)
         .build();
     HeaderValue::from_str(&cookie.to_string()).expect("a cookie made of ASCII is a valid header")
 }
@@ -51,11 +52,10 @@ mod tests {
     }
 
     #[test]
-    fn the_lang_cookie_is_long_lived_and_follows_the_scheme() {
+    fn the_lang_cookie_is_long_lived_and_secure() {
         assert_eq!(
-            lang(Locale::Tr, true),
+            lang(Locale::Tr),
             "lang=tr; HttpOnly; SameSite=Lax; Secure; Path=/; Max-Age=31536000"
         );
-        assert!(!lang(Locale::It, false).to_str().unwrap().contains("Secure"));
     }
 }

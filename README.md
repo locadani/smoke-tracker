@@ -174,6 +174,16 @@ cargo run -p smoke-tracker -- serve                        # http://localhost:80
 cargo run -p smoke-tracker -- verify-audit                 # exits with 1 if the history was altered
 ```
 
+Cookies are always `Secure`, even on `http://localhost` (decision #145). Chrome and Firefox accept
+that; Safari does not, so test locally in Chrome. To check Safari, serve the app over https with
+[Caddy](https://caddyserver.com/docs/quick-starts/reverse-proxy), which makes a trusted
+certificate for `localhost` on its first run:
+
+```sh
+caddy reverse-proxy --from localhost:8443 --to localhost:8080
+APP_BASE_URL=https://localhost:8443 cargo run -p smoke-tracker -- serve   # open https://localhost:8443
+```
+
 ### Container
 
 Every push to `main` that changes the app is built, scanned and pushed to Artifact Registry by

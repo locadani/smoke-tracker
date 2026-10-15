@@ -119,23 +119,39 @@ async fn assets_are_served_with_their_type_and_revalidated() {
 }
 
 #[tokio::test]
-async fn on_plain_http_localhost_there_is_no_hsts_and_no_secure_cookie() {
+async fn cookies_are_secure_even_on_plain_http_localhost() {
+    for base_url in ["https://smoke.example.org", "http://localhost:8080"] {
+        let app = TestApp::with_config(base_url, None).await;
+        app.add_user("daniele", Role::Resident, Locale::En).await;
+        let mut request = login_request("daniele", PASSWORD);
+        request
+            .headers_mut()
+            .insert("origin", base_url.parse().unwrap());
+        request.headers_mut().remove("sec-fetch-site");
+        let response = app.send(request).await;
+        assert_eq!(response.status(), StatusCode::SEE_OTHER, "{base_url}");
+        let cookies = set_cookies(&response);
+        assert!(
+            cookies.iter().any(|c| c.starts_with("__Host-session=")),
+            "{base_url}: {cookies:?}"
+        );
+        assert!(
+            cookies.iter().any(|c| c.starts_with("lang=")),
+            "{base_url}: {cookies:?}"
+        );
+        for cookie in &cookies {
+            assert!(cookie.contains("; Secure"), "{base_url}: {cookie}");
+            assert!(cookie.contains("; HttpOnly"), "{base_url}: {cookie}");
+        }
+    }
+}
+
+#[tokio::test]
+async fn on_plain_http_localhost_there_is_no_hsts() {
     let app = TestApp::with_config("http://localhost:8080", None).await;
-    app.add_user("daniele", Role::Resident, Locale::En).await;
-    let mut request = login_request("daniele", PASSWORD);
-    request
-        .headers_mut()
-        .insert("origin", "http://localhost:8080".parse().unwrap());
-    request.headers_mut().remove("sec-fetch-site");
-    let response = app.send(request).await;
-    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    let response = app.send(get("/login")).await;
+    assert_eq!(response.status(), StatusCode::OK);
     assert!(!response.headers().contains_key("strict-transport-security"));
-    let cookie = set_cookies(&response)
-        .into_iter()
-        .find(|c| c.starts_with("session="))
-        .expect("a plain session cookie");
-    assert!(!cookie.contains("Secure"), "{cookie}");
-    assert!(cookie.contains("HttpOnly"), "{cookie}");
 }
 
 #[tokio::test]

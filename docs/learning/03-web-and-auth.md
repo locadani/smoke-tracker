@@ -205,8 +205,8 @@ the server maps to "this is user 3". The data stays on the server, which can end
 
 **In our code.**
 
-- `crates/web/src/sessions.rs::layer` sets the cookie: `HttpOnly`, `SameSite::Lax`, `Secure`
-  over https, 30 days of inactivity, and a `__Host-` name prefix over https (decisions #24, #62).
+- `crates/web/src/sessions.rs::layer` sets the cookie: `HttpOnly`, `SameSite::Lax`, always
+  `Secure`, 30 days of inactivity, and a `__Host-` name prefix (decisions #24, #145).
 - `crates/web/src/sessions.rs::DbSessions` implements tower-sessions' `SessionStore` over the
   domain's `SessionRepo`. It uses `#[async_trait]` because that trait comes from another
   crate that declares it that way (decision #56). Its `save` only updates a stored session and

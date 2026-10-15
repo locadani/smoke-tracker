@@ -284,7 +284,7 @@ pub fn set_cookies(response: &Response<Body>) -> Vec<String> {
 pub fn session_cookie(response: &Response<Body>) -> Option<String> {
     set_cookies(response)
         .into_iter()
-        .find(|c| c.starts_with("__Host-session=") || c.starts_with("session="))
+        .find(|c| c.starts_with("__Host-session="))
         .map(|c| c.split(';').next().unwrap().to_owned())
 }
 
