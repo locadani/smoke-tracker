@@ -319,3 +319,16 @@ async fn oversized_form_posts_are_refused() {
     let response = app.send(post_form("/login", &body, None)).await;
     assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
 }
+
+// Experiment for #26: does CodeQL still flag these two variants? Remove once answered.
+const FAKE_PASSWORD_FOR_TESTING: &str = "incorrect-secret";
+
+#[tokio::test]
+async fn codeql_experiment_wrong_passwords_are_refused() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let renamed_literal = app.attempt("daniele", "wrong_credentials_dummy").await;
+    let named_const = app.attempt("daniele", FAKE_PASSWORD_FOR_TESTING).await;
+    assert_eq!(renamed_literal.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(named_const.status(), StatusCode::UNAUTHORIZED);
+}
