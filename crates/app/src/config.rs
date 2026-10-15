@@ -73,7 +73,8 @@ impl ServeConfig {
         if !base_url.is_https() {
             warn!(
                 "APP_BASE_URL is plain http: for local development only. Cookies stay Secure, \
-                 so use Chrome or Firefox: Safari drops them on http://localhost"
+                 so use Chrome or Firefox: Safari drops them on http://localhost. For Safari, \
+                 put Caddy in front (see the README) and set APP_BASE_URL to its https address"
             );
         }
         Ok(Self {
