@@ -134,10 +134,9 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     auth::start_session(&session, &user, now).await?;
     tracing::info!(user = user.id.0, "signed in");
     let mut response = Redirect::to("/").into_response();
-    response.headers_mut().append(
-        SET_COOKIE,
-        cookies::lang(user.locale, state.config.base_url.is_https()),
-    );
+    response
+        .headers_mut()
+        .append(SET_COOKIE, cookies::lang(user.locale));
     Ok(response)
 }
 

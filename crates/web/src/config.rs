@@ -6,9 +6,9 @@ use axum::http::{HeaderName, Uri};
 use smoke_domain::schedule::DailySchedule;
 use thiserror::Error;
 
-/// The public address of the app (`APP_BASE_URL`). It decides the cookie flags, HSTS, and the
-/// origin that state-changing requests must come from, so a proxy's internal `Host` header
-/// never matters.
+/// The public address of the app (`APP_BASE_URL`). It decides HSTS and the origin that
+/// state-changing requests must come from, so a proxy's internal `Host` header never matters.
+/// Cookies are Secure whatever the scheme (decision #145).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BaseUrl {
     origin: String,

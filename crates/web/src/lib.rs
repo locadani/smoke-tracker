@@ -107,11 +107,7 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
             state.clone(),
             auth::load_user::<S>,
         ))
-        .layer(sessions::layer(
-            state.store.clone(),
-            state.clock.clone(),
-            &state.config.base_url,
-        ))
+        .layer(sessions::layer(state.store.clone(), state.clock.clone()))
         .layer(middleware::from_fn_with_state(
             state.config.clone(),
             security::check_origin,

@@ -71,7 +71,10 @@ impl ServeConfig {
             })
             .transpose()?;
         if !base_url.is_https() {
-            warn!("APP_BASE_URL is plain http: for local development only");
+            warn!(
+                "APP_BASE_URL is plain http: for local development only. Cookies stay Secure, \
+                 so use Chrome or Firefox: Safari drops them on http://localhost"
+            );
         }
         Ok(Self {
             web: WebConfig {
