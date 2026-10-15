@@ -26,15 +26,20 @@ impl Level {
     pub const CLEAN: Level = Level(0);
 
     pub fn new(value: u8) -> Result<Self, RuleError> {
-        todo!("accept 0..=MAX, otherwise RuleError::InvalidLevel(value)")
+        if value <= Self::MAX {
+            Ok(Level(value))
+        }
+        else {
+            Err(RuleError::InvalidLevel(value))
+        }
     }
 
     pub fn get(self) -> u8 {
-        todo!()
+        self.0
     }
 
     pub fn is_clean(self) -> bool {
-        todo!()
+        self == Self::CLEAN
     }
 }
 
@@ -42,13 +47,13 @@ impl TryFrom<u8> for Level {
     type Error = RuleError;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        todo!("reuse Level::new")
+        Self::new(value)
     }
 }
 
 impl From<Level> for u8 {
     fn from(level: Level) -> Self {
-        todo!()
+        level.get()
     }
 }
 
@@ -62,17 +67,28 @@ impl Username {
 
     /// The error carries the text as it was typed, not the cleaned-up version.
     pub fn new(raw: &str) -> Result<Self, RuleError> {
-        todo!()
+        let username = raw.to_string().trim().to_lowercase();
+        if username.len() >= Self::MIN_LEN && username.len() <= Self::MAX_LEN && username.chars().all(|c| Self::is_allowed(c)) {
+            Ok(Username(username))
+        }
+        else {
+            Err(RuleError::InvalidUsername(raw.to_string()))
+        }
     }
 
     pub fn as_str(&self) -> &str {
-        todo!()
+        &self.0 // == &(self.0) Username owns the string, and self only would return the value and not the reference. In this way we borrow the inner String
+    }
+
+    fn is_allowed(c: char) -> bool {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '.' || c == '_' || c == '-'
     }
 }
 
 impl fmt::Display for Username {
+    // formatter is where we write the string to
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+        f.write_str(&self.0)
     }
 }
 
@@ -85,16 +101,21 @@ impl Password {
     pub const MAX_CHARS: usize = 128;
 
     pub fn new(raw: String) -> Result<Self, RuleError> {
-        todo!("the error carries the number of characters")
+        let pass_length = raw.chars().count();
+        if  pass_length>= Self::MIN_CHARS && pass_length <= Self::MAX_CHARS {
+            Ok(Password(raw))
+        }else {
+            Err(RuleError::InvalidPasswordLength(pass_length))
+        }
     }
 
     pub fn expose(&self) -> &str {
-        todo!()
+        &self.0
     }
 }
 
 impl fmt::Debug for Password {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!("print exactly: Password(<redacted>)")
+        f.write_str("Password(<redacted>)")
     }
 }
