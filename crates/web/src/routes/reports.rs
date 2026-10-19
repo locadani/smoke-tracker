@@ -6,8 +6,8 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::history::{Change, report_history, was_corrected};
-use smoke_domain::logbook::{MoveTarget, correct_report, move_report};
+use smoke_domain::history::{Change, entry_history, was_corrected};
+use smoke_domain::logbook::{MoveTarget, ReportCorrection, correct_report, move_report};
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::{ReportView, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
@@ -151,17 +151,15 @@ async fn report_page<S: Store>(
     };
 
     let entry_id = report.entry_id;
-    let mut entries = state
+    let old_rows = state
         .store
         .audit_history(AuditEntity::SmellReport, id.0)
         .await?;
-    entries.extend(
-        state
-            .store
-            .audit_history(AuditEntity::LogEntry, entry_id.0)
-            .await?,
-    );
-    let history = report_history(&entries);
+    let entry_rows = state
+        .store
+        .audit_history(AuditEntity::LogEntry, entry_id.0)
+        .await?;
+    let history = entry_history(&old_rows, &entry_rows);
     let lines = history
         .iter()
         .map(|entry| HistoryLine {
@@ -405,13 +403,16 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     let error = match parsed {
         Ok((observed_at, values, note)) => {
             let mut tx = state.store.begin(Some(user.id)).await?;
+            let correction = ReportCorrection {
+                observed_at,
+                values,
+                note,
+            };
             match correct_report(
                 &mut tx,
                 &user.actor(),
                 report.id,
-                observed_at,
-                values,
-                note,
+                correction,
                 &schedule,
                 now,
             )

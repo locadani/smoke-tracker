@@ -3,11 +3,13 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::DomainError;
 use smoke_domain::clock::Clock;
-use smoke_domain::logbook::{EventChoice, LogError, Logged, SmellEntry, log_reading, log_smell};
-use smoke_domain::records::{Closure, Event, LogEntry, ReportValues, User};
+use smoke_domain::logbook::{
+    EventChoice, LogError, Logged, ReadingEntry, SmellEntry, log_reading, log_smell,
+};
+use smoke_domain::records::{Closure, Event, LogEntry, Note, ReportValues, User};
 use smoke_domain::repos::{
-    AuditRepo, Commit, EntryRepo, EventRepo, ListRepo, ListWrites, Transactional, UserWrites,
-    WriteTx,
+    AuditRepo, Commit, EntryRepo, EventRepo, EventWrites, ListRepo, ListWrites, Transactional,
+    UserWrites, WriteTx,
 };
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
@@ -88,13 +90,37 @@ async fn reading<S>(fx: &Fixture<S>, who: &User, at: DateTime<Utc>) -> LogEntry
 where
     S: Transactional<Tx: WriteTx>,
 {
+    reading_with_note(fx, who, at, None).await
+}
+
+async fn reading_with_note<S>(
+    fx: &Fixture<S>,
+    who: &User,
+    at: DateTime<Utc>,
+    note: Option<&str>,
+) -> LogEntry
+where
+    S: Transactional<Tx: WriteTx>,
+{
     let mut tx = fx.store.begin(Some(who.id)).await.unwrap();
-    let value = Pm25::new(42.0).unwrap();
-    let reading = log_reading(&mut tx, &who.actor(), at, value, fx.clock.now())
+    let entry = ReadingEntry {
+        observed_at: at,
+        value: Pm25::new(42.0).unwrap(),
+        note: Note::parse(note).unwrap(),
+    };
+    let reading = log_reading(&mut tx, &who.actor(), entry, fx.clock.now())
         .await
         .unwrap();
     tx.commit().await.unwrap();
     reading
+}
+
+async fn latest_report_at<S>(fx: &Fixture<S>, id: EventId) -> Option<DateTime<Utc>>
+where
+    S: Transactional<Tx: WriteTx>,
+{
+    let mut tx = fx.store.begin(None).await.unwrap();
+    tx.latest_report_at(id).await.unwrap()
 }
 
 async fn event<S: EventRepo>(fx: &Fixture<S>, id: EventId) -> Event {
@@ -546,6 +572,72 @@ where
     );
 }
 
+pub async fn a_reading_only_entry_keeps_its_note<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EntryRepo,
+{
+    let p = people(fx).await;
+    let logged = reading_with_note(fx, &p.resident, start(), Some("  by the road  ")).await;
+    assert_eq!(logged.note, Note::parse(Some("by the road")).unwrap());
+    assert!(logged.report.is_none());
+    let stored = fx.store.entry(logged.id).await.unwrap().unwrap();
+    assert_eq!(stored, logged);
+    assert_eq!(
+        stored.reading_view().unwrap().value,
+        Pm25::new(42.0).unwrap()
+    );
+}
+
+pub async fn log_reading_without_note_stores_none<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EntryRepo,
+{
+    let p = people(fx).await;
+    let blank = reading_with_note(fx, &p.resident, start(), Some("   ")).await;
+    let none = reading(fx, &p.resident, start()).await;
+    for logged in [blank, none] {
+        let stored = fx.store.entry(logged.id).await.unwrap().unwrap();
+        assert_eq!(stored.note, None);
+    }
+}
+
+pub async fn a_reading_does_not_close_or_extend_an_event_timeline_gap<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
+{
+    let p = people(fx).await;
+    let opened = start() - TimeDelta::hours(5);
+    let last_report = opened + TimeDelta::hours(1);
+    let ended = last_report + TimeDelta::minutes(10);
+    let past = add_event(
+        fx,
+        p.resident.id,
+        opened,
+        Some(Closure {
+            at: ended,
+            reason: CloseReason::Manual,
+        }),
+    )
+    .await;
+    let open = add_event(fx, p.resident.id, start() - TimeDelta::minutes(30), None).await;
+    let mut report = smell(last_report, 4);
+    report.note = None;
+    log(fx, &p.resident, report, EventChoice::Join(past.id))
+        .await
+        .unwrap();
+
+    let before = latest_report_at(fx, past.id).await;
+    let after_the_end = reading(fx, &p.resident, ended + TimeDelta::minutes(30)).await;
+    assert_eq!(after_the_end.event_id, None);
+    let inside_open = reading(fx, &p.resident, start()).await;
+    assert_eq!(inside_open.event_id, Some(open.id));
+
+    assert_eq!(latest_report_at(fx, past.id).await, before);
+    assert_eq!(latest_report_at(fx, open.id).await, None);
+    assert_eq!(event(fx, past.id).await.closed.map(|c| c.at), Some(ended));
+    assert!(event(fx, open.id).await.is_open());
+}
+
 pub async fn a_reading_alone_joins_the_event_containing_its_time<S>(fx: &Fixture<S>)
 where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
@@ -650,14 +742,12 @@ where
     assert!(matches!(guest, Err(LogError::Forbidden)), "{guest:?}");
 
     let mut tx = fx.store.begin(Some(p.viewer.id)).await.unwrap();
-    let alone = log_reading(
-        &mut tx,
-        &p.viewer.actor(),
-        start(),
-        Pm25::new(1.0).unwrap(),
-        start(),
-    )
-    .await;
+    let entry = ReadingEntry {
+        observed_at: start(),
+        value: Pm25::new(1.0).unwrap(),
+        note: None,
+    };
+    let alone = log_reading(&mut tx, &p.viewer.actor(), entry, start()).await;
     assert!(matches!(alone, Err(LogError::Forbidden)), "{alone:?}");
     drop(tx);
     assert_eq!(fx.store.open_event().await.unwrap(), None);

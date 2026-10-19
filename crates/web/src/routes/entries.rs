@@ -12,7 +12,9 @@ use chrono_tz::Tz;
 use smoke_domain::events::{
     LogPrompt, can_join_backdated, classify_observed, log_prompt, no_smell_prompt,
 };
-use smoke_domain::logbook::{EventChoice, LogError, SmellEntry, log_reading, log_smell};
+use smoke_domain::logbook::{
+    EventChoice, LogError, ReadingEntry, SmellEntry, log_reading, log_smell,
+};
 use smoke_domain::permissions::{Action, can};
 use smoke_domain::records::{Event, Note, ReportValues, Room, RoomLevel, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
@@ -264,7 +266,12 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     let entry = match entry {
         Entry::Pm25Only { observed_at, value } => {
             let mut tx = state.store.begin(Some(user.id)).await?;
-            if let Err(error) = log_reading(&mut tx, &actor, observed_at, value, now).await {
+            let reading = ReadingEntry {
+                observed_at,
+                value,
+                note: None,
+            };
+            if let Err(error) = log_reading(&mut tx, &actor, reading, now).await {
                 drop(tx);
                 return back_to_form(&state, &user, tr, now, &form, refusal(error)?).await;
             }

@@ -15,7 +15,7 @@ use axum::http::{HeaderName, Request, Response, StatusCode};
 use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
-use smoke_domain::logbook::{EventChoice, SmellEntry, log_reading, log_smell};
+use smoke_domain::logbook::{EventChoice, ReadingEntry, SmellEntry, log_reading, log_smell};
 use smoke_domain::records::{NewUser, RoomLevel, User};
 use smoke_domain::records::{ReadingView, ReportValues, ReportView, reading_views, report_views};
 use smoke_domain::repos::{Commit, EntryRepo, ListRepo, Transactional, UserWrites};
@@ -185,15 +185,14 @@ impl TestApp {
     /// Logs a PM2.5 reading on its own, as the Log button does with only a PM2.5 value.
     pub async fn log_pm25(&self, user: &User, at: &str, value: f64) -> ReadingView {
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();
-        let reading = log_reading(
-            &mut tx,
-            &user.actor(),
-            t(at),
-            Pm25::new(value).unwrap(),
-            self.clock.now(),
-        )
-        .await
-        .unwrap();
+        let entry = ReadingEntry {
+            observed_at: t(at),
+            value: Pm25::new(value).unwrap(),
+            note: None,
+        };
+        let reading = log_reading(&mut tx, &user.actor(), entry, self.clock.now())
+            .await
+            .unwrap();
         tx.commit().await.unwrap();
         reading.reading_view().expect("a reading")
     }

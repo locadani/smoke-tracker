@@ -73,6 +73,22 @@ pub struct SmellEntry {
     pub pm25: Option<Pm25>,
 }
 
+/// What the Log form says about a PM2.5 reading logged on its own.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadingEntry {
+    pub observed_at: DateTime<Utc>,
+    pub value: Pm25,
+    pub note: Option<Note>,
+}
+
+/// The new time, values and note "Correct a mistake" gives a report's entry.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReportCorrection {
+    pub observed_at: DateTime<Utc>,
+    pub values: ReportValues,
+    pub note: Option<Note>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Logged {
     pub entry: LogEntry,
@@ -208,13 +224,13 @@ async fn join<T: EventWrites>(
     Ok(id)
 }
 
-/// Logs a PM2.5 reading on its own ("Log PM2.5 only", spec §7.6). It joins the event whose span
-/// contains its time, if any, and never opens, extends or closes an event.
+/// Logs a PM2.5 reading on its own, with an optional note ("Log PM2.5 only", spec §7.6). It
+/// joins the event whose span contains its time, if any, and never opens, extends or closes an
+/// event.
 pub async fn log_reading<T>(
     tx: &mut T,
     actor: &Actor,
-    observed_at: DateTime<Utc>,
-    value: Pm25,
+    entry: ReadingEntry,
     now: DateTime<Utc>,
 ) -> Result<LogEntry, LogError>
 where
@@ -223,9 +239,14 @@ where
     if !can(actor, Action::LogEntry, now) {
         return Err(LogError::Forbidden);
     }
+    let ReadingEntry {
+        observed_at,
+        value,
+        note,
+    } = entry;
     classify_observed(observed_at, now)?;
     let event_id = tx.event_at(observed_at).await?.map(|event| event.id);
-    let new = NewEntry::new(actor.id, event_id, observed_at, None, None, Some(value))?;
+    let new = NewEntry::new(actor.id, event_id, observed_at, note, None, Some(value))?;
     Ok(tx.create_entry(new).await?)
 }
 
@@ -292,17 +313,19 @@ pub async fn reopen_event<T: EventWrites>(
 /// "Correct a mistake" (spec §7.7): new values, note and observed time for a report's entry.
 /// The time must still belong to the entry's event; after a closed event's end, the end moves
 /// with it. A check (no event) keeps every level at 0 (spec §7.1).
-#[allow(clippy::too_many_arguments)]
 pub async fn correct_report<T: EventWrites + EntryWrites>(
     tx: &mut T,
     actor: &Actor,
     id: ReportId,
-    observed_at: DateTime<Utc>,
-    values: ReportValues,
-    note: Option<Note>,
+    correction: ReportCorrection,
     schedule: &DailySchedule,
     now: DateTime<Utc>,
 ) -> Result<LogEntry, LogError> {
+    let ReportCorrection {
+        observed_at,
+        values,
+        note,
+    } = correction;
     let (entry, _) = editable_report(tx, actor, id, now).await?;
     classify_observed(observed_at, now)?;
     match entry.event_id {

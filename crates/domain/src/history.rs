@@ -1,4 +1,4 @@
-//! A smell report's History view (spec §6.1): what each audit entry changed, e.g.
+//! A log's History view (spec §6.1): what each audit entry changed, e.g.
 //! "living room 6 → 7, added bedroom 3".
 
 use chrono::{DateTime, Utc};
@@ -44,9 +44,9 @@ pub struct HistoryEntry {
     pub changes: Vec<Change>,
 }
 
-/// The audited fields of a smell report in one flat shape: what a report's own audit entries
-/// held. A log entry's whole-log snapshot is read through [`flat_report`], older report
-/// snapshots through [`SmellReport::upgrade_snapshot`].
+/// The audited fields of a log in one flat shape: what an old report's own audit entries held.
+/// A log entry's whole-log snapshot is read through [`flat_snapshot`], older report snapshots
+/// through [`SmellReport::upgrade_snapshot`].
 #[derive(Deserialize)]
 struct Snapshot {
     event_id: Option<EventId>,
@@ -56,30 +56,43 @@ struct Snapshot {
     note: Option<String>,
 }
 
-/// The report's fields of a snapshot, flat. A log entry's snapshot (`"report": {...}` next to
-/// the entry's own fields) is flattened; a snapshot without a report has none.
-fn flat_report(value: &serde_json::Value) -> Option<serde_json::Value> {
+/// A snapshot in the flat shape. A log entry's snapshot (`"report": {...}` or `null` next to
+/// the entry's own fields) is flattened, a reading-only entry having no rooms or symptoms; a
+/// snapshot without a `report` key is an old report snapshot and is upgraded.
+fn flat_snapshot(value: &serde_json::Value) -> serde_json::Value {
     let Some(report) = value.get("report") else {
-        return Some(SmellReport::upgrade_snapshot(value).into_owned());
+        return SmellReport::upgrade_snapshot(value).into_owned();
     };
-    let report = report.as_object()?;
-    Some(serde_json::json!({
+    let report = report.as_object();
+    let part = |key: &str| {
+        report
+            .and_then(|report| report.get(key).cloned())
+            .unwrap_or_else(|| serde_json::json!([]))
+    };
+    serde_json::json!({
         "event_id": value.get("event_id"),
         "observed_at": value.get("observed_at"),
-        "rooms": report.get("rooms"),
-        "symptoms": report.get("symptoms"),
+        "rooms": part("rooms"),
+        "symptoms": part("symptoms"),
         "note": value.get("note"),
-    }))
+    })
 }
 
-/// One report's audit entries (oldest first, from `AuditRepo::audit_history`) as history.
-pub fn report_history(entries: &[ChainedEntry]) -> Vec<HistoryEntry> {
-    entries
+/// A log's audit entries as history: the old `smell_report` entries of its report (oldest
+/// first, from `AuditRepo::audit_history`), then its `log_entry` entries. What each one
+/// changed comes from comparing its two snapshots; the creation and a deletion show none, and
+/// neither does the backfill `create` entry that adopted a log written before the migration.
+pub fn entry_history(
+    old_report_rows: &[ChainedEntry],
+    entry_rows: &[ChainedEntry],
+) -> Vec<HistoryEntry> {
+    old_report_rows
         .iter()
+        .chain(entry_rows)
         .map(|entry| {
             let record = &entry.record;
             let snapshot = |value: &Option<serde_json::Value>| -> Option<Snapshot> {
-                serde_json::from_value(flat_report(value.as_ref()?)?).ok()
+                serde_json::from_value(flat_snapshot(value.as_ref()?)).ok()
             };
             let changes = match (snapshot(&record.before), snapshot(&record.after)) {
                 (Some(before), Some(after)) => changes(&before, &after),
@@ -230,10 +243,13 @@ mod tests {
             ReportValues::new(vec![at(1, 3), at(3, 7)], vec![]).unwrap();
         after.note = Note::parse(Some("from the balcony")).unwrap();
         after.observed_at = t("2026-01-15T19:30:00Z");
-        let history = report_history(&[
-            entry(AuditAction::Create, None, &before),
-            entry(AuditAction::Update, Some(&before), &after),
-        ]);
+        let history = entry_history(
+            &[],
+            &[
+                entry(AuditAction::Create, None, &before),
+                entry(AuditAction::Update, Some(&before), &after),
+            ],
+        );
         assert_eq!(history[0].changes, []);
         assert_eq!(history[1].at, t("2026-01-16T08:15:00Z"));
         assert_eq!(history[1].actor, Some(UserId(2)));
@@ -266,10 +282,13 @@ mod tests {
         let before = report(&[(1, 6)]);
         let mut after = before.clone();
         after.event_id = Some(EventId(5));
-        let history = report_history(&[
-            entry(AuditAction::Create, None, &before),
-            entry(AuditAction::Move, Some(&before), &after),
-        ]);
+        let history = entry_history(
+            &[],
+            &[
+                entry(AuditAction::Create, None, &before),
+                entry(AuditAction::Move, Some(&before), &after),
+            ],
+        );
         assert_eq!(
             history[1].changes,
             [Change::Moved {
@@ -296,7 +315,7 @@ mod tests {
             "intensity": 7, "rooms": [1, 3], "symptoms": [1], "note": null,
         }));
         assert_eq!(
-            report_history(&[old])[0].changes,
+            entry_history(&[], &[old])[0].changes,
             [
                 Change::LevelChanged {
                     room: RoomId(1),
@@ -313,8 +332,88 @@ mod tests {
         let before = report(&[(1, 6)]);
         let mut after = before.clone();
         after.deleted_at = Some(t("2026-01-16T08:15:00Z"));
-        let history = report_history(&[entry(AuditAction::Delete, Some(&before), &after)]);
+        let history = entry_history(&[], &[entry(AuditAction::Delete, Some(&before), &after)]);
         assert_eq!(history[0].action, AuditAction::Delete);
         assert!(history[0].changes.is_empty());
+    }
+
+    #[test]
+    fn history_includes_changes_audited_on_the_report_before_the_migration() {
+        let mut old_note = entry(AuditAction::Update, None, &report(&[(1, 6)]));
+        old_note.record.entity = AuditEntity::SmellReport;
+        old_note.record.before = Some(serde_json::json!({
+            "event_id": 4, "observed_at": "2026-01-15T19:00:00Z",
+            "intensity": 6, "rooms": [1], "symptoms": [1], "note": null,
+        }));
+        old_note.record.after = Some(serde_json::json!({
+            "event_id": 4, "observed_at": "2026-01-15T19:00:00Z",
+            "intensity": 6, "rooms": [1], "symptoms": [1], "note": "first",
+        }));
+        let mut adopted = report(&[(1, 6)]);
+        adopted.note = Note::parse(Some("first")).unwrap();
+        let backfill = entry(AuditAction::Create, None, &adopted);
+        let mut renoted = adopted.clone();
+        renoted.note = Note::parse(Some("second")).unwrap();
+        let later = entry(AuditAction::Update, Some(&adopted), &renoted);
+
+        let history = entry_history(&[old_note], &[backfill, later]);
+        assert_eq!(history.len(), 3);
+        assert_eq!(
+            history[0].changes,
+            [Change::Note {
+                from: None,
+                to: Some("first".to_owned()),
+            }]
+        );
+        assert!(history[1].changes.is_empty(), "the backfill shows nothing");
+        assert_eq!(
+            history[2].changes,
+            [Change::Note {
+                from: Some("first".to_owned()),
+                to: Some("second".to_owned()),
+            }]
+        );
+    }
+
+    #[test]
+    fn history_shows_a_move_audited_on_the_entry() {
+        let before = report(&[(1, 6)]);
+        let mut after = before.clone();
+        after.event_id = Some(EventId(5));
+        let history = entry_history(
+            &[],
+            &[
+                entry(AuditAction::Create, None, &before),
+                entry(AuditAction::Move, Some(&before), &after),
+            ],
+        );
+        assert_eq!(
+            history[1].changes,
+            [Change::Moved {
+                from: Some(EventId(4)),
+                to: Some(EventId(5)),
+            }]
+        );
+    }
+
+    #[test]
+    fn a_reading_only_entry_shows_its_note_change() {
+        let mut before = report(&[]);
+        before.report = None;
+        before.reading = Some(crate::records::Pm25Reading {
+            id: crate::types::ReadingId(2),
+            log_entry_id: LogEntryId(3),
+            value: crate::types::Pm25::new(12.0).unwrap(),
+        });
+        let mut after = before.clone();
+        after.note = Note::parse(Some("windy")).unwrap();
+        let history = entry_history(&[], &[entry(AuditAction::Update, Some(&before), &after)]);
+        assert_eq!(
+            history[0].changes,
+            [Change::Note {
+                from: None,
+                to: Some("windy".to_owned()),
+            }]
+        );
     }
 }
