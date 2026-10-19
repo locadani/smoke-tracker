@@ -1,13 +1,19 @@
 //! Data written before a migration, and what each backend must make of it. Backends load the
 //! rows into a database migrated up to the version before, then run the remaining migrations.
 
-use crate::fixture::{EntryExt, RawSql};
+use crate::fixture::{EntryExt, FIRST_ROOM, RawSql, report_values};
+use crate::logbook::rome;
 use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::{Value, json};
 use smoke_domain::audit::verify_chain;
 use smoke_domain::audit::{AuditAction, AuditEntity, AuditRecord, ChainedEntry, GENESIS_HASH};
+use smoke_domain::history::{Change, HistoryEntry, entry_history};
+use smoke_domain::logbook::{ReportCorrection, correct_report};
+use smoke_domain::permissions::Actor;
 use smoke_domain::records::{Audited, Closure, Event, LogEntry, Note, Room, Symptom, User};
-use smoke_domain::repos::{AuditRepo, EntryRepo, SnapshotRepo, StoreError, StoreResult};
+use smoke_domain::repos::{
+    AuditRepo, Commit, EntryRepo, SnapshotRepo, StoreError, StoreResult, Transactional, WriteTx,
+};
 use smoke_domain::types::{
     CloseReason, EventId, Level, ListName, Locale, LogEntryId, Pm25, ReadingId, ReportId, Role,
     RoomArea, RoomId, SymptomId, UserId, Username,
@@ -888,4 +894,81 @@ pub async fn an_entry_logged_after_the_backfill_is_not_backfilled<S, M, Fut>(
 pub async fn an_empty_database_migrates_without_backfill_entries<S: AuditRepo>(store: &S) {
     let log = store.audit_log().await.unwrap();
     assert!(log.iter().all(|e| e.record.entity != AuditEntity::LogEntry));
+}
+
+/// A migrated report's History as the report page builds it.
+async fn history_of<S: AuditRepo + EntryRepo>(store: &S, report: i64) -> Vec<HistoryEntry> {
+    let entry = entry_of_report(store, report).await;
+    let old_rows = store
+        .audit_history(AuditEntity::SmellReport, report)
+        .await
+        .unwrap();
+    let entry_rows = store
+        .audit_history(AuditEntity::LogEntry, entry.id.0)
+        .await
+        .unwrap();
+    entry_history(&old_rows, &entry_rows)
+}
+
+fn actions(history: &[HistoryEntry]) -> Vec<AuditAction> {
+    history.iter().map(|line| line.action).collect()
+}
+
+/// A migrated report's History reads as before the migration, with no backfill line: the
+/// report moved twice shows `create, move, move`, the retimed one `create` and a time change.
+/// A correction made afterwards adds exactly one `update` line.
+pub async fn migrated_history_reads_as_before_and_takes_a_correction<S>(store: &S)
+where
+    S: AuditRepo + EntryRepo + Transactional<Tx: WriteTx>,
+{
+    let moved = history_of(store, before_0005::MOVED_AND_BACK).await;
+    assert_eq!(
+        actions(&moved),
+        [AuditAction::Create, AuditAction::Move, AuditAction::Move]
+    );
+    assert!(moved[0].actor.is_some(), "no system backfill line");
+
+    let retimed = history_of(store, before_0005::RETIMED).await;
+    assert_eq!(
+        actions(&retimed),
+        [AuditAction::Create, AuditAction::Update]
+    );
+    assert!(matches!(
+        retimed[1].changes.as_slice(),
+        [Change::ObservedAt { .. }]
+    ));
+
+    let entry = entry_of_report(store, before_0005::MOVED_AND_BACK).await;
+    let actor = Actor {
+        id: entry.user_id,
+        role: Role::Resident,
+        expires_at: None,
+    };
+    let correction = ReportCorrection {
+        observed_at: entry.observed_at,
+        values: report_values(9, &[FIRST_ROOM], &[]),
+        note: None,
+    };
+    let mut tx = store.begin(Some(entry.user_id)).await.unwrap();
+    correct_report(
+        &mut tx,
+        &actor,
+        ReportId(before_0005::MOVED_AND_BACK),
+        correction,
+        &rome(),
+        at("2026-10-19T12:00:00Z"),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    let corrected = history_of(store, before_0005::MOVED_AND_BACK).await;
+    assert_eq!(corrected.len(), moved.len() + 1, "exactly one extra line");
+    assert_eq!(corrected[..moved.len()], moved[..]);
+    assert_eq!(corrected.last().unwrap().action, AuditAction::Update);
+    assert_eq!(
+        actions(&history_of(store, before_0005::RETIMED).await),
+        actions(&retimed),
+        "other reports' History is untouched"
+    );
 }

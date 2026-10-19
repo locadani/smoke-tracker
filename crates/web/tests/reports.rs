@@ -504,3 +504,127 @@ async fn guests_cannot_see_or_change_other_peoples_checks() {
     }
     assert_eq!(app.report(id).await, check);
 }
+
+#[tokio::test]
+async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
+    use smoke_domain::clock::Clock;
+    use smoke_domain::logbook::{SmellEntry, log_smell};
+    use smoke_domain::records::ReportValues;
+    use smoke_domain::repos::{Commit, EntryRepo, Transactional};
+    use smoke_domain::types::{Level, Pm25};
+
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let bedroom = app.room("room-bedroom").await;
+    app.log_pm25(&me, "2026-01-15T09:00:00Z", 8.0).await;
+    let earlier = app
+        .log(
+            &me,
+            "2026-01-15T10:00:00Z",
+            4,
+            &[bedroom],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+
+    let values = ReportValues::new(
+        vec![smoke_domain::records::RoomLevel {
+            room: bedroom,
+            level: Level::new(6).unwrap(),
+        }],
+        vec![],
+    )
+    .unwrap();
+    let mut tx = app.store.begin(Some(me.id)).await.unwrap();
+    let paired = log_smell(
+        &mut tx,
+        &me.actor(),
+        SmellEntry {
+            observed_at: t("2026-01-15T18:30:00Z"),
+            values,
+            note: None,
+            pm25: Some(Pm25::new(12.0).unwrap()),
+        },
+        EventChoice::New {
+            replacing: earlier.report.event_id,
+        },
+        &schedule(),
+        app.clock.now(),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+    let report = paired.entry.report_view().unwrap();
+    let id = report.id;
+    assert_ne!(
+        id.0, report.entry_id.0,
+        "the ids must differ for this test to mean anything"
+    );
+    let cookie = app.sign_in("daniele").await;
+    let path = format!("/reports/{id}");
+
+    let form = text(
+        app.send(get_with(&format!("{path}/correct"), &cookie))
+            .await,
+    )
+    .await;
+    assert!(
+        form.contains(r#"name="observed_at" value="2026-01-15T19:30""#),
+        "{form}"
+    );
+    app.at("2026-01-15T20:30:00Z");
+    let body = format!(
+        "room={0}&level-{0}=7&observed_at=2026-01-15T19:40&note=",
+        bedroom.0
+    );
+    let response = app
+        .send(post_form(&format!("{path}/correct"), &body, Some(&cookie)))
+        .await;
+    assert_eq!(location(&response), Some(&*path));
+
+    let corrected = app.report(id).await;
+    assert_eq!(corrected.entry_id, report.entry_id);
+    assert_eq!(corrected.observed_at, t("2026-01-15T18:40:00Z"));
+    assert_eq!(corrected.values.rooms()[0].level.get(), 7);
+    let untouched = app.report(earlier.report.id).await;
+    assert_eq!(untouched.observed_at, t("2026-01-15T10:00:00Z"));
+    assert_eq!(untouched.values.rooms()[0].level.get(), 4);
+    let entry = app.store.entry(report.entry_id).await.unwrap().unwrap();
+    let reading = entry.reading_view().unwrap();
+    assert_eq!(
+        reading.observed_at,
+        t("2026-01-15T18:40:00Z"),
+        "the reading follows the correction"
+    );
+
+    let response = app
+        .send(post_form(
+            &format!("{path}/move"),
+            "target=new",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(location(&response), Some(&*path));
+    let moved = app.report(id).await;
+    assert_ne!(moved.event_id, report.event_id);
+    let entry = app.store.entry(report.entry_id).await.unwrap().unwrap();
+    assert_eq!(entry.reading_view().unwrap().event_id, moved.event_id);
+    assert_eq!(
+        app.report(earlier.report.id).await.event_id,
+        earlier.report.event_id,
+        "the other report stays where it was"
+    );
+
+    let html = text(app.send(get_with(&path, &cookie)).await).await;
+    let page = Page::parse(&html);
+    let lines = page.texts(".history li");
+    assert_eq!(lines.len(), 3, "{lines:?}");
+    assert!(lines[0].ends_with("daniele logged"), "{lines:?}");
+    assert!(
+        lines[1].contains("corrected: ") && lines[1].contains("Bedroom 6 → 7"),
+        "{lines:?}"
+    );
+    assert!(lines[2].contains("moved: event #"), "{lines:?}");
+    assert_eq!(page.text("h1 .tag"), "edited");
+}
