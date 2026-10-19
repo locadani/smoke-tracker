@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
-use smoke_domain::repos::{EventRepo, ReportRepo};
+use smoke_domain::repos::EventRepo;
 use smoke_domain::types::{Locale, Role};
 
 #[tokio::test]
@@ -140,7 +140,7 @@ async fn a_correction_must_stay_inside_the_event() {
     assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let html = text(response).await;
     assert!(html.contains("That time is outside the event"), "{html}");
-    let unchanged = app.store.report(id).await.unwrap().unwrap();
+    let unchanged = app.report(id).await;
     assert_eq!(unchanged.observed_at, t("2026-01-15T18:05:00Z"));
 }
 
@@ -216,7 +216,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
         ))
         .await;
     assert_eq!(location(&response), Some(&*path));
-    let moved = app.store.report(stray.report.id).await.unwrap().unwrap();
+    let moved = app.report(stray.report.id).await;
     assert_eq!(moved.event_id, Some(morning_id));
     let event = app.store.event(morning_id).await.unwrap().unwrap();
     assert_eq!(event.closed.map(|c| c.at), Some(t("2026-01-15T20:00:00Z")));
@@ -283,7 +283,7 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
         }
     }
-    assert_eq!(app.store.report(id).await.unwrap().unwrap(), mine.report);
+    assert_eq!(app.report(id).await, mine.report);
 
     let own = text(
         app.send(get_with(&format!("/reports/{}", theirs.report.id), &cookie))
@@ -460,15 +460,18 @@ async fn a_correction_with_no_room_is_refused_unless_the_report_covered_the_whol
     let html = text(refused).await;
     assert!(html.contains("Pick at least one room"), "{html}");
     assert!(html.contains("kept"), "what was typed stays: {html}");
-    assert_eq!(app.store.report(smell.id).await.unwrap().unwrap(), smell);
+    assert_eq!(app.report(smell.id).await, smell);
 
     let path = format!("/reports/{}/correct", check.id);
     let body = "observed_at=2026-01-15T20:30&note=looked+twice";
     let saved = app.send(post_form(&path, body, Some(&cookie))).await;
     assert_eq!(location(&saved), Some(&*format!("/reports/{}", check.id)));
-    let after = app.store.report(check.id).await.unwrap().unwrap();
+    let after = app.report(check.id).await;
     assert!(after.values.rooms().is_empty(), "still the whole home");
-    assert_eq!(after.values.note(), Some("looked twice"));
+    assert_eq!(
+        after.note.as_ref().map(|n| n.as_str()),
+        Some("looked twice")
+    );
 }
 
 #[tokio::test]
@@ -499,5 +502,5 @@ async fn guests_cannot_see_or_change_other_peoples_checks() {
     ] {
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
-    assert_eq!(app.store.report(id).await.unwrap().unwrap(), check);
+    assert_eq!(app.report(id).await, check);
 }

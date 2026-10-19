@@ -16,16 +16,22 @@ use crate::error::IntoStore;
 pub struct PostgresTx {
     tx: Transaction<'static, Postgres>,
     actor: Option<UserId>,
-    clock: Arc<dyn Clock>,
+    now: DateTime<Utc>,
 }
 
 impl PostgresTx {
+    /// Takes the transaction's instant from the clock, once: every row and audit entry the
+    /// transaction writes carries it. `begin` calls this after it holds the writer lock.
     pub(crate) fn new(
         tx: Transaction<'static, Postgres>,
         actor: Option<UserId>,
-        clock: Arc<dyn Clock>,
+        clock: &Arc<dyn Clock>,
     ) -> Self {
-        Self { tx, actor, clock }
+        Self {
+            tx,
+            actor,
+            now: clock.now(),
+        }
     }
 
     pub(crate) fn conn(&mut self) -> &mut PgConnection {
@@ -33,7 +39,7 @@ impl PostgresTx {
     }
 
     pub(crate) fn now(&self) -> DateTime<Utc> {
-        self.clock.now()
+        self.now
     }
 
     /// Appends the audit entry for one write, linked to the latest entry. An `update` that

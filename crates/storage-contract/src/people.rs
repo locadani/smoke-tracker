@@ -276,6 +276,7 @@ pub async fn expiry_and_reactivation_follow_the_role_rules<S: Store>(fx: &Fixtur
     let viewer = add_user(fx, "lawyer", Role::Viewer).await;
     let actor = resident.actor();
     let now = start() + TimeDelta::hours(1);
+    fx.clock.set(now);
     let mut tx = fx.store.begin(Some(resident.id)).await.unwrap();
 
     let result = reactivate(&mut tx, &actor, guest.id, next_week(), now).await;
@@ -289,7 +290,6 @@ pub async fn expiry_and_reactivation_follow_the_role_rules<S: Store>(fx: &Fixtur
         "{result:?}"
     );
 
-    fx.clock.set(now);
     let expired = expire(&mut tx, &actor, guest.id, now).await.unwrap();
     assert_eq!(expired.expires_at, Some(now));
     let again = expire(&mut tx, &actor, guest.id, now + TimeDelta::hours(1))

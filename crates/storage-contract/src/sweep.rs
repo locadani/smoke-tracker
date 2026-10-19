@@ -4,10 +4,10 @@
 use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::clock::Clock;
-use smoke_domain::records::{Event, NewReport};
+use smoke_domain::records::{Event, NewEntry};
 use smoke_domain::repos::{
-    AuditRepo, Commit, EventRepo, EventWrites, JobRepo, JobWrites, ListRepo, ListWrites,
-    ReportWrites, Transactional, UserWrites,
+    AuditRepo, Commit, EntryWrites, EventRepo, EventWrites, JobRepo, JobWrites, ListRepo,
+    ListWrites, Transactional, UserWrites,
 };
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
@@ -27,17 +27,19 @@ fn rome() -> DailySchedule {
 
 async fn report_at<S>(fx: &Fixture<S>, user: UserId, event: &Event, at: DateTime<Utc>)
 where
-    S: Transactional<Tx: ReportWrites>,
+    S: Transactional<Tx: EntryWrites>,
 {
     let mut tx = fx.store.begin(Some(user)).await.unwrap();
-    tx.create_report(NewReport {
-        event_id: Some(event.id),
-        user_id: user,
-        observed_at: at,
-        values: report_values(5, &[FIRST_ROOM], &[]),
-    })
-    .await
+    let new = NewEntry::new(
+        user,
+        Some(event.id),
+        at,
+        None,
+        Some(report_values(5, &[FIRST_ROOM], &[])),
+        None,
+    )
     .unwrap();
+    tx.create_entry(new).await.unwrap();
     tx.commit().await.unwrap();
 }
 
@@ -54,7 +56,7 @@ where
 /// An evening event (20:00–21:30 UTC) on the night before `date`, with no sweep since.
 async fn evening_event<S>(fx: &Fixture<S>, user: UserId, date: &str) -> Event
 where
-    S: Transactional<Tx: EventWrites + ReportWrites + JobWrites + ListWrites> + JobRepo + ListRepo,
+    S: Transactional<Tx: EventWrites + EntryWrites + JobWrites + ListWrites> + JobRepo + ListRepo,
 {
     seed_starter_lists(&fx.store).await.unwrap();
     let opened = t(&format!("{date}T20:00:00Z")) - TimeDelta::days(1);
@@ -85,7 +87,7 @@ where
 
 pub async fn a_sweep_at_four_closes_the_event_at_its_last_report<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites + ListWrites>
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites + JobWrites + ListWrites>
         + JobRepo
         + ListRepo
         + EventRepo
@@ -123,7 +125,7 @@ where
 
 pub async fn a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites + ListWrites>
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites + JobWrites + ListWrites>
         + JobRepo
         + ListRepo
         + EventRepo,
@@ -188,7 +190,7 @@ where
 
 pub async fn on_dst_days_the_sweep_still_runs_at_four_local<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + ReportWrites + JobWrites + ListWrites>
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites + JobWrites + ListWrites>
         + JobRepo
         + ListRepo
         + EventRepo,

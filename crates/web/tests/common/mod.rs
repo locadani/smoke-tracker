@@ -15,14 +15,14 @@ use axum::http::{HeaderName, Request, Response, StatusCode};
 use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
-use smoke_domain::logbook::{EventChoice, Logged, SmellEntry, log_reading, log_smell};
+use smoke_domain::logbook::{EventChoice, SmellEntry, log_reading, log_smell};
 use smoke_domain::records::{NewUser, RoomLevel, User};
-use smoke_domain::records::{Pm25Reading, ReportValues};
-use smoke_domain::repos::{Commit, ListRepo, Transactional, UserWrites};
+use smoke_domain::records::{ReadingView, ReportValues, ReportView, reading_views, report_views};
+use smoke_domain::repos::{Commit, EntryRepo, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{Level, Pm25, RoomId, SymptomId};
+use smoke_domain::types::{EventId, Level, Pm25, ReportId, RoomId, SymptomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
@@ -33,6 +33,12 @@ use tower::ServiceExt;
 pub const BASE: &str = "https://smoke.example.org";
 pub const PASSWORD: &str = "correct horse battery";
 pub const CLIENT: IpAddr = IpAddr::V4(Ipv4Addr::new(192, 0, 2, 10));
+
+/// What the web tests keep of a logged smell: the report as lists show it, and its reading.
+pub struct Logged {
+    pub report: ReportView,
+    pub reading: Option<ReadingView>,
+}
 
 pub struct TestApp {
     pub router: Router,
@@ -154,7 +160,8 @@ impl TestApp {
     ) -> Logged {
         let entry = SmellEntry {
             observed_at: t(at),
-            values: ReportValues::new(rooms, symptoms.to_vec(), None).unwrap(),
+            values: ReportValues::new(rooms, symptoms.to_vec()).unwrap(),
+            note: None,
             pm25: None,
         };
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();
@@ -169,11 +176,14 @@ impl TestApp {
         .await
         .unwrap();
         tx.commit().await.unwrap();
-        logged
+        Logged {
+            report: logged.entry.report_view().expect("a smell report"),
+            reading: logged.entry.reading_view(),
+        }
     }
 
     /// Logs a PM2.5 reading on its own, as the Log button does with only a PM2.5 value.
-    pub async fn log_pm25(&self, user: &User, at: &str, value: f64) -> Pm25Reading {
+    pub async fn log_pm25(&self, user: &User, at: &str, value: f64) -> ReadingView {
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();
         let reading = log_reading(
             &mut tx,
@@ -185,7 +195,23 @@ impl TestApp {
         .await
         .unwrap();
         tx.commit().await.unwrap();
-        reading
+        reading.reading_view().expect("a reading")
+    }
+
+    /// The smell report with this id, as lists show it, deleted or not.
+    pub async fn report(&self, id: ReportId) -> ReportView {
+        let entry = self.store.entry_of_report(id).await.unwrap().unwrap();
+        entry.report_view().unwrap()
+    }
+
+    /// The event's smell reports that are not deleted, by observed time.
+    pub async fn reports_for_event(&self, id: EventId) -> Vec<ReportView> {
+        report_views(&self.store.entries_for_event(id).await.unwrap())
+    }
+
+    /// The event's PM2.5 readings that are not deleted, by observed time.
+    pub async fn readings_for_event(&self, id: EventId) -> Vec<ReadingView> {
+        reading_views(&self.store.entries_for_event(id).await.unwrap())
     }
 
     /// Runs the auto-close sweep at the fake clock's time, as the server's timer would.

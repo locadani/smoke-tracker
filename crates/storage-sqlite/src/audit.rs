@@ -9,7 +9,7 @@ use sqlx::SqliteConnection;
 
 use crate::convert::{corrupt, parse};
 use crate::error::IntoStore;
-use crate::{SqliteStore, events, lists, readings, reports, users};
+use crate::{SqliteStore, entries, events, lists, users};
 
 struct AuditRow {
     id: i64,
@@ -104,8 +104,7 @@ impl SnapshotRepo for SqliteStore {
                 .map(Snapshot::of),
         );
         snapshots.extend(events::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
-        snapshots.extend(reports::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
-        snapshots.extend(readings::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
+        snapshots.extend(entries::fetch_all(&mut tx).await?.iter().map(Snapshot::of));
         Ok(AuditState { entries, snapshots })
     }
 }

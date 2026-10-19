@@ -6,13 +6,12 @@
 
 mod audit;
 mod convert;
+mod entries;
 mod error;
 mod events;
 mod invites;
 mod jobs;
 mod lists;
-mod readings;
-mod reports;
 mod sessions;
 mod tx;
 mod users;
@@ -100,6 +99,6 @@ impl Transactional for SqliteStore {
     /// instead of failing later with `SQLITE_BUSY_SNAPSHOT`.
     async fn begin(&self, actor: Option<UserId>) -> StoreResult<SqliteTx> {
         let tx = self.writer.begin_with("BEGIN IMMEDIATE").await.db()?;
-        Ok(SqliteTx::new(tx, actor, self.clock.clone()))
+        Ok(SqliteTx::new(tx, actor, &self.clock))
     }
 }

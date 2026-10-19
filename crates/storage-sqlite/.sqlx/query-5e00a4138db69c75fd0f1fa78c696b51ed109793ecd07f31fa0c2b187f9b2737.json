@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT e.id, e.user_id, e.event_id, e.observed_at, e.recorded_at, e.note, e.deleted_at FROM log_entries e JOIN smell_reports r ON r.log_entry_id = e.id WHERE r.id = $1",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "user_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "user_id"
+          }
+        }
+      },
+      {
+        "name": "event_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "event_id"
+          }
+        }
+      },
+      {
+        "name": "observed_at",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "observed_at"
+          }
+        }
+      },
+      {
+        "name": "recorded_at",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "recorded_at"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "note"
+          }
+        }
+      },
+      {
+        "name": "deleted_at",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "log_entries",
+            "name": "deleted_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "5e00a4138db69c75fd0f1fa78c696b51ed109793ecd07f31fa0c2b187f9b2737"
+}

@@ -13,9 +13,9 @@ use crate::events::{
 };
 use crate::permissions::{Action, Actor, can};
 use crate::records::{
-    Closure, Event, NewEvent, NewReading, NewReport, Pm25Reading, ReportValues, SmellReport,
+    Closure, Event, LogEntry, NewEntry, NewEvent, Note, ReportValues, SmellReport,
 };
-use crate::repos::{EventWrites, ReadingWrites, ReportWrites, StoreError, StoreResult};
+use crate::repos::{EntryWrites, EventWrites, StoreError, StoreResult};
 use crate::schedule::DailySchedule;
 use crate::types::{CloseReason, EventId, Pm25, ReportId, UserId};
 
@@ -68,14 +68,14 @@ pub enum EventChoice {
 pub struct SmellEntry {
     pub observed_at: DateTime<Utc>,
     pub values: ReportValues,
+    pub note: Option<Note>,
     /// Logged together with the report, in the same event.
     pub pm25: Option<Pm25>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Logged {
-    pub report: SmellReport,
-    pub reading: Option<Pm25Reading>,
+    pub entry: LogEntry,
 }
 
 /// Closes `event` at its last report (or where it opened, if it has none): the end used by
@@ -127,7 +127,7 @@ pub async fn log_smell<T>(
     now: DateTime<Utc>,
 ) -> Result<Logged, LogError>
 where
-    T: EventWrites + ReportWrites + ReadingWrites,
+    T: EventWrites + EntryWrites,
 {
     if !can(actor, Action::LogEntry, now) {
         return Err(LogError::Forbidden);
@@ -172,27 +172,17 @@ where
             Some(id)
         }
     };
-    let report = tx
-        .create_report(NewReport {
-            event_id,
-            user_id: actor.id,
-            observed_at,
-            values: entry.values,
-        })
-        .await?;
-    let reading = match entry.pm25 {
-        Some(value) => Some(
-            tx.create_reading(NewReading {
-                user_id: actor.id,
-                event_id,
-                observed_at,
-                value,
-            })
-            .await?,
-        ),
-        None => None,
-    };
-    Ok(Logged { report, reading })
+    let new = NewEntry::new(
+        actor.id,
+        event_id,
+        observed_at,
+        entry.note,
+        Some(entry.values),
+        entry.pm25,
+    )?;
+    Ok(Logged {
+        entry: tx.create_entry(new).await?,
+    })
 }
 
 /// Joins the event `id` names: running now, or one the past report can belong to (its end moves
@@ -226,24 +216,17 @@ pub async fn log_reading<T>(
     observed_at: DateTime<Utc>,
     value: Pm25,
     now: DateTime<Utc>,
-) -> Result<Pm25Reading, LogError>
+) -> Result<LogEntry, LogError>
 where
-    T: EventWrites + ReadingWrites,
+    T: EventWrites + EntryWrites,
 {
     if !can(actor, Action::LogEntry, now) {
         return Err(LogError::Forbidden);
     }
     classify_observed(observed_at, now)?;
     let event_id = tx.event_at(observed_at).await?.map(|event| event.id);
-    let reading = tx
-        .create_reading(NewReading {
-            user_id: actor.id,
-            event_id,
-            observed_at,
-            value,
-        })
-        .await?;
-    Ok(reading)
+    let new = NewEntry::new(actor.id, event_id, observed_at, None, None, Some(value))?;
+    Ok(tx.create_entry(new).await?)
 }
 
 /// A report after the end of a closed event moves the end to the report (spec §7.5).
@@ -306,21 +289,23 @@ pub async fn reopen_event<T: EventWrites>(
     Ok(tx.reopen_event(id).await?)
 }
 
-/// "Correct a mistake" (spec §7.7): new values and observed time for a report. The time must
-/// still belong to the report's event; after a closed event's end, the end moves with it. A
-/// check (no event) keeps every level at 0 (spec §7.1).
-pub async fn correct_report<T: EventWrites + ReportWrites>(
+/// "Correct a mistake" (spec §7.7): new values, note and observed time for a report's entry.
+/// The time must still belong to the entry's event; after a closed event's end, the end moves
+/// with it. A check (no event) keeps every level at 0 (spec §7.1).
+#[allow(clippy::too_many_arguments)]
+pub async fn correct_report<T: EventWrites + EntryWrites>(
     tx: &mut T,
     actor: &Actor,
     id: ReportId,
     observed_at: DateTime<Utc>,
     values: ReportValues,
+    note: Option<Note>,
     schedule: &DailySchedule,
     now: DateTime<Utc>,
-) -> Result<SmellReport, LogError> {
-    let report = editable_report(tx, actor, id, now).await?;
+) -> Result<LogEntry, LogError> {
+    let (entry, _) = editable_report(tx, actor, id, now).await?;
     classify_observed(observed_at, now)?;
-    match report.event_id {
+    match entry.event_id {
         Some(event_id) => {
             let event = tx.event(event_id).await?.ok_or(LogError::NotFound)?;
             if !can_join_backdated(&event, observed_at, schedule) {
@@ -331,39 +316,41 @@ pub async fn correct_report<T: EventWrites + ReportWrites>(
         None if !values.is_no_smell() => return Err(LogError::CheckCannotSmell),
         None => {}
     }
-    Ok(tx.correct_report(id, observed_at, values).await?)
+    Ok(tx
+        .correct_entry(entry.id, observed_at, note, Some(values))
+        .await?)
 }
 
 /// "Move to another event" (spec §7.7): into an event that was running when the report was
 /// observed (its end moves if needed), or into a new event owned by the report's author. A
-/// no-smell report never opens one (spec §7.1).
-pub async fn move_report<T: EventWrites + ReportWrites>(
+/// no-smell report never opens one (spec §7.1). The whole entry moves, its reading with it.
+pub async fn move_report<T: EventWrites + EntryWrites>(
     tx: &mut T,
     actor: &Actor,
     id: ReportId,
     to: MoveTarget,
     schedule: &DailySchedule,
     now: DateTime<Utc>,
-) -> Result<SmellReport, LogError> {
-    let report = editable_report(tx, actor, id, now).await?;
+) -> Result<LogEntry, LogError> {
+    let (entry, report) = editable_report(tx, actor, id, now).await?;
     let target = match to {
-        MoveTarget::Event(target) if Some(target) == report.event_id => return Ok(report),
+        MoveTarget::Event(target) if Some(target) == entry.event_id => return Ok(entry),
         MoveTarget::Event(target) => {
             let event = tx.event(target).await?.ok_or(LogError::NotFound)?;
-            if !can_join_backdated(&event, report.observed_at, schedule) {
+            if !can_join_backdated(&event, entry.observed_at, schedule) {
                 return Err(LogError::OutsideEvent);
             }
-            extend_to(tx, &event, report.observed_at).await?;
+            extend_to(tx, &event, entry.observed_at).await?;
             target
         }
         MoveTarget::New if report.values.is_no_smell() => return Err(LogError::NoSmellCannotOpen),
         MoveTarget::New => {
             let another_open = tx.open_event().await?.is_some();
-            let (owner, at) = (report.user_id, report.observed_at);
+            let (owner, at) = (entry.user_id, entry.observed_at);
             open_new_event(tx, owner, at, schedule, now, another_open).await?
         }
     };
-    Ok(tx.move_report(id, target).await?)
+    Ok(tx.move_entry(entry.id, target).await?)
 }
 
 /// The event, if it exists and `actor` may close or reopen it.
@@ -387,26 +374,28 @@ async fn manageable_event<T: EventWrites>(
     }
 }
 
-/// The report, if it exists, is not deleted, and `actor` may correct or move it.
-async fn editable_report<T: ReportWrites>(
+/// The report's entry and the report itself, if it exists, is not deleted, and `actor` may
+/// correct or move it.
+async fn editable_report<T: EntryWrites>(
     tx: &mut T,
     actor: &Actor,
     id: ReportId,
     now: DateTime<Utc>,
-) -> Result<SmellReport, LogError> {
-    let report = tx
-        .report(id)
+) -> Result<(LogEntry, SmellReport), LogError> {
+    let entry = tx
+        .entry_of_report(id)
         .await?
-        .filter(|report| !report.is_deleted())
+        .filter(|entry| !entry.is_deleted())
         .ok_or(LogError::NotFound)?;
+    let report = entry.report.clone().ok_or(LogError::NotFound)?;
     if can(
         actor,
         Action::EditEntry {
-            owner: report.user_id,
+            owner: entry.user_id,
         },
         now,
     ) {
-        Ok(report)
+        Ok((entry, report))
     } else {
         Err(LogError::Forbidden)
     }

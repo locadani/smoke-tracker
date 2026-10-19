@@ -44,8 +44,9 @@ pub struct HistoryEntry {
     pub changes: Vec<Change>,
 }
 
-/// The audited fields of a smell report, as `SmellReport` serialises them; older snapshots are
-/// read through [`SmellReport::upgrade_snapshot`].
+/// The audited fields of a smell report in one flat shape: what a report's own audit entries
+/// held. A log entry's whole-log snapshot is read through [`flat_report`], older report
+/// snapshots through [`SmellReport::upgrade_snapshot`].
 #[derive(Deserialize)]
 struct Snapshot {
     event_id: Option<EventId>,
@@ -55,6 +56,22 @@ struct Snapshot {
     note: Option<String>,
 }
 
+/// The report's fields of a snapshot, flat. A log entry's snapshot (`"report": {...}` next to
+/// the entry's own fields) is flattened; a snapshot without a report has none.
+fn flat_report(value: &serde_json::Value) -> Option<serde_json::Value> {
+    let Some(report) = value.get("report") else {
+        return Some(SmellReport::upgrade_snapshot(value).into_owned());
+    };
+    let report = report.as_object()?;
+    Some(serde_json::json!({
+        "event_id": value.get("event_id"),
+        "observed_at": value.get("observed_at"),
+        "rooms": report.get("rooms"),
+        "symptoms": report.get("symptoms"),
+        "note": value.get("note"),
+    }))
+}
+
 /// One report's audit entries (oldest first, from `AuditRepo::audit_history`) as history.
 pub fn report_history(entries: &[ChainedEntry]) -> Vec<HistoryEntry> {
     entries
@@ -62,8 +79,7 @@ pub fn report_history(entries: &[ChainedEntry]) -> Vec<HistoryEntry> {
         .map(|entry| {
             let record = &entry.record;
             let snapshot = |value: &Option<serde_json::Value>| -> Option<Snapshot> {
-                let value = SmellReport::upgrade_snapshot(value.as_ref()?).into_owned();
-                serde_json::from_value(value).ok()
+                serde_json::from_value(flat_report(value.as_ref()?)?).ok()
             };
             let changes = match (snapshot(&record.before), snapshot(&record.after)) {
                 (Some(before), Some(after)) => changes(&before, &after),
@@ -154,8 +170,8 @@ fn changes(before: &Snapshot, after: &Snapshot) -> Vec<Change> {
 mod tests {
     use super::*;
     use crate::audit::{AuditEntity, AuditRecord, GENESIS_HASH};
-    use crate::records::{Audited, ReportValues};
-    use crate::types::ReportId;
+    use crate::records::{Audited, LogEntry, Note, ReportValues};
+    use crate::types::{LogEntryId, ReportId};
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
@@ -168,35 +184,36 @@ mod tests {
         }
     }
 
-    fn report(rooms: &[(i64, u8)]) -> SmellReport {
-        SmellReport {
-            id: ReportId(9),
-            event_id: Some(EventId(4)),
+    fn report(rooms: &[(i64, u8)]) -> LogEntry {
+        LogEntry {
+            id: LogEntryId(3),
             user_id: UserId(1),
+            event_id: Some(EventId(4)),
             observed_at: t("2026-01-15T19:00:00Z"),
             recorded_at: t("2026-01-15T19:00:01Z"),
-            values: ReportValues::new(
-                rooms.iter().map(|&(room, level)| at(room, level)).collect(),
-                vec![SymptomId(1)],
-                None,
-            )
-            .unwrap(),
+            note: None,
             deleted_at: None,
+            report: Some(SmellReport {
+                id: ReportId(9),
+                log_entry_id: LogEntryId(3),
+                values: ReportValues::new(
+                    rooms.iter().map(|&(room, level)| at(room, level)).collect(),
+                    vec![SymptomId(1)],
+                )
+                .unwrap(),
+            }),
+            reading: None,
         }
     }
 
-    fn entry(
-        action: AuditAction,
-        before: Option<&SmellReport>,
-        after: &SmellReport,
-    ) -> ChainedEntry {
+    fn entry(action: AuditAction, before: Option<&LogEntry>, after: &LogEntry) -> ChainedEntry {
         ChainedEntry::seal(
             AuditRecord {
                 id: 1,
                 at_micros: t("2026-01-16T08:15:00Z").timestamp_micros(),
                 actor_id: Some(UserId(2)),
-                entity: AuditEntity::SmellReport,
-                entity_id: 9,
+                entity: AuditEntity::LogEntry,
+                entity_id: 3,
                 action,
                 before: before.map(Audited::snapshot),
                 after: Some(after.snapshot()),
@@ -209,8 +226,9 @@ mod tests {
     fn a_correction_lists_each_changed_value() {
         let before = report(&[(2, 4), (3, 6)]);
         let mut after = before.clone();
-        after.values =
-            ReportValues::new(vec![at(1, 3), at(3, 7)], vec![], Some("from the balcony")).unwrap();
+        after.report.as_mut().unwrap().values =
+            ReportValues::new(vec![at(1, 3), at(3, 7)], vec![]).unwrap();
+        after.note = Note::parse(Some("from the balcony")).unwrap();
         after.observed_at = t("2026-01-15T19:30:00Z");
         let history = report_history(&[
             entry(AuditAction::Create, None, &before),

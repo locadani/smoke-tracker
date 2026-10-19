@@ -77,5 +77,5 @@ async fn sqlite_and_postgres_schemas_have_the_same_columns() {
         only_sqlite.is_empty() && only_postgres.is_empty(),
         "only in SQLite: {only_sqlite:#?}\nonly in Postgres: {only_postgres:#?}"
     );
-    assert_eq!(sqlite.len(), 66, "a table went missing from the comparison");
+    assert_eq!(sqlite.len(), 64, "a table went missing from the comparison");
 }

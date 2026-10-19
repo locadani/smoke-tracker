@@ -6,13 +6,12 @@
 
 mod audit;
 mod convert;
+mod entries;
 mod error;
 mod events;
 mod invites;
 mod jobs;
 mod lists;
-mod readings;
-mod reports;
 mod sessions;
 mod tx;
 mod users;
@@ -79,6 +78,6 @@ impl Transactional for PostgresStore {
             .execute(&mut *tx)
             .await
             .db()?;
-        Ok(PostgresTx::new(tx, actor, self.clock.clone()))
+        Ok(PostgresTx::new(tx, actor, &self.clock))
     }
 }

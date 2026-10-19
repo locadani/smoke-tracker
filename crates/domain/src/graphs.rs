@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Datelike, Days, Months, NaiveDate, Timelike, Utc};
 
-use crate::records::{Pm25Reading, ReportValues, Room, SmellReport};
+use crate::records::{ReadingView, ReportValues, ReportView, Room};
 use crate::schedule::DailySchedule;
 use crate::types::{EventId, Level, RoomArea, RoomId, SymptomId, UserId};
 
@@ -183,10 +183,10 @@ impl Filter {
     /// "hide clean checks" judge. `rooms` gives each room's area.
     pub fn reports(
         &self,
-        reports: Vec<SmellReport>,
+        reports: Vec<ReportView>,
         rooms: &[Room],
         schedule: &DailySchedule,
-    ) -> Vec<SmellReport> {
+    ) -> Vec<ReportView> {
         let wanted = |room: RoomId| {
             if !self.rooms.is_empty() {
                 self.rooms.contains(&room)
@@ -211,12 +211,8 @@ impl Filter {
                     if kept.is_empty() {
                         return None;
                     }
-                    report.values = ReportValues::new(
-                        kept,
-                        report.values.symptoms().to_vec(),
-                        report.values.note(),
-                    )
-                    .expect("some rooms of valid values are valid values");
+                    report.values = ReportValues::new(kept, report.values.symptoms().to_vec())
+                        .expect("some rooms of valid values are valid values");
                 }
                 Some(report)
             })
@@ -230,9 +226,9 @@ impl Filter {
     /// The PM2.5 readings the graphs show: those of the person, in the part of the day.
     pub fn readings(
         &self,
-        readings: Vec<Pm25Reading>,
+        readings: Vec<ReadingView>,
         schedule: &DailySchedule,
-    ) -> Vec<Pm25Reading> {
+    ) -> Vec<ReadingView> {
         readings
             .into_iter()
             .filter(|reading| self.keeps(reading.user_id, reading.observed_at, schedule))
@@ -256,7 +252,7 @@ pub struct PersonLine {
 
 /// Intensity over time with one line per person (spec §9: "a report's highest room level, one
 /// line per person"), ordered by user id. A no-smell report is a point at 0.
-pub fn intensity_lines(reports: &[SmellReport]) -> Vec<PersonLine> {
+pub fn intensity_lines(reports: &[ReportView]) -> Vec<PersonLine> {
     let mut lines: BTreeMap<UserId, Vec<(DateTime<Utc>, Level)>> = BTreeMap::new();
     for report in reports {
         lines
@@ -277,7 +273,7 @@ pub fn intensity_lines(reports: &[SmellReport]) -> Vec<PersonLine> {
 /// its earliest report among `reports`, the rule of the summary card (decision #94); a no-smell
 /// check outside any event is not an event.
 pub fn events_per_bucket(
-    reports: &[SmellReport],
+    reports: &[ReportView],
     period: Period,
     schedule: &DailySchedule,
 ) -> Vec<(NaiveDate, usize)> {
@@ -325,7 +321,7 @@ pub struct RoomHours {
 /// The room × hour-of-day heatmap of room levels, where 0 counts as checked and clean (spec
 /// §9). Rooms that no report names are left out; the rest are ordered by id. A no-smell
 /// report that names no room adds nothing: it says nothing about any one room.
-pub fn room_hours(reports: &[SmellReport], schedule: &DailySchedule) -> Vec<RoomHours> {
+pub fn room_hours(reports: &[ReportView], schedule: &DailySchedule) -> Vec<RoomHours> {
     let mut rows: BTreeMap<RoomId, [LevelTally; 24]> = BTreeMap::new();
     for report in reports {
         let hour = report.observed_at.with_timezone(&schedule.tz()).hour() as usize;
@@ -342,7 +338,7 @@ pub fn room_hours(reports: &[SmellReport], schedule: &DailySchedule) -> Vec<Room
 
 /// How many reports name each symptom, most frequent first, then by id. Symptoms nobody
 /// reported are left out.
-pub fn symptom_counts(reports: &[SmellReport]) -> Vec<(SymptomId, usize)> {
+pub fn symptom_counts(reports: &[ReportView]) -> Vec<(SymptomId, usize)> {
     let mut counts: BTreeMap<SymptomId, usize> = BTreeMap::new();
     for report in reports {
         for &symptom in report.values.symptoms() {
@@ -366,7 +362,7 @@ pub struct AreaLevels {
 /// a report's intensity (spec §6). `rooms` gives each room's area; a room missing from it is
 /// skipped.
 pub fn area_levels(
-    reports: &[SmellReport],
+    reports: &[ReportView],
     rooms: &[Room],
     period: Period,
     schedule: &DailySchedule,
@@ -399,7 +395,7 @@ fn zeroed<T: Copy>(period: Period, empty: T) -> BTreeMap<NaiveDate, T> {
 mod tests {
     use super::*;
     use crate::records::{ReportValues, RoomLevel};
-    use crate::types::{ListName, ReportId};
+    use crate::types::{ListName, LogEntryId, ReportId};
 
     fn t(s: &str) -> DateTime<Utc> {
         s.parse().unwrap()
@@ -420,10 +416,11 @@ mod tests {
         at: &str,
         rooms: &[(i64, u8)],
         symptoms: &[i64],
-    ) -> SmellReport {
+    ) -> ReportView {
         let at = t(at);
-        SmellReport {
+        ReportView {
             id: ReportId(1),
+            entry_id: LogEntryId(1),
             event_id: (event != 0).then_some(EventId(event)),
             user_id: UserId(user),
             observed_at: at,
@@ -437,9 +434,9 @@ mod tests {
                     })
                     .collect(),
                 symptoms.iter().map(|&s| SymptomId(s)).collect(),
-                None,
             )
             .unwrap(),
+            note: None,
             deleted_at: None,
         }
     }
@@ -551,7 +548,7 @@ mod tests {
         );
     }
 
-    fn levels_of(reports: &[SmellReport]) -> Vec<Vec<(i64, u8)>> {
+    fn levels_of(reports: &[ReportView]) -> Vec<Vec<(i64, u8)>> {
         reports
             .iter()
             .map(|r| {
@@ -564,7 +561,7 @@ mod tests {
             .collect()
     }
 
-    fn sample() -> Vec<SmellReport> {
+    fn sample() -> Vec<ReportView> {
         vec![
             // 21:00 in Rome, by user 1: bedroom (1) 6, stairwell (6) 2.
             report(1, 1, "2026-01-10T20:00:00Z", &[(1, 6), (6, 2)], &[]),
@@ -630,8 +627,9 @@ mod tests {
         };
         let kept = filter.reports(sample(), &rooms(), &rome());
         assert_eq!(levels_of(&kept), [Vec::<(i64, u8)>::new()], "23:30, user 1");
-        let reading = |user, at: &str| Pm25Reading {
+        let reading = |user, at: &str| ReadingView {
             id: crate::types::ReadingId(1),
+            entry_id: LogEntryId(1),
             event_id: None,
             user_id: UserId(user),
             observed_at: t(at),

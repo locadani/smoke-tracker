@@ -10,6 +10,7 @@
 
 pub mod audit;
 pub mod corrections;
+pub mod entries;
 pub mod events;
 pub mod fixture;
 pub mod invites;
@@ -17,8 +18,6 @@ pub mod lists;
 pub mod logbook;
 pub mod migrations;
 pub mod people;
-pub mod readings;
-pub mod reports;
 pub mod sessions;
 pub mod sweep;
 pub mod transactions;
@@ -60,23 +59,28 @@ macro_rules! contract_tests {
             events::events_between_returns_overlapping_events,
             events::unseen_auto_closed_events_are_listed_until_seen,
             events::event_at_finds_the_event_whose_span_contains_the_time,
-            reports::a_report_keeps_its_rooms_and_symptoms,
-            reports::correcting_a_report_records_before_and_after,
-            reports::moving_a_report_is_audited,
-            reports::deleting_a_report_is_soft,
-            reports::latest_report_time_ignores_deleted_reports,
-            reports::an_unknown_room_rolls_back_the_report,
-            reports::correcting_a_report_can_remove_rooms_and_symptoms,
-            reports::an_unknown_room_on_correction_keeps_the_original_links,
-            reports::moving_a_report_to_an_unknown_event_is_rejected,
-            reports::an_unknown_symptom_rolls_back_the_report,
-            reports::reports_between_returns_live_reports_with_their_links,
-            readings::a_reading_can_stand_alone_or_join_an_event,
-            readings::correcting_and_deleting_a_reading_are_audited,
-            readings::a_reading_for_an_unknown_event_is_rejected,
-            readings::pm25_values_round_trip_exactly,
-            readings::job_runs_are_remembered_but_not_audited,
-            readings::readings_between_returns_live_readings_in_the_window,
+            entries::a_report_keeps_its_rooms_and_symptoms,
+            entries::entry_with_report_and_reading_round_trips,
+            entries::an_entry_cannot_be_created_without_a_child,
+            entries::creating_a_combined_log_writes_one_log_entry_audit_row,
+            entries::correcting_an_entry_records_before_and_after,
+            entries::correcting_a_reading_entry_changes_its_time_and_note,
+            entries::moving_an_entry_moves_both_children,
+            entries::deleting_an_entry_is_soft,
+            entries::delete_entry_hides_both_children,
+            entries::latest_report_time_ignores_deleted_reports_and_readings,
+            entries::an_unknown_room_rolls_back_the_entry,
+            entries::correcting_a_report_can_remove_rooms_and_symptoms,
+            entries::an_unknown_room_on_correction_keeps_the_original_links,
+            entries::moving_an_entry_to_an_unknown_event_is_rejected,
+            entries::an_unknown_symptom_rolls_back_the_entry,
+            entries::entries_between_returns_live_entries_with_their_children,
+            entries::a_reading_can_stand_alone_or_join_an_event,
+            entries::correcting_and_deleting_a_reading_entry_are_audited,
+            entries::a_reading_for_an_unknown_event_is_rejected,
+            entries::pm25_values_round_trip_exactly,
+            entries::one_write_transaction_uses_one_instant,
+            transactions::job_runs_are_remembered_but_not_audited,
             audit::every_write_extends_one_unbroken_chain,
             audit::the_history_of_a_record_lists_its_entries,
             audit::a_direct_record_edit_is_detected,

@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::Value;
 
 use crate::audit::{AuditEntity, ChainError, ChainedEntry, GENESIS_HASH, verify_chain};
-use crate::records::{Audited, SmellReport};
+use crate::records::Audited;
 use crate::repos::{SnapshotRepo, StoreResult};
 
 /// The audit log and every audited record, read at one moment.
@@ -118,16 +118,9 @@ pub fn verify_snapshots(entries: &[ChainedEntry], current: &[Snapshot]) -> Vec<S
     problems
 }
 
-/// Whether `current` equals the entry's `after` snapshot. Report snapshots audited before rooms
-/// had their own levels are compared in today's shape (decision #104).
+/// Whether `current` equals the entry's `after` snapshot.
 fn matches_audited(entry: &ChainedEntry, current: &Value) -> bool {
-    match &entry.record.after {
-        Some(after) if entry.record.entity == AuditEntity::SmellReport => {
-            *SmellReport::upgrade_snapshot(after) == *current
-        }
-        Some(after) => after == current,
-        None => false,
-    }
+    entry.record.after.as_ref() == Some(current)
 }
 
 /// Runs both checks against a store.
@@ -206,22 +199,22 @@ mod tests {
     }
 
     #[test]
-    fn a_record_edited_outside_the_app_differs() {
+    fn a_log_entry_snapshot_differing_from_its_row_is_reported() {
         let entries = chain(&[(
-            AuditEntity::SmellReport,
+            AuditEntity::LogEntry,
             7,
             AuditAction::Create,
-            json!({ "rooms": [{ "room": 1, "level": 6 }] }),
+            json!({ "report": { "rooms": [{ "room": 1, "level": 6 }] } }),
         )]);
         let current = [snap(
-            AuditEntity::SmellReport,
+            AuditEntity::LogEntry,
             7,
-            json!({ "rooms": [{ "room": 1, "level": 9 }] }),
+            json!({ "report": { "rooms": [{ "room": 1, "level": 9 }] } }),
         )];
         assert_eq!(
             verify_snapshots(&entries, &current),
             [SnapshotProblem::Differs {
-                entity: AuditEntity::SmellReport,
+                entity: AuditEntity::LogEntry,
                 entity_id: 7,
                 audit_id: 1
             }]
@@ -229,20 +222,34 @@ mod tests {
     }
 
     #[test]
-    fn a_report_audited_before_room_levels_still_matches_its_converted_record() {
-        let entries = chain(&[(
-            AuditEntity::SmellReport,
-            7,
-            AuditAction::Create,
-            json!({ "intensity": 6, "rooms": [1, 3] }),
-        )]);
-        let converted = json!({ "rooms": [{ "room": 1, "level": 6 }, { "room": 3, "level": 6 }] });
-        let current = [snap(AuditEntity::SmellReport, 7, converted)];
+    fn old_report_and_reading_rows_stay_valid_chain_links() {
+        let entries = chain(&[
+            (
+                AuditEntity::SmellReport,
+                7,
+                AuditAction::Create,
+                json!({ "intensity": 6, "rooms": [1, 3] }),
+            ),
+            (
+                AuditEntity::Pm25Reading,
+                4,
+                AuditAction::Create,
+                json!({ "value": 12.5 }),
+            ),
+            (
+                AuditEntity::LogEntry,
+                2,
+                AuditAction::Create,
+                json!({ "report": { "id": 7 }, "reading": { "id": 4 } }),
+            ),
+        ]);
+        let current = [snap(
+            AuditEntity::LogEntry,
+            2,
+            json!({ "report": { "id": 7 }, "reading": { "id": 4 } }),
+        )];
+        assert_eq!(verify_chain(&entries), Ok(()));
         assert_eq!(verify_snapshots(&entries, &current), []);
-
-        let edited = json!({ "rooms": [{ "room": 1, "level": 6 }, { "room": 3, "level": 9 }] });
-        let current = [snap(AuditEntity::SmellReport, 7, edited)];
-        assert_eq!(verify_snapshots(&entries, &current).len(), 1);
     }
 
     #[test]
@@ -259,11 +266,11 @@ mod tests {
 
     #[test]
     fn an_audited_record_that_is_gone_has_vanished() {
-        let entries = chain(&[(AuditEntity::Pm25Reading, 2, AuditAction::Create, json!({}))]);
+        let entries = chain(&[(AuditEntity::LogEntry, 2, AuditAction::Create, json!({}))]);
         assert_eq!(
             verify_snapshots(&entries, &[]),
             [SnapshotProblem::Vanished {
-                entity: AuditEntity::Pm25Reading,
+                entity: AuditEntity::LogEntry,
                 entity_id: 2
             }]
         );

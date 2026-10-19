@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use smoke_domain::graphs::{
     AreaLevels, Granularity, Period, PersonLine, RoomHours, symptom_counts,
 };
-use smoke_domain::records::{Pm25Reading, Room, SmellReport, Symptom};
+use smoke_domain::records::{ReadingView, ReportView, Room, Symptom};
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::types::{Level, Locale, UserId};
 
@@ -66,7 +66,7 @@ pub(crate) fn intensity_chart(
     tr: Tr,
     lines: &[PersonLine],
     names: &HashMap<UserId, String>,
-    readings: &[Pm25Reading],
+    readings: &[ReadingView],
     everyone: bool,
     period: Period,
     schedule: &DailySchedule,
@@ -182,11 +182,7 @@ pub(crate) fn count_chart(
 }
 
 /// How often each symptom was reported, most frequent first, by its shown name.
-pub(crate) fn symptom_chart(
-    tr: Tr,
-    reports: &[SmellReport],
-    symptoms: &[Symptom],
-) -> Option<Value> {
+pub(crate) fn symptom_chart(tr: Tr, reports: &[ReportView], symptoms: &[Symptom]) -> Option<Value> {
     let counts = symptom_counts(reports);
     if counts.is_empty() {
         return None;

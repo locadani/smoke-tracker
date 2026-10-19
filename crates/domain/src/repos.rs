@@ -13,13 +13,12 @@ use thiserror::Error;
 use crate::DomainError;
 use crate::audit::{AuditEntity, ChainedEntry};
 use crate::records::{
-    Closure, Event, Invite, NewEvent, NewInvite, NewReading, NewReport, NewRoom, NewSymptom,
-    NewUser, PasswordHash, Pm25Reading, ReportValues, Room, SmellReport, StoredSession, Symptom,
-    User,
+    Closure, Event, Invite, LogEntry, NewEntry, NewEvent, NewInvite, NewRoom, NewSymptom, NewUser,
+    Note, PasswordHash, ReportValues, Room, StoredSession, Symptom, User,
 };
 use crate::types::{
-    EventId, InviteId, Locale, Pm25, ReadingId, ReportId, RoomId, SymptomId, TokenHash, UserId,
-    Username,
+    EventId, InviteId, Locale, LogEntryId, ReadingId, ReportId, RoomId, SymptomId, TokenHash,
+    UserId, Username,
 };
 use crate::verify::AuditState;
 
@@ -129,40 +128,32 @@ pub trait EventRepo: Send + Sync {
     fn unseen_auto_closed(&self) -> impl Future<Output = StoreResult<Vec<Event>>> + Send;
 }
 
-pub trait ReportRepo: Send + Sync {
-    /// A report, deleted or not.
-    fn report(&self, id: ReportId)
-    -> impl Future<Output = StoreResult<Option<SmellReport>>> + Send;
-    /// The event's reports that are not deleted, ordered by observed time.
-    fn reports_for_event(
+/// Log entries with their report and reading loaded.
+pub trait EntryRepo: Send + Sync {
+    /// An entry, deleted or not.
+    fn entry(&self, id: LogEntryId) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    /// The entry that owns the report, deleted or not.
+    fn entry_of_report(
         &self,
-        event: EventId,
-    ) -> impl Future<Output = StoreResult<Vec<SmellReport>>> + Send;
-    /// Reports that are not deleted, observed in `[from, to)`, ordered by observed time.
-    fn reports_between(
-        &self,
-        from: DateTime<Utc>,
-        to: DateTime<Utc>,
-    ) -> impl Future<Output = StoreResult<Vec<SmellReport>>> + Send;
-}
-
-pub trait ReadingRepo: Send + Sync {
-    /// A reading, deleted or not.
-    fn reading(
+        id: ReportId,
+    ) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    /// The entry that owns the reading, deleted or not.
+    fn entry_of_reading(
         &self,
         id: ReadingId,
-    ) -> impl Future<Output = StoreResult<Option<Pm25Reading>>> + Send;
-    /// The event's readings that are not deleted, ordered by observed time.
-    fn readings_for_event(
+    ) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    /// The event's entries that are not deleted, ordered by observed time.
+    fn entries_for_event(
         &self,
         event: EventId,
-    ) -> impl Future<Output = StoreResult<Vec<Pm25Reading>>> + Send;
-    /// Readings that are not deleted, observed in `[from, to)`, ordered by observed time.
-    fn readings_between(
+    ) -> impl Future<Output = StoreResult<Vec<LogEntry>>> + Send;
+    /// Entries that are not deleted, observed in `[from, to)`, ordered by observed time:
+    /// reports and readings alike.
+    fn entries_between(
         &self,
         from: DateTime<Utc>,
         to: DateTime<Utc>,
-    ) -> impl Future<Output = StoreResult<Vec<Pm25Reading>>> + Send;
+    ) -> impl Future<Output = StoreResult<Vec<LogEntry>>> + Send;
 }
 
 pub trait JobRepo: Send + Sync {
@@ -278,51 +269,44 @@ pub trait EventWrites: Send {
     ) -> impl Future<Output = StoreResult<Event>> + Send;
 }
 
-pub trait ReportWrites: Send {
-    fn report(
+/// Every write records exactly one `log_entry` audit entry whose snapshot is the whole log
+/// (spec §6).
+pub trait EntryWrites: Send {
+    /// Reads inside the transaction, so a decision and the write that follows it see the same data.
+    fn entry(
+        &mut self,
+        id: LogEntryId,
+    ) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    fn entry_of_report(
         &mut self,
         id: ReportId,
-    ) -> impl Future<Output = StoreResult<Option<SmellReport>>> + Send;
-    /// `recorded_at` is set to now by the store.
-    fn create_report(
+    ) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    /// `recorded_at` is the transaction's instant. Fails with [`DomainError::EntryWithoutChildren`]
+    /// if `new` has neither a report nor a reading.
+    fn create_entry(&mut self, new: NewEntry)
+    -> impl Future<Output = StoreResult<LogEntry>> + Send;
+    /// "Correct a mistake": sets the observed time and the note, and replaces the report's
+    /// rooms, levels and symptoms when `report` is given (a [`Conflict::RuleViolated`] if the
+    /// entry has no report). The reading keeps its value and follows the entry's time. Deleted
+    /// entries cannot be corrected.
+    fn correct_entry(
         &mut self,
-        new: NewReport,
-    ) -> impl Future<Output = StoreResult<SmellReport>> + Send;
-    /// "Correct a mistake". Deleted reports cannot be corrected.
-    fn correct_report(
-        &mut self,
-        id: ReportId,
+        id: LogEntryId,
         observed_at: DateTime<Utc>,
-        values: ReportValues,
-    ) -> impl Future<Output = StoreResult<SmellReport>> + Send;
-    fn move_report(
+        note: Option<Note>,
+        report: Option<ReportValues>,
+    ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
+    /// Moves the whole entry, report and reading, into another event.
+    fn move_entry(
         &mut self,
-        id: ReportId,
+        id: LogEntryId,
         to: EventId,
-    ) -> impl Future<Output = StoreResult<SmellReport>> + Send;
-    /// Soft delete: sets `deleted_at`.
-    fn delete_report(
+    ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
+    /// Soft delete: sets `deleted_at`, hiding both children.
+    fn delete_entry(
         &mut self,
-        id: ReportId,
-    ) -> impl Future<Output = StoreResult<SmellReport>> + Send;
-}
-
-pub trait ReadingWrites: Send {
-    fn create_reading(
-        &mut self,
-        new: NewReading,
-    ) -> impl Future<Output = StoreResult<Pm25Reading>> + Send;
-    fn correct_reading(
-        &mut self,
-        id: ReadingId,
-        observed_at: DateTime<Utc>,
-        value: Pm25,
-    ) -> impl Future<Output = StoreResult<Pm25Reading>> + Send;
-    /// Soft delete: sets `deleted_at`.
-    fn delete_reading(
-        &mut self,
-        id: ReadingId,
-    ) -> impl Future<Output = StoreResult<Pm25Reading>> + Send;
+        id: LogEntryId,
+    ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
 }
 
 /// Bookkeeping for background jobs. Not audited: it is not evidence and changes daily.
@@ -336,26 +320,12 @@ pub trait JobWrites: Send {
 
 /// Everything a write transaction can do.
 pub trait WriteTx:
-    Commit
-    + UserWrites
-    + InviteWrites
-    + ListWrites
-    + EventWrites
-    + ReportWrites
-    + ReadingWrites
-    + JobWrites
+    Commit + UserWrites + InviteWrites + ListWrites + EventWrites + EntryWrites + JobWrites
 {
 }
 
 impl<T> WriteTx for T where
-    T: Commit
-        + UserWrites
-        + InviteWrites
-        + ListWrites
-        + EventWrites
-        + ReportWrites
-        + ReadingWrites
-        + JobWrites
+    T: Commit + UserWrites + InviteWrites + ListWrites + EventWrites + EntryWrites + JobWrites
 {
 }
 
@@ -402,8 +372,7 @@ pub trait Store:
     + InviteRepo
     + ListRepo
     + EventRepo
-    + ReportRepo
-    + ReadingRepo
+    + EntryRepo
     + JobRepo
     + AuditRepo
     + SnapshotRepo
@@ -417,8 +386,7 @@ impl<T> Store for T where
         + InviteRepo
         + ListRepo
         + EventRepo
-        + ReportRepo
-        + ReadingRepo
+        + EntryRepo
         + JobRepo
         + AuditRepo
         + SnapshotRepo

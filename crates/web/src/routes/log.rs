@@ -7,7 +7,7 @@ use axum::response::Response;
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{Event, Room, RoomLevel, SmellReport, Symptom, User};
+use smoke_domain::records::{Event, ReportView, Room, RoomLevel, Symptom, User, report_views};
 use smoke_domain::repos::Store;
 use smoke_domain::starter::BEDROOM_KEY;
 use smoke_domain::summary::{MonthSummary, summarise};
@@ -195,7 +195,7 @@ pub(crate) struct Banner {
 /// The highest level any room reached in `reports`, with that room. On a tie the room of the
 /// most recent report wins (by observed time, then recorded time), and within one report the
 /// later room. `None` while every level is 0.
-pub(crate) fn peak<'a>(reports: impl IntoIterator<Item = &'a SmellReport>) -> Option<RoomLevel> {
+pub(crate) fn peak<'a>(reports: impl IntoIterator<Item = &'a ReportView>) -> Option<RoomLevel> {
     reports
         .into_iter()
         .flat_map(|report| {
@@ -210,7 +210,7 @@ pub(crate) fn peak<'a>(reports: impl IntoIterator<Item = &'a SmellReport>) -> Op
 fn banner(
     tr: Tr,
     event: &Event,
-    visible: &[&SmellReport],
+    visible: &[&ReportView],
     rooms: &[Room],
     now: DateTime<Utc>,
     tz: Tz,
@@ -319,7 +319,7 @@ pub(crate) async fn log_page<S: Store>(
     let actor = user.actor();
     let open = state.store.open_event().await?;
     let open_reports = match &open {
-        Some(event) => state.store.reports_for_event(event.id).await?,
+        Some(event) => report_views(&state.store.entries_for_event(event.id).await?),
         None => Vec::new(),
     };
     let shown = open
@@ -328,10 +328,7 @@ pub(crate) async fn log_page<S: Store>(
     let rooms = state.store.rooms().await?;
 
     let (month_start, month_end) = schedule.month_span(schedule.local_date(now));
-    let visible: Vec<_> = state
-        .store
-        .reports_between(month_start, month_end)
-        .await?
+    let visible: Vec<_> = report_views(&state.store.entries_between(month_start, month_end).await?)
         .into_iter()
         .filter(|r| can_see(&actor, r.user_id, now))
         .collect();
@@ -382,7 +379,7 @@ pub(crate) async fn log_page<S: Store>(
             .filter(|e| can(&actor, Action::ManageEvent { owner: e.owner_id }, now))
             .map(|e| e.id.0),
         banner: shown.map(|event| {
-            let visible: Vec<&SmellReport> = open_reports
+            let visible: Vec<&ReportView> = open_reports
                 .iter()
                 .filter(|r| can_see(&actor, r.user_id, now))
                 .collect();
@@ -398,13 +395,14 @@ pub(crate) async fn log_page<S: Store>(
 #[cfg(test)]
 mod tests {
     use smoke_domain::records::ReportValues;
-    use smoke_domain::types::{EventId, Level, ReportId, UserId};
+    use smoke_domain::types::{EventId, Level, LogEntryId, ReportId, UserId};
 
     use super::*;
 
-    fn report(observed: &str, recorded: &str, rooms: &[(i64, u8)]) -> SmellReport {
-        SmellReport {
+    fn report(observed: &str, recorded: &str, rooms: &[(i64, u8)]) -> ReportView {
+        ReportView {
             id: ReportId(1),
+            entry_id: LogEntryId(1),
             event_id: Some(EventId(1)),
             user_id: UserId(1),
             observed_at: observed.parse().unwrap(),
@@ -418,14 +416,14 @@ mod tests {
                     })
                     .collect(),
                 vec![],
-                None,
             )
             .unwrap(),
+            note: None,
             deleted_at: None,
         }
     }
 
-    fn top(reports: &[SmellReport]) -> Option<(i64, u8)> {
+    fn top(reports: &[ReportView]) -> Option<(i64, u8)> {
         peak(reports).map(|room| (room.room.0, room.level.get()))
     }
 

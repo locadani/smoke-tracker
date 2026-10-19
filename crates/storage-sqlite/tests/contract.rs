@@ -4,6 +4,7 @@ use smoke_domain::clock::{FakeClock, SystemClock};
 use smoke_storage_contract::fixture::{Fixture, raw_runner, start};
 use smoke_storage_contract::migrations;
 use smoke_storage_sqlite::SqliteStore;
+use sqlx::AssertSqlSafe;
 use sqlx::SqlitePool;
 use tempfile::TempDir;
 
@@ -61,6 +62,7 @@ async fn migrations_create_every_table_and_can_run_again() {
             "events",
             "invites",
             "jobs",
+            "log_entries",
             "pm25_readings",
             "rooms",
             "sessions",
@@ -141,7 +143,7 @@ async fn a_second_writer_waits_at_begin_instead_of_failing_at_commit() {
 }
 
 /// A database migrated up to `version`, with `rows` written by hand.
-async fn database_at(version: i64, rows: &'static str) -> (TempDir, String) {
+async fn database_at(version: i64, rows: &str) -> (TempDir, String) {
     let (dir, url) = database();
     let pool = SqlitePool::connect(&format!("{url}?mode=rwc"))
         .await
@@ -150,7 +152,10 @@ async fn database_at(version: i64, rows: &'static str) -> (TempDir, String) {
         .run_to(version, &pool)
         .await
         .unwrap();
-    sqlx::raw_sql(rows).execute(&pool).await.unwrap();
+    sqlx::raw_sql(AssertSqlSafe(rows.to_owned()))
+        .execute(&pool)
+        .await
+        .unwrap();
     pool.close().await;
     (dir, url)
 }
@@ -208,5 +213,125 @@ async fn after_the_rebuild_the_link_tables_still_refer_to_the_reports() {
             targets.contains(&"smell_reports".to_owned()),
             "{table}: {targets:?}"
         );
+    }
+}
+
+async fn migrated_0005() -> (TempDir, SqliteStore) {
+    let (dir, url) = database_at(4, &migrations::rows_before_0005()).await;
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    (dir, store)
+}
+
+macro_rules! migration_0005_checks {
+    ($($name:ident => $check:path),+ $(,)?) => {
+        $(
+            #[tokio::test]
+            async fn $name() {
+                let (_dir, store) = migrated_0005().await;
+                $check(&store).await;
+            }
+        )+
+    };
+}
+
+migration_0005_checks! {
+    migration_0005_creates_one_entry_per_report_and_per_unpaired_reading =>
+        migrations::migration_0005_creates_one_entry_per_report_and_per_unpaired_reading,
+    migration_0005_pairs_by_adjacent_create_entries => migrations::pairs_by_adjacent_create_entries,
+    migration_0005_never_pairs_across_people => migrations::never_pairs_across_people,
+    migration_0005_keeps_a_reading_after_a_reading_alone =>
+        migrations::keeps_a_reading_after_a_reading_alone,
+    migration_0005_pairs_a_report_moved_or_retimed_since =>
+        migrations::pairs_a_report_moved_or_retimed_since,
+    migration_0005_moves_each_report_note_to_its_entry =>
+        migrations::moves_each_report_note_to_its_entry,
+    migration_0005_keeps_report_and_reading_ids => migrations::keeps_report_and_reading_ids,
+    migration_0005_keeps_the_audit_chain_valid => migrations::keeps_the_audit_chain_valid,
+}
+
+async fn refused_and_unchanged(extra_row: &'static str) {
+    let (_dir, url) = database_at(4, &migrations::rows_before_0005()).await;
+    let pool = SqlitePool::connect(&url).await.unwrap();
+    sqlx::raw_sql(extra_row).execute(&pool).await.unwrap();
+    let counts = || {
+        let pool = pool.clone();
+        async move {
+            let mut counts = Vec::new();
+            for sql in [
+                "SELECT count(*) FROM smell_reports",
+                "SELECT count(*) FROM pm25_readings",
+                "SELECT count(*) FROM audit_log",
+            ] {
+                counts.push(
+                    sqlx::query_scalar::<_, i64>(sql)
+                        .fetch_one(&pool)
+                        .await
+                        .unwrap(),
+                );
+            }
+            counts
+        }
+    };
+    let counts_before = counts().await;
+
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    let error = store.migrate().await.unwrap_err();
+    assert!(
+        format!("{error:?}").contains(migrations::NEEDS_A_CREATE_ENTRY),
+        "{error:?}"
+    );
+    let log_entries: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM sqlite_master WHERE type = 'table' AND name = 'log_entries'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(log_entries, 0, "nothing was created");
+    let owner_columns: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM pragma_table_info('smell_reports') WHERE name = 'user_id'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(owner_columns, 1, "the reports table was not rebuilt");
+    assert_eq!(counts().await, counts_before);
+}
+
+#[tokio::test]
+async fn migration_0005_refuses_a_report_without_a_create_entry_and_changes_nothing() {
+    refused_and_unchanged(migrations::REPORT_WITHOUT_CREATE_ENTRY).await;
+}
+
+#[tokio::test]
+async fn migration_0005_refuses_a_reading_without_a_create_entry_and_changes_nothing() {
+    refused_and_unchanged(migrations::READING_WITHOUT_CREATE_ENTRY).await;
+}
+
+#[tokio::test]
+async fn after_0005_the_children_refer_to_log_entries() {
+    let (_dir, url) = database();
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    let pool = SqlitePool::connect(&url).await.unwrap();
+    for (table, target) in [
+        ("smell_reports", "log_entries"),
+        ("pm25_readings", "log_entries"),
+        ("smell_report_rooms", "smell_reports"),
+        ("smell_report_symptoms", "smell_reports"),
+    ] {
+        let targets: Vec<String> =
+            sqlx::query_scalar("SELECT \"table\" FROM pragma_foreign_key_list($1)")
+                .bind(table)
+                .fetch_all(&pool)
+                .await
+                .unwrap();
+        assert!(targets.contains(&target.to_owned()), "{table}: {targets:?}");
     }
 }
