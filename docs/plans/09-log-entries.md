@@ -60,6 +60,8 @@ scripts/neon-preflight-0005.sql      read-only pairing check
 docs/runbooks/0005-neon.md           backup and deploy steps (user runs them)
 ```
 
+**Two pull requests (decided by Daniele):** PR 1 = Tasks 1–5 on branch `feat/log-entries-model` (new model, migration, backfill; the app looks the same apart from a moved report taking its reading along), deployed and lived with for a few days. PR 2 = Tasks 6–8 on `feat/log-entries-ui`, branched from PR 1 after it merges (PM2.5 note in the Log form, entry pages, docs).
+
 **Why the order:** the record types change in every crate at once, so Task 3 (types + migration + both backends + contract) is one atomic task that keeps behaviour identical; each commit builds. Tasks 1 and 2 are additive. Task 4 adds the new behaviour on the new model. Task 5 (backfill) comes after 3 and 4 so `verify-audit` is only expected clean from Task 5.
 
 ---
