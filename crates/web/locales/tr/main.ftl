@@ -73,6 +73,8 @@ summary-reports = { $count ->
    *[other] { $count } bildirim
 }
 log-level-hint = 0 ile 10 arasında bir seviye seç.
+log-rooms-hint = Yalnızca şimdi kontrol ettiğin odaları işaretle. İşaretlenmeyen odalar temiz değil, "kontrol edilmedi" sayılır. Temiz = 0.
+log-rooms-hint-prefilled = Son raporundaki odalar zaten işaretli: şimdi kontrol etmediklerinin işaretini kaldır. İşaretlenmeyen odalar temiz değil, "kontrol edilmedi" sayılır. Temiz = 0.
 optional = isteğe bağlı
 action-add = Ekle
 action-change = Değiştir
@@ -159,6 +161,7 @@ events-max-intensity = en fazla { $level }
 event-title = { $date } tarihli olay
 event-started-by = Başlatan: { $username }
 event-timeline = Zaman çizelgesi
+event-timeline-hint = Her rapor yalnızca o anda kontrol edilen odaları gösterir.
 event-close-title = Bu olayı kapat
 event-gap = Önceki bildirimden bu yana 3 saatten fazla geçti: hâlâ aynı olay mı?
 event-gap-move = { $time } kaydını yeni bir olaya taşı

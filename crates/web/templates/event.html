@@ -9,6 +9,7 @@
 </div>
 {% if let Some(error) = error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 {% call c::card(tr.t("event-timeline")) %}
+<p class="muted">{{ tr.t("event-timeline-hint") }}</p>
 <ol class="timeline">
   {% for entry in entries %}
   {% if let Some(gap) = entry.gap %}

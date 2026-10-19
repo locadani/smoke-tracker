@@ -50,6 +50,10 @@ async fn the_form_offers_visible_rooms_by_area_and_the_symptoms() {
         page.text(&format!("{bedroom} .level-hint")),
         "Pick a level from 0 to 10."
     );
+    assert_eq!(
+        page.text(".split + .muted"),
+        r#"Tick only the rooms you checked now. Unticked rooms count as "not checked", not clean. Clean = 0."#
+    );
     assert_eq!(page.texts(".rooms > .overline"), ["Inside", "Common areas"]);
     let rooms = page.texts(".rooms .room-check");
     assert_eq!(rooms.first().map(String::as_str), Some("Living room"));
@@ -132,6 +136,11 @@ async fn with_an_event_open_the_form_offers_an_update_with_my_last_rooms() {
         page.texts(".room-check:has(input[name=room][checked])"),
         ["Bedroom"],
         "my last rooms are pre-selected, not the partner's Kitchen"
+    );
+    assert!(
+        page.text(".split + .muted")
+            .starts_with("Rooms from your last report are already ticked"),
+        "{html}"
     );
     assert!(page.exists(&format!(r#"input[name=room][value="{}"]"#, kitchen.0)));
 }
