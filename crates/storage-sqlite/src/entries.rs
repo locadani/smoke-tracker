@@ -160,6 +160,39 @@ fn group<T>(links: impl IntoIterator<Item = (i64, T)>) -> HashMap<i64, Vec<T>> {
     grouped
 }
 
+/// Entries from their rows and the children of all of them: `reports` are `(report id, entry
+/// id)`, `rooms` and `symptoms` are keyed by report id, `readings` by entry id.
+fn assemble_all(
+    rows: Vec<EntryRow>,
+    reports: impl IntoIterator<Item = (i64, i64)>,
+    rooms: impl IntoIterator<Item = (i64, (i64, i64))>,
+    symptoms: impl IntoIterator<Item = (i64, i64)>,
+    readings: impl IntoIterator<Item = (i64, ReadingParts)>,
+) -> StoreResult<Vec<LogEntry>> {
+    let mut rooms = group(rooms);
+    let mut symptoms = group(symptoms);
+    let mut reports: HashMap<i64, ReportParts> = reports
+        .into_iter()
+        .map(|(id, entry)| {
+            (
+                entry,
+                ReportParts {
+                    id,
+                    rooms: rooms.remove(&id).unwrap_or_default(),
+                    symptoms: symptoms.remove(&id).unwrap_or_default(),
+                },
+            )
+        })
+        .collect();
+    let mut readings: HashMap<i64, ReadingParts> = readings.into_iter().collect();
+    rows.into_iter()
+        .map(|row| {
+            let id = row.id;
+            assemble(row, reports.remove(&id), readings.remove(&id))
+        })
+        .collect()
+}
+
 async fn load_all(conn: &mut SqliteConnection, rows: Vec<EntryRow>) -> StoreResult<Vec<LogEntry>> {
     let mut entries = Vec::with_capacity(rows.len());
     for row in rows {
@@ -309,6 +342,7 @@ impl EntryRepo for SqliteStore {
         fetch_of_reading(&mut *self.read().await?, id).await
     }
 
+    /// Five queries whatever the number of entries, like [`Self::entries_between`].
     async fn entries_for_event(&self, event: EventId) -> StoreResult<Vec<LogEntry>> {
         let mut conn = self.read().await?;
         let rows = sqlx::query_as!(
@@ -321,7 +355,65 @@ impl EntryRepo for SqliteStore {
         .fetch_all(&mut *conn)
         .await
         .db()?;
-        load_all(&mut conn, rows).await
+        let reports = sqlx::query!(
+            "SELECT r.id, r.log_entry_id FROM smell_reports r \
+             JOIN log_entries e ON e.id = r.log_entry_id \
+             WHERE e.deleted_at IS NULL AND e.event_id = $1",
+            event.0,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let rooms = sqlx::query!(
+            "SELECT l.smell_report_id, l.room_id, l.level FROM smell_report_rooms l \
+             JOIN smell_reports r ON r.id = l.smell_report_id \
+             JOIN log_entries e ON e.id = r.log_entry_id \
+             WHERE e.deleted_at IS NULL AND e.event_id = $1 \
+             ORDER BY l.smell_report_id, l.room_id",
+            event.0,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let symptoms = sqlx::query!(
+            "SELECT l.smell_report_id, l.symptom_id FROM smell_report_symptoms l \
+             JOIN smell_reports r ON r.id = l.smell_report_id \
+             JOIN log_entries e ON e.id = r.log_entry_id \
+             WHERE e.deleted_at IS NULL AND e.event_id = $1 \
+             ORDER BY l.smell_report_id, l.symptom_id",
+            event.0,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        let readings = sqlx::query!(
+            "SELECT p.id, p.log_entry_id, p.value_ugm3 FROM pm25_readings p \
+             JOIN log_entries e ON e.id = p.log_entry_id \
+             WHERE e.deleted_at IS NULL AND e.event_id = $1",
+            event.0,
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .db()?;
+        assemble_all(
+            rows,
+            reports.into_iter().map(|r| (r.id, r.log_entry_id)),
+            rooms
+                .into_iter()
+                .map(|l| (l.smell_report_id, (l.room_id, l.level))),
+            symptoms
+                .into_iter()
+                .map(|l| (l.smell_report_id, l.symptom_id)),
+            readings.into_iter().map(|r| {
+                (
+                    r.log_entry_id,
+                    ReadingParts {
+                        id: r.id,
+                        value_ugm3: r.value_ugm3,
+                    },
+                )
+            }),
+        )
     }
 
     /// Five queries whatever the number of entries: the rows, then all their reports, room
@@ -388,32 +480,16 @@ impl EntryRepo for SqliteStore {
         .fetch_all(&mut *conn)
         .await
         .db()?;
-        let mut rooms = group(
+        assemble_all(
+            rows,
+            reports.into_iter().map(|r| (r.id, r.log_entry_id)),
             rooms
                 .into_iter()
                 .map(|l| (l.smell_report_id, (l.room_id, l.level))),
-        );
-        let mut symptoms = group(
             symptoms
                 .into_iter()
                 .map(|l| (l.smell_report_id, l.symptom_id)),
-        );
-        let mut reports: HashMap<i64, ReportParts> = reports
-            .into_iter()
-            .map(|r| {
-                (
-                    r.log_entry_id,
-                    ReportParts {
-                        id: r.id,
-                        rooms: rooms.remove(&r.id).unwrap_or_default(),
-                        symptoms: symptoms.remove(&r.id).unwrap_or_default(),
-                    },
-                )
-            })
-            .collect();
-        let mut readings: HashMap<i64, ReadingParts> = readings
-            .into_iter()
-            .map(|r| {
+            readings.into_iter().map(|r| {
                 (
                     r.log_entry_id,
                     ReadingParts {
@@ -421,14 +497,8 @@ impl EntryRepo for SqliteStore {
                         value_ugm3: r.value_ugm3,
                     },
                 )
-            })
-            .collect();
-        rows.into_iter()
-            .map(|row| {
-                let id = row.id;
-                assemble(row, reports.remove(&id), readings.remove(&id))
-            })
-            .collect()
+            }),
+        )
     }
 }
 
@@ -569,7 +639,8 @@ async fn has_log_entry_audit(conn: &mut SqliteConnection) -> StoreResult<bool> {
 
 /// Audits the entries migration 0005 created: one `create` entry each, whole-log snapshot, no
 /// actor, in one transaction. It runs only while the audit has no `log_entry` entry at all,
-/// checked again once the writer lock is held: the single writer serialises a second instance, which then finds the entries there and returns `Ok`.
+/// checked again once the writer lock is held: the single writer serialises a second instance,
+/// which then finds the entries there and returns `Ok`.
 pub(crate) async fn backfill_log_entry_audit(store: &SqliteStore) -> StoreResult<()> {
     match write_backfill(store).await {
         Err(StoreError::Conflict(Conflict::ChainForked)) => {
