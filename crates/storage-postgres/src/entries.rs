@@ -559,8 +559,7 @@ async fn has_log_entry_audit(conn: &mut PgConnection) -> StoreResult<bool> {
 
 /// Audits the entries migration 0005 created: one `create` entry each, whole-log snapshot, no
 /// actor, in one transaction. It runs only while the audit has no `log_entry` entry at all,
-/// checked again once the writer lock is held. A second instance that loses the race finds
-/// the entries there (or fails on the audit id), rolls back and returns `Ok`.
+/// checked again once the writer lock is held: the table lock makes a second instance wait, and its re-check then finds the entries and returns `Ok`. Should it still fail on the audit id, it rolls back and returns `Ok` once the entries are there.
 pub(crate) async fn backfill_log_entry_audit(store: &PostgresStore) -> StoreResult<()> {
     match write_backfill(store).await {
         Err(StoreError::Conflict(Conflict::ChainForked)) => {

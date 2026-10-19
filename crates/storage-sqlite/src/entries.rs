@@ -569,8 +569,7 @@ async fn has_log_entry_audit(conn: &mut SqliteConnection) -> StoreResult<bool> {
 
 /// Audits the entries migration 0005 created: one `create` entry each, whole-log snapshot, no
 /// actor, in one transaction. It runs only while the audit has no `log_entry` entry at all,
-/// checked again once the writer lock is held. A second instance that loses the race finds
-/// the entries there (or fails on the audit id), rolls back and returns `Ok`.
+/// checked again once the writer lock is held: the single writer serialises a second instance, which then finds the entries there and returns `Ok`.
 pub(crate) async fn backfill_log_entry_audit(store: &SqliteStore) -> StoreResult<()> {
     match write_backfill(store).await {
         Err(StoreError::Conflict(Conflict::ChainForked)) => {

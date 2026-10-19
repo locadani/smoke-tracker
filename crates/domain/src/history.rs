@@ -359,13 +359,14 @@ mod tests {
         }));
         let mut adopted = report(&[(1, 6)]);
         adopted.note = Note::parse(Some("first")).unwrap();
-        let backfill = entry(AuditAction::Create, None, &adopted);
+        let mut backfill = entry(AuditAction::Create, None, &adopted);
+        backfill.record.actor_id = None;
         let mut renoted = adopted.clone();
         renoted.note = Note::parse(Some("second")).unwrap();
         let later = entry(AuditAction::Update, Some(&adopted), &renoted);
 
         let history = entry_history(&[old_note], &[backfill, later]);
-        assert_eq!(history.len(), 3);
+        assert_eq!(history.len(), 2, "no line for the backfill");
         assert_eq!(
             history[0].changes,
             [Change::Note {
@@ -373,9 +374,8 @@ mod tests {
                 to: Some("first".to_owned()),
             }]
         );
-        assert!(history[1].changes.is_empty(), "the backfill shows nothing");
         assert_eq!(
-            history[2].changes,
+            history[1].changes,
             [Change::Note {
                 from: Some("first".to_owned()),
                 to: Some("second".to_owned()),
