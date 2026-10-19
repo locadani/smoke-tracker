@@ -6,7 +6,8 @@ use axum::http::StatusCode;
 use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
-use smoke_domain::repos::EventRepo;
+use smoke_domain::records::Note;
+use smoke_domain::repos::{EntryRepo, EventRepo};
 use smoke_domain::types::{CloseReason, EventId, Locale, ReportId, Role};
 
 /// The value of the hidden `asked` field on a question page.
@@ -472,8 +473,12 @@ async fn the_log_button_saves_what_the_form_holds() {
             "Pick at least one room.",
         ),
         (
-            "note=acrid&pm25=12&action=log".to_owned(),
+            format!("symptom={}&pm25=12&action=log", cough.0),
             "Pick at least one room.",
+        ),
+        (
+            "note=acrid&action=log".to_owned(),
+            "Pick a room, or enter a PM2.5 value.",
         ),
         (
             "action=log".to_owned(),
@@ -507,6 +512,75 @@ async fn the_log_button_saves_what_the_form_holds() {
     let event = app.store.open_event().await.unwrap().expect("an event");
     let readings = app.readings_for_event(event.id).await;
     assert_eq!(readings.len(), 1, "PM2.5 saved alongside the report");
+}
+
+#[tokio::test]
+async fn pm25_with_a_note_and_no_rooms_saves_a_reading_entry_with_the_note() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let response = app
+        .send(post_form(
+            "/log",
+            "pm25=35.5&note=smoke+from+the+neighbours&action=log",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(location(&response), Some("/?saved=pm25"));
+    let entries = app
+        .store
+        .entries_between(t("2026-01-15T00:00:00Z"), t("2026-01-16T00:00:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(entries.len(), 1);
+    let entry = &entries[0];
+    assert!(entry.report.is_none());
+    assert_eq!(entry.reading.as_ref().unwrap().value.ugm3(), 35.5);
+    assert_eq!(
+        entry.note.as_ref().map(Note::as_str),
+        Some("smoke from the neighbours")
+    );
+}
+
+#[tokio::test]
+async fn rooms_with_pm25_and_note_make_one_entry() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let bedroom = app.room("room-bedroom").await;
+    let cookie = app.sign_in("daniele").await;
+    let body = format!(
+        "room={0}&level-{0}=4&pm25=30&note=acrid&action=log",
+        bedroom.0
+    );
+    let response = app.send(post_form("/log", &body, Some(&cookie))).await;
+    assert_eq!(location(&response), Some("/?saved=report"));
+    let entries = app
+        .store
+        .entries_between(t("2026-01-15T00:00:00Z"), t("2026-01-16T00:00:00Z"))
+        .await
+        .unwrap();
+    assert_eq!(entries.len(), 1, "one Log press, one entry");
+    let entry = &entries[0];
+    assert!(entry.report.is_some(), "the report");
+    assert_eq!(entry.reading.as_ref().unwrap().value.ugm3(), 30.0);
+    assert_eq!(entry.note.as_ref().map(Note::as_str), Some("acrid"));
+}
+
+#[tokio::test]
+async fn a_note_over_2000_characters_shows_the_existing_error() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let body = format!("pm25=12&note={}&action=log", "x".repeat(2001));
+    let response = app.send(post_form("/log", &body, Some(&cookie))).await;
+    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        text(response)
+            .await
+            .contains("The note can be at most 2000 characters.")
+    );
 }
 
 #[tokio::test]
