@@ -73,6 +73,8 @@ summary-reports = { $count ->
    *[other] { $count } segnalazioni
 }
 log-level-hint = Scegli un livello da 0 a 10.
+log-rooms-hint = Spunta solo le stanze che hai controllato ora. Le stanze non spuntate contano come "non controllate", non come pulite. Pulito = 0.
+log-rooms-hint-prefilled = Le stanze del tuo ultimo report sono già spuntate: togli la spunta a quelle che non hai controllato ora. Le stanze non spuntate contano come "non controllate", non come pulite. Pulito = 0.
 optional = facoltativo
 action-add = Aggiungi
 action-change = Cambia
@@ -159,6 +161,7 @@ events-max-intensity = max { $level }
 event-title = Evento del { $date }
 event-started-by = Iniziato da { $username }
 event-timeline = Cronologia
+event-timeline-hint = Ogni report mostra solo le stanze controllate in quel momento.
 event-close-title = Chiudi questo evento
 event-gap = Più di 3 ore dalla segnalazione precedente: è ancora lo stesso evento?
 event-gap-move = Sposta { $time } in un nuovo evento

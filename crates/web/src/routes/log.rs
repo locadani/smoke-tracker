@@ -134,6 +134,8 @@ pub(crate) struct Fields {
     pub(crate) symptoms: Vec<Choice>,
     /// The levels 0–10 with their names and descriptions, offered for each room.
     pub(crate) levels: Vec<GuideRow>,
+    /// What leaving a room unticked means, shown under the Rooms heading of the Log form.
+    pub(crate) rooms_hint: Option<String>,
 }
 
 /// The choices for `draft`. Hidden rooms and symptoms are offered only if listed in `keep`
@@ -181,6 +183,7 @@ pub(crate) fn fields(
             })
             .collect(),
         levels: levels(tr),
+        rooms_hint: None,
     }
 }
 
@@ -352,19 +355,27 @@ pub(crate) async fn log_page<S: Store>(
     };
 
     let form = if can(&actor, Action::LogEntry, now) {
+        let mut prefilled = false;
         let draft = match draft {
             Some(draft) => draft,
             None => {
                 let mut blank = Draft::default();
                 if let Some(last) = open_reports.iter().rev().find(|r| r.user_id == user.id) {
                     blank.rooms = last.values.room_ids();
+                    prefilled = !blank.rooms.is_empty();
                 }
                 blank
             }
         };
         let symptoms = state.store.symptoms().await?;
+        let mut fields = fields(tr, &rooms, &symptoms, &draft, (&[], &[]));
+        fields.rooms_hint = Some(tr.t(if prefilled {
+            "log-rooms-hint-prefilled"
+        } else {
+            "log-rooms-hint"
+        }));
         Some(FormView {
-            fields: fields(tr, &rooms, &symptoms, &draft, (&[], &[])),
+            fields,
             pm25: draft.pm25,
             observed_at: draft.observed_at,
             note: draft.note,

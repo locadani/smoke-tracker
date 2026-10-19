@@ -162,6 +162,10 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
     );
     assert_eq!(page.attr("a.back", "href").as_deref(), Some("/events"));
     assert_eq!(
+        page.text(".card > p.muted"),
+        "Each report shows only the rooms checked at that time."
+    );
+    assert_eq!(
         page.text(&format!(
             r#".timeline a[href="/reports/{}"]"#,
             first.report.id

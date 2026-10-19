@@ -24,6 +24,7 @@
     <h2>{{ fields.texts.rooms }}</h2>
     <a href="/guide/rating" data-dialog="rating-guide" class="info">{% call c::icon("info") %}{% endcall %}{{ fields.texts.how_to_rate }}</a>
   </div>
+  {% if let Some(hint) = fields.rooms_hint %}<p class="muted">{{ hint }}</p>{% endif %}
   <fieldset class="rooms">
     <legend class="visually-hidden">{{ fields.texts.rooms }}</legend>
     <p class="overline">{{ fields.texts.inside }}</p>
