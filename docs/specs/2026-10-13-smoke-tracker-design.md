@@ -175,20 +175,21 @@ events
   auto_close_notice_seen_at?
   recorded_at
 
-smell_reports
-  id, event_id?, user_id   -- no event = a no-smell check (§7.1)
+log_entries                -- one per press of Log (decision #147)
+  id, user_id
+  event_id?                -- no event = standalone (a no-smell check, or a reading outside events)
   observed_at, recorded_at
   note?
   deleted_at?
+smell_reports
+  id, log_entry_id (unique)
 smell_report_rooms         (smell_report_id, room_id, level 0–10)   -- at least one room per report,
                                                                     -- except a no-smell report (no rooms = whole home)
 smell_report_symptoms      (smell_report_id, symptom_id)
 
 pm25_readings
-  id, user_id, event_id?   -- linked when logged during / inside an event
-  observed_at, recorded_at
+  id, log_entry_id (unique)
   value_ugm3
-  deleted_at?
 
 audit_log                  -- append-only
   id, at, actor_id
@@ -200,6 +201,10 @@ audit_log                  -- append-only
 jobs
   name, last_run_at        -- e.g. auto_close_sweep
 ```
+
+A log entry owns a smell report, a PM2.5 reading, or both, and never neither. Who, when,
+which event and the note live on the entry, so a report and the reading typed with it move
+and are corrected together.
 
 **Starter rooms:** living room, kitchen, bedroom, bathroom, entrance hall (*inside*);
 stairwell (shared) (*common*).
@@ -218,12 +223,13 @@ among its reports.
   serialisation** of the entry (independent of the database backend).
 - **`verify-audit`** command:
   1. Recomputes the chain and reports the first broken entry.
-  2. Checks that each current record equals the `after_json` of its latest audit entry. This
-     catches direct edits that bypass the audit log.
+  2. Checks that each current log entry, with its report and reading, equals the `after_json`
+     of its latest `log_entry` audit entry. This catches direct edits that bypass the audit log.
+     Older `smell_report` and `pm25_reading` entries (before migration 0005) stay in the chain.
 - **Pinning:** backups (and future exports) include the latest hash, so recomputing the whole
   chain after tampering is also detectable.
-- Corrections made in the app are normal and visible. A report shows an "edited" badge and a
-  History view (e.g. *"09:15 next day, edited by Daniele: living room 6 → 7, added bedroom 3"*).
+- Corrections made in the app are normal and visible. A log with a report shows an "edited"
+  badge and a History view (e.g. *"09:15 next day, edited by Daniele: living room 6 → 7, added bedroom 3"*).
 
 ---
 
@@ -284,18 +290,23 @@ only as a dismissable banner.
 - If a backdated report falls after its event's end, the end moves to the report time (audited).
 
 ### 7.6 PM2.5 readings
-- They can be logged together with a smell report (one form, one transaction, two records) or alone
-  (**Log** with only PM2.5 filled in).
+- They can be logged together with a smell report (one form, one transaction, **one log
+  entry**) or alone (**Log** with only PM2.5 filled in). A reading logged alone can carry a note.
 - A reading is linked automatically to the event whose span contains its observed time, or to the
   open event. Otherwise it is standalone.
 - PM2.5 readings never open, extend, or close events.
 
 ### 7.7 Corrections and moves
-- **Correct a mistake:** edits a report's values. Audited (before/after).
-- **Move to another event** (residents; guests for their own reports): moves a report to an existing event or a new one. Audited.
+- **Correct a mistake:** edits a report's values and its log's time and note. Audited
+  (before/after). Re-timing a report re-times the reading logged with it. A log with only a
+  PM2.5 reading cannot be corrected yet.
+- **Move to another event** (residents; guests for their own reports): moves a report, and the
+  reading logged with it, to an existing event or a new one. Audited.
 - The event page shows a **large-gap warning** when consecutive reports are more than 3 hours apart.
   This makes it easy to spot a guest report that joined a forgotten event. The warning offers
   **Move to a new event** for the report after the gap (same rules as Move).
+- Every log has its own page at `/entries/{id}` (time, author, PM2.5, rooms, symptoms, note);
+  `/reports/{id}` redirects there.
 
 ---
 

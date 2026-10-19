@@ -1,6 +1,6 @@
 # Log entries — design
 
-**Status:** draft for review · 2026-10-19
+**Status:** implemented · 2026-10-19 (PR #34 and this PR)
 **Issue:** [#25](https://github.com/locadani/smoke-tracker/issues/25) "cannot add notes to sole pm level logging"
 **Builds on:** the design spec `2026-10-13-smoke-tracker-design.md` §6–§7 and the look-and-feel spec §6.1.
 
