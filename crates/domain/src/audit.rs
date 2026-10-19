@@ -34,14 +34,20 @@ str_enum!(
         Event => "event",
         SmellReport => "smell_report",
         Pm25Reading => "pm25_reading",
+        LogEntry => "log_entry",
     }
 );
 
 impl AuditEntity {
     /// Whether `verify-audit` compares current records against their audited snapshots.
-    /// Invites are short-lived, are deleted by the daily cleanup and are not evidence.
+    /// Invites are short-lived, are deleted by the daily cleanup and are not evidence. Old
+    /// `smell_report` and `pm25_reading` entries stay in the chain, but a log entry's snapshot
+    /// covers their records now (spec §6).
     pub fn has_snapshot(self) -> bool {
-        self != AuditEntity::Invite
+        !matches!(
+            self,
+            AuditEntity::Invite | AuditEntity::SmellReport | AuditEntity::Pm25Reading
+        )
     }
 }
 
@@ -158,6 +164,16 @@ mod tests {
     use serde_json::{Map, json};
 
     use super::*;
+
+    #[test]
+    fn log_entry_is_a_snapshot_entity() {
+        assert_eq!(
+            "log_entry".parse::<AuditEntity>().unwrap(),
+            AuditEntity::LogEntry
+        );
+        assert_eq!(AuditEntity::LogEntry.as_str(), "log_entry");
+        assert!(AuditEntity::LogEntry.has_snapshot());
+    }
 
     fn record(id: i64, after: Value) -> AuditRecord {
         AuditRecord {
@@ -303,12 +319,19 @@ mod tests {
     }
 
     #[test]
-    fn invites_are_the_only_entity_without_a_snapshot() {
+    fn only_invites_and_the_old_child_entries_have_no_snapshot() {
         let without: Vec<_> = AuditEntity::ALL
             .iter()
             .filter(|e| !e.has_snapshot())
             .collect();
-        assert_eq!(without, [&AuditEntity::Invite]);
+        assert_eq!(
+            without,
+            [
+                &AuditEntity::Invite,
+                &AuditEntity::SmellReport,
+                &AuditEntity::Pm25Reading
+            ]
+        );
     }
 
     /// The entity is hashed as its table name, exactly as the free-text field was.

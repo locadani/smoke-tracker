@@ -18,6 +18,7 @@ use smoke_domain::graphs::{
     Granularity, area_levels, events_per_bucket, intensity_lines, room_hours,
 };
 use smoke_domain::permissions::{Action, can, can_see};
+use smoke_domain::records::{reading_views, report_views};
 use smoke_domain::repos::Store;
 use smoke_domain::types::UserId;
 
@@ -70,18 +71,13 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
 
-    let visible = state
-        .store
-        .reports_between(span.0, span.1)
-        .await?
+    let entries = state.store.entries_between(span.0, span.1).await?;
+    let visible = report_views(&entries)
         .into_iter()
         .filter(|r| can_see(&actor, r.user_id, now))
         .collect();
     let reports = filter.reports(visible, &rooms, schedule);
-    let visible = state
-        .store
-        .readings_between(span.0, span.1)
-        .await?
+    let visible = reading_views(&entries)
         .into_iter()
         .filter(|r| can_see(&actor, r.user_id, now))
         .collect();

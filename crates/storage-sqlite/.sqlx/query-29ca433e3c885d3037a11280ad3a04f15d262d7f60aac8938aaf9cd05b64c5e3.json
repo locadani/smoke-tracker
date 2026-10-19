@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT r.id, r.log_entry_id FROM smell_reports r JOIN log_entries e ON e.id = r.log_entry_id WHERE e.deleted_at IS NULL AND e.observed_at >= $1 AND e.observed_at < $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "log_entry_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "smell_reports",
+            "name": "log_entry_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "29ca433e3c885d3037a11280ad3a04f15d262d7f60aac8938aaf9cd05b64c5e3"
+}

@@ -9,14 +9,17 @@ use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::FakeClock;
 use smoke_domain::records::{
-    Closure, Event, NewEvent, NewReport, NewUser, PasswordHash, ReportValues, Room, RoomLevel,
-    SmellReport, Symptom, User,
+    Closure, Event, LogEntry, NewEntry, NewEvent, NewUser, Note, PasswordHash, ReportValues, Room,
+    RoomLevel, Symptom, User,
 };
 use smoke_domain::repos::{
-    AuditRepo, Commit, EventWrites, ListRepo, ListWrites, ReportWrites, Transactional, UserWrites,
+    AuditRepo, Commit, EntryRepo, EntryWrites, EventWrites, ListRepo, ListWrites, Transactional,
+    UserWrites,
 };
 use smoke_domain::starter::seed_starter_lists;
-use smoke_domain::types::{Level, Locale, Role, RoomId, SymptomId, UserId, Username};
+use smoke_domain::types::{
+    Level, Locale, LogEntryId, Pm25, ReportId, Role, RoomId, SymptomId, UserId, Username,
+};
 
 /// Runs SQL directly against the test database, bypassing the store: how tests tamper.
 pub type RawSql = Box<
@@ -167,28 +170,78 @@ pub fn report_values(level: u8, rooms: &[RoomId], symptoms: &[SymptomId]) -> Rep
         .iter()
         .map(|&room| RoomLevel { room, level })
         .collect();
-    ReportValues::new(rooms, symptoms.to_vec(), None).expect("valid values")
+    ReportValues::new(rooms, symptoms.to_vec()).expect("valid values")
 }
 
+/// What tests ask of an entry they know has a report.
+pub trait EntryExt {
+    fn report_id(&self) -> ReportId;
+    fn values(&self) -> &ReportValues;
+}
+
+impl EntryExt for LogEntry {
+    fn report_id(&self) -> ReportId {
+        self.report.as_ref().expect("the entry has a report").id
+    }
+
+    fn values(&self) -> &ReportValues {
+        &self.report.as_ref().expect("the entry has a report").values
+    }
+}
+
+/// Writes an entry in the scene's event, with whichever children and note are given.
+pub async fn add_entry<S>(
+    fx: &Fixture<S>,
+    scene: &Scene,
+    observed_at: DateTime<Utc>,
+    note: Option<&str>,
+    report: Option<ReportValues>,
+    reading: Option<Pm25>,
+) -> LogEntry
+where
+    S: Transactional<Tx: EntryWrites>,
+{
+    let new = NewEntry::new(
+        scene.user.id,
+        Some(scene.event.id),
+        observed_at,
+        Note::parse(note).expect("valid note"),
+        report,
+        reading,
+    )
+    .expect("an entry with a child");
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.expect("begin");
+    let entry = tx.create_entry(new).await.expect("create entry");
+    tx.commit().await.expect("commit");
+    entry
+}
+
+/// An entry holding only a smell report.
 pub async fn add_report<S>(
     fx: &Fixture<S>,
     scene: &Scene,
     observed_at: DateTime<Utc>,
     values: ReportValues,
-) -> SmellReport
+) -> LogEntry
 where
-    S: Transactional<Tx: ReportWrites>,
+    S: Transactional<Tx: EntryWrites>,
 {
-    let mut tx = fx.store.begin(Some(scene.user.id)).await.expect("begin");
-    let report = tx
-        .create_report(NewReport {
-            event_id: Some(scene.event.id),
-            user_id: scene.user.id,
-            observed_at,
-            values,
-        })
-        .await
-        .expect("create report");
-    tx.commit().await.expect("commit");
-    report
+    add_entry(fx, scene, observed_at, None, Some(values), None).await
+}
+
+/// Fails if any log entry has neither a report nor a reading: the domain keeps this rule, the
+/// schema cannot.
+pub async fn assert_no_childless_entries<S: EntryRepo>(fx: &Fixture<S>) {
+    let mut childless = Vec::new();
+    let mut id = 1;
+    while let Some(entry) = fx.store.entry(LogEntryId(id)).await.expect("entry") {
+        if entry.report.is_none() && entry.reading.is_none() {
+            childless.push(id);
+        }
+        id += 1;
+    }
+    assert!(
+        childless.is_empty(),
+        "log entries without a report or a reading: {childless:?}"
+    );
 }

@@ -26,17 +26,26 @@ impl Clock for SystemClock {
     }
 }
 
-/// A clock that only moves when told to.
+/// A clock that only moves when told to, or by a fixed step on every read once
+/// [`FakeClock::tick_on_read`] is set.
 #[derive(Debug)]
 pub struct FakeClock {
     now: Mutex<DateTime<Utc>>,
+    step: Mutex<TimeDelta>,
 }
 
 impl FakeClock {
     pub fn new(start: DateTime<Utc>) -> Self {
         Self {
             now: Mutex::new(truncate_to_micros(start)),
+            step: Mutex::new(TimeDelta::zero()),
         }
+    }
+
+    /// From now on every read of the clock moves it forward by `by`: how a test catches code
+    /// that reads the time more than once where it should read it once.
+    pub fn tick_on_read(&self, by: TimeDelta) {
+        *self.step.lock().expect("clock mutex poisoned") = by;
     }
 
     pub fn set(&self, to: DateTime<Utc>) {
@@ -51,7 +60,11 @@ impl FakeClock {
 
 impl Clock for FakeClock {
     fn now(&self) -> DateTime<Utc> {
-        *self.now.lock().expect("clock mutex poisoned")
+        let step = *self.step.lock().expect("clock mutex poisoned");
+        let mut now = self.now.lock().expect("clock mutex poisoned");
+        let read = *now;
+        *now = truncate_to_micros(read + step);
+        read
     }
 }
 
@@ -69,6 +82,15 @@ mod tests {
     fn fake_clock_returns_the_time_it_was_given() {
         let clock = FakeClock::new(t("2026-01-15T10:00:00Z"));
         assert_eq!(clock.now(), t("2026-01-15T10:00:00Z"));
+    }
+
+    #[test]
+    fn a_ticking_fake_clock_moves_on_every_read() {
+        let clock = FakeClock::new(t("2026-01-15T10:00:00Z"));
+        clock.tick_on_read(TimeDelta::milliseconds(1));
+        assert_eq!(clock.now(), t("2026-01-15T10:00:00Z"));
+        assert_eq!(clock.now(), t("2026-01-15T10:00:00.001Z"));
+        assert_eq!(clock.now(), t("2026-01-15T10:00:00.002Z"));
     }
 
     #[test]

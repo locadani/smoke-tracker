@@ -159,7 +159,9 @@ impl EventWrites for SqliteTx {
 
     async fn latest_report_at(&mut self, event: EventId) -> StoreResult<Option<DateTime<Utc>>> {
         let latest = sqlx::query_scalar!(
-            "SELECT MAX(observed_at) FROM smell_reports WHERE event_id = $1 AND deleted_at IS NULL",
+            "SELECT MAX(e.observed_at) FROM smell_reports r \
+             JOIN log_entries e ON e.id = r.log_entry_id \
+             WHERE e.event_id = $1 AND e.deleted_at IS NULL",
             event.0,
         )
         .fetch_one(self.conn())

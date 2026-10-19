@@ -12,9 +12,11 @@ use chrono_tz::Tz;
 use smoke_domain::events::{
     LogPrompt, can_join_backdated, classify_observed, log_prompt, no_smell_prompt,
 };
-use smoke_domain::logbook::{EventChoice, LogError, SmellEntry, log_reading, log_smell};
+use smoke_domain::logbook::{
+    EventChoice, LogError, ReadingEntry, SmellEntry, log_reading, log_smell,
+};
 use smoke_domain::permissions::{Action, can};
-use smoke_domain::records::{Event, ReportValues, Room, RoomLevel, Symptom, User};
+use smoke_domain::records::{Event, Note, ReportValues, Room, RoomLevel, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, Level, Pm25, Role, RoomId, SymptomId};
@@ -82,14 +84,14 @@ pub(crate) enum Smell {
     Correction { whole_home: bool },
 }
 
-/// Reads the rooms with their levels, the symptoms and the note. Only the offered rooms and
-/// symptoms are accepted.
+/// Reads the rooms with their levels, the symptoms and the note, which belongs to the log entry.
+/// Only the offered rooms and symptoms are accepted.
 pub(crate) fn read_values(
     form: &Pairs,
     rooms: &[RoomId],
     symptoms: &[SymptomId],
     smell: Smell,
-) -> Result<ReportValues, &'static str> {
+) -> Result<(ReportValues, Option<Note>), &'static str> {
     let mut room_ids: Vec<RoomId> = form
         .ids("room")
         .ok_or("log-error-form")?
@@ -133,7 +135,9 @@ pub(crate) fn read_values(
             })
         })
         .collect::<Result<_, &'static str>>()?;
-    ReportValues::new(rooms, symptom_ids, form.get("note")).map_err(|_| "log-error-note")
+    let values = ReportValues::new(rooms, symptom_ids).map_err(|_| "log-error-note")?;
+    let note = Note::parse(form.get("note")).map_err(|_| "log-error-note")?;
+    Ok((values, note))
 }
 
 /// Reads and validates the Log form. `Err` is the translation key of what to fix. Only rooms
@@ -183,10 +187,11 @@ fn read(
     }
     let smell = if no_smell { Smell::None } else { Smell::Levels };
     let (offered_rooms, offered_symptoms) = offered(rooms, symptoms, (&[], &[]));
-    let values = read_values(form, &offered_rooms, &offered_symptoms, smell)?;
+    let (values, note) = read_values(form, &offered_rooms, &offered_symptoms, smell)?;
     Ok(Entry::Smell(SmellEntry {
         observed_at,
         values,
+        note,
         pm25,
     }))
 }
@@ -261,7 +266,12 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     let entry = match entry {
         Entry::Pm25Only { observed_at, value } => {
             let mut tx = state.store.begin(Some(user.id)).await?;
-            if let Err(error) = log_reading(&mut tx, &actor, observed_at, value, now).await {
+            let reading = ReadingEntry {
+                observed_at,
+                value,
+                note: None,
+            };
+            if let Err(error) = log_reading(&mut tx, &actor, reading, now).await {
                 drop(tx);
                 return back_to_form(&state, &user, tr, now, &form, refusal(error)?).await;
             }

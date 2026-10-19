@@ -20,7 +20,7 @@ use smoke_domain::DomainError;
 use smoke_domain::logbook::LogError;
 use smoke_domain::people::PeopleError;
 use smoke_domain::permissions::{Actor, can_see};
-use smoke_domain::records::{Event, SmellReport};
+use smoke_domain::records::{Event, ReportView};
 
 use crate::error::AppError;
 
@@ -33,7 +33,7 @@ pub(crate) async fn not_found() -> AppError {
 pub(crate) fn can_open(
     actor: &Actor,
     event: &Event,
-    reports: &[SmellReport],
+    reports: &[ReportView],
     now: DateTime<Utc>,
 ) -> bool {
     can_see(actor, event.owner_id, now) || reports.iter().any(|r| can_see(actor, r.user_id, now))

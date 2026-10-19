@@ -13,8 +13,8 @@ use crate::audit::AuditEntity;
 use crate::events::EventSummary;
 use crate::permissions::Actor;
 use crate::types::{
-    CloseReason, EventId, InviteId, InvitePurpose, Level, ListName, Locale, Pm25, ReadingId,
-    ReportId, Role, RoomArea, RoomId, SymptomId, TokenHash, UserId, Username,
+    CloseReason, EventId, InviteId, InvitePurpose, Level, ListName, Locale, LogEntryId, Pm25,
+    ReadingId, ReportId, Role, RoomArea, RoomId, SymptomId, TokenHash, UserId, Username,
 };
 
 /// A record the audit log keeps snapshots of.
@@ -205,23 +205,44 @@ pub struct RoomLevel {
     pub level: Level,
 }
 
-/// What a smell report says: the rooms checked, each with its level, sorted by room; the
-/// symptoms, sorted and unique; a note, where a blank note is no note. No rooms at all means
-/// "no smell anywhere in the home" (spec §7.1).
+/// A free-text note: trimmed, never blank, at most [`Note::MAX_CHARS`] characters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Note(String);
+
+impl Note {
+    pub const MAX_CHARS: usize = 2000;
+
+    /// A blank or missing note is no note.
+    pub fn parse(raw: Option<&str>) -> Result<Option<Self>, DomainError> {
+        let Some(text) = raw.map(str::trim).filter(|n| !n.is_empty()) else {
+            return Ok(None);
+        };
+        let chars = text.chars().count();
+        if chars > Self::MAX_CHARS {
+            return Err(DomainError::NoteTooLong(chars));
+        }
+        Ok(Some(Self(text.to_owned())))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// What a smell report says: the rooms checked, each with its level, sorted by room, and the
+/// symptoms, sorted and unique. No rooms at all means "no smell anywhere in the home" (spec
+/// §7.1).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ReportValues {
     rooms: Vec<RoomLevel>,
     symptoms: Vec<SymptomId>,
-    note: Option<String>,
 }
 
 impl ReportValues {
-    pub const NOTE_MAX_CHARS: usize = 2000;
-
     pub fn new(
         mut rooms: Vec<RoomLevel>,
         mut symptoms: Vec<SymptomId>,
-        note: Option<&str>,
     ) -> Result<Self, DomainError> {
         rooms.sort_unstable_by_key(|r| r.room);
         if let Some(pair) = rooms.windows(2).find(|pair| pair[0].room == pair[1].room) {
@@ -229,18 +250,7 @@ impl ReportValues {
         }
         symptoms.sort_unstable();
         symptoms.dedup();
-        let note = note.map(str::trim).filter(|n| !n.is_empty());
-        if let Some(n) = note {
-            let chars = n.chars().count();
-            if chars > Self::NOTE_MAX_CHARS {
-                return Err(DomainError::NoteTooLong(chars));
-            }
-        }
-        Ok(Self {
-            rooms,
-            symptoms,
-            note: note.map(str::to_owned),
-        })
+        Ok(Self { rooms, symptoms })
     }
 
     pub fn rooms(&self) -> &[RoomLevel] {
@@ -274,30 +284,20 @@ impl ReportValues {
     pub fn symptoms(&self) -> &[SymptomId] {
         &self.symptoms
     }
-
-    pub fn note(&self) -> Option<&str> {
-        self.note.as_deref()
-    }
 }
 
+/// The smell half of a log entry. Audited as part of its [`LogEntry`], so the entry it belongs
+/// to is not part of its own snapshot.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SmellReport {
     pub id: ReportId,
-    /// `None` for a no-smell check made while no event was running (spec §7.1).
-    pub event_id: Option<EventId>,
-    pub user_id: UserId,
-    pub observed_at: DateTime<Utc>,
-    pub recorded_at: DateTime<Utc>,
+    #[serde(skip)]
+    pub log_entry_id: LogEntryId,
     #[serde(flatten)]
     pub values: ReportValues,
-    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 impl SmellReport {
-    pub fn is_deleted(&self) -> bool {
-        self.deleted_at.is_some()
-    }
-
     /// A snapshot audited before rooms had their own levels (`"intensity": 6, "rooms": [2]`),
     /// in today's shape: every room at the report's intensity, as migration 0003 converted the
     /// stored report. Any other snapshot is returned unchanged.
@@ -321,37 +321,117 @@ impl SmellReport {
     }
 }
 
-impl Audited for SmellReport {
-    const ENTITY: AuditEntity = AuditEntity::SmellReport;
+/// The PM2.5 half of a log entry; audited as part of its [`LogEntry`].
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Pm25Reading {
+    pub id: ReadingId,
+    #[serde(skip)]
+    pub log_entry_id: LogEntryId,
+    pub value: Pm25,
+}
+
+/// One press of Log: who, when, which event and the note, owning a smell report, a PM2.5
+/// reading or both. Its snapshot is the whole log (spec §6), children included.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct LogEntry {
+    pub id: LogEntryId,
+    pub user_id: UserId,
+    /// `None` for a no-smell check made while no event was running (spec §7.1) and for a
+    /// reading outside every event.
+    pub event_id: Option<EventId>,
+    pub observed_at: DateTime<Utc>,
+    pub recorded_at: DateTime<Utc>,
+    pub note: Option<Note>,
+    pub deleted_at: Option<DateTime<Utc>>,
+    pub report: Option<SmellReport>,
+    pub reading: Option<Pm25Reading>,
+}
+
+impl LogEntry {
+    pub fn is_deleted(&self) -> bool {
+        self.deleted_at.is_some()
+    }
+
+    pub fn report_view(&self) -> Option<ReportView> {
+        let report = self.report.as_ref()?;
+        Some(ReportView {
+            id: report.id,
+            entry_id: self.id,
+            event_id: self.event_id,
+            user_id: self.user_id,
+            observed_at: self.observed_at,
+            recorded_at: self.recorded_at,
+            values: report.values.clone(),
+            note: self.note.clone(),
+            deleted_at: self.deleted_at,
+        })
+    }
+
+    pub fn reading_view(&self) -> Option<ReadingView> {
+        let reading = self.reading.as_ref()?;
+        Some(ReadingView {
+            id: reading.id,
+            entry_id: self.id,
+            event_id: self.event_id,
+            user_id: self.user_id,
+            observed_at: self.observed_at,
+            recorded_at: self.recorded_at,
+            value: reading.value,
+            deleted_at: self.deleted_at,
+        })
+    }
+}
+
+impl Audited for LogEntry {
+    const ENTITY: AuditEntity = AuditEntity::LogEntry;
 
     fn audit_id(&self) -> i64 {
         self.id.0
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Pm25Reading {
-    pub id: ReadingId,
-    pub user_id: UserId,
+/// The smell reports of `entries`, in their order.
+pub fn report_views(entries: &[LogEntry]) -> Vec<ReportView> {
+    entries.iter().filter_map(LogEntry::report_view).collect()
+}
+
+/// The PM2.5 readings of `entries`, in their order.
+pub fn reading_views(entries: &[LogEntry]) -> Vec<ReadingView> {
+    entries.iter().filter_map(LogEntry::reading_view).collect()
+}
+
+/// A smell report together with what its entry says about it: the shape lists, graphs and
+/// summaries read.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReportView {
+    pub id: ReportId,
+    pub entry_id: LogEntryId,
     pub event_id: Option<EventId>,
+    pub user_id: UserId,
     pub observed_at: DateTime<Utc>,
     pub recorded_at: DateTime<Utc>,
-    pub value: Pm25,
+    pub values: ReportValues,
+    pub note: Option<Note>,
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
-impl Pm25Reading {
+impl ReportView {
     pub fn is_deleted(&self) -> bool {
         self.deleted_at.is_some()
     }
 }
 
-impl Audited for Pm25Reading {
-    const ENTITY: AuditEntity = AuditEntity::Pm25Reading;
-
-    fn audit_id(&self) -> i64 {
-        self.id.0
-    }
+/// A PM2.5 reading together with what its entry says about it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ReadingView {
+    pub id: ReadingId,
+    pub entry_id: LogEntryId,
+    pub event_id: Option<EventId>,
+    pub user_id: UserId,
+    pub observed_at: DateTime<Utc>,
+    pub recorded_at: DateTime<Utc>,
+    pub value: Pm25,
+    pub deleted_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -385,21 +465,38 @@ pub struct NewEvent {
     pub closed: Option<Closure>,
 }
 
+/// What creates a log entry: at least one of a report and a reading.
 #[derive(Debug, Clone, PartialEq)]
-pub struct NewReport {
-    /// `None` for a no-smell check outside any event.
-    pub event_id: Option<EventId>,
+pub struct NewEntry {
     pub user_id: UserId,
+    pub event_id: Option<EventId>,
     pub observed_at: DateTime<Utc>,
-    pub values: ReportValues,
+    pub note: Option<Note>,
+    pub report: Option<ReportValues>,
+    pub reading: Option<Pm25>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct NewReading {
-    pub user_id: UserId,
-    pub event_id: Option<EventId>,
-    pub observed_at: DateTime<Utc>,
-    pub value: Pm25,
+impl NewEntry {
+    pub fn new(
+        user_id: UserId,
+        event_id: Option<EventId>,
+        observed_at: DateTime<Utc>,
+        note: Option<Note>,
+        report: Option<ReportValues>,
+        reading: Option<Pm25>,
+    ) -> Result<Self, DomainError> {
+        if report.is_none() && reading.is_none() {
+            return Err(DomainError::EntryWithoutChildren);
+        }
+        Ok(Self {
+            user_id,
+            event_id,
+            observed_at,
+            note,
+            report,
+            reading,
+        })
+    }
 }
 
 /// A login session as stored (spec §8.4). Not audited: sessions are not evidence.
@@ -445,11 +542,10 @@ mod tests {
         }
     }
 
-    fn values(rooms: &[(i64, u8)], note: Option<&str>) -> ReportValues {
+    fn values(rooms: &[(i64, u8)]) -> ReportValues {
         ReportValues::new(
             rooms.iter().map(|&(room, level)| at(room, level)).collect(),
             vec![SymptomId(2), SymptomId(1), SymptomId(2)],
-            note,
         )
         .unwrap()
     }
@@ -486,88 +582,162 @@ mod tests {
     }
 
     #[test]
-    fn report_values_sort_rooms_and_symptoms_and_trim_the_note() {
-        let v = values(&[(3, 0), (1, 6)], Some("  smell from the balcony "));
+    fn report_values_sort_rooms_and_symptoms() {
+        let v = values(&[(3, 0), (1, 6)]);
         assert_eq!(v.rooms(), [at(1, 6), at(3, 0)]);
         assert_eq!(v.room_ids(), [RoomId(1), RoomId(3)]);
         assert_eq!(v.symptoms(), [SymptomId(1), SymptomId(2)]);
-        assert_eq!(v.note(), Some("smell from the balcony"));
     }
 
     #[test]
     fn a_report_lists_each_room_once() {
         assert_eq!(
-            ReportValues::new(vec![at(3, 2), at(1, 1), at(3, 2)], vec![], None),
+            ReportValues::new(vec![at(3, 2), at(1, 1), at(3, 2)], vec![]),
             Err(DomainError::RoomListedTwice(3))
         );
     }
 
     #[test]
     fn the_intensity_is_the_highest_room_level() {
-        let v = values(&[(1, 2), (2, 7), (3, 0)], None);
+        let v = values(&[(1, 2), (2, 7), (3, 0)]);
         assert_eq!(v.intensity(), Level::new(7).unwrap());
         assert_eq!(v.level_in(RoomId(3)), Some(Level::CLEAN));
         assert_eq!(v.level_in(RoomId(4)), None);
-        assert_eq!(values(&[(1, 0)], None).intensity(), Level::CLEAN);
+        assert_eq!(values(&[(1, 0)]).intensity(), Level::CLEAN);
     }
 
     #[test]
     fn only_clean_rooms_or_no_rooms_make_a_no_smell_report() {
-        assert!(values(&[(1, 0), (2, 0)], None).is_no_smell());
-        assert!(values(&[], None).is_no_smell(), "no rooms: the whole home");
-        assert!(!values(&[(1, 0), (2, 1)], None).is_no_smell());
+        assert!(values(&[(1, 0), (2, 0)]).is_no_smell());
+        assert!(values(&[]).is_no_smell(), "no rooms: the whole home");
+        assert!(!values(&[(1, 0), (2, 1)]).is_no_smell());
     }
 
     #[test]
-    fn a_blank_note_becomes_none() {
-        assert_eq!(values(&[(1, 1)], Some("   ")).note(), None);
-        assert_eq!(values(&[(1, 1)], None).note(), None);
-    }
-
-    #[test]
-    fn notes_are_limited_in_characters_not_bytes() {
-        let at_limit = "ç".repeat(ReportValues::NOTE_MAX_CHARS);
-        assert!(ReportValues::new(vec![at(1, 1)], vec![], Some(&at_limit)).is_ok());
-        let over = "x".repeat(ReportValues::NOTE_MAX_CHARS + 1);
+    fn note_rules_are_unchanged() {
+        assert_eq!(Note::parse(None), Ok(None));
+        assert_eq!(Note::parse(Some("  \n ")), Ok(None));
+        let trimmed = Note::parse(Some("  smoky  ")).unwrap().unwrap();
+        assert_eq!(trimmed.as_str(), "smoky");
+        assert_eq!(serde_json::to_value(&trimmed).unwrap(), json!("smoky"));
+        let at_limit = "ç".repeat(Note::MAX_CHARS);
+        assert!(Note::parse(Some(&at_limit)).unwrap().is_some());
+        let over = "x".repeat(Note::MAX_CHARS + 1);
         assert_eq!(
-            ReportValues::new(vec![at(1, 1)], vec![], Some(&over)),
+            Note::parse(Some(&over)),
             Err(DomainError::NoteTooLong(2001))
         );
     }
 
-    #[test]
-    fn report_snapshot_is_flat() {
-        let report = SmellReport {
-            id: ReportId(9),
-            event_id: Some(EventId(4)),
+    fn entry(report: Option<SmellReport>, reading: Option<Pm25Reading>) -> LogEntry {
+        LogEntry {
+            id: LogEntryId(3),
             user_id: UserId(1),
+            event_id: Some(EventId(4)),
             observed_at: t("2026-01-15T19:00:00Z"),
             recorded_at: t("2026-01-15T19:00:00.123456Z"),
-            values: values(&[(2, 6), (5, 0)], None),
+            note: Note::parse(Some("from the balcony")).unwrap(),
             deleted_at: None,
-        };
+            report,
+            reading,
+        }
+    }
+
+    fn report(rooms: &[(i64, u8)]) -> SmellReport {
+        SmellReport {
+            id: ReportId(9),
+            log_entry_id: LogEntryId(3),
+            values: values(rooms),
+        }
+    }
+
+    fn reading() -> Pm25Reading {
+        Pm25Reading {
+            id: ReadingId(7),
+            log_entry_id: LogEntryId(3),
+            value: Pm25::new(12.5).unwrap(),
+        }
+    }
+
+    #[test]
+    fn a_log_entry_snapshot_is_the_whole_log() {
+        let both = entry(Some(report(&[(2, 6), (5, 0)])), Some(reading()));
         assert_eq!(
-            report.snapshot(),
+            both.snapshot(),
             json!({
-                "id": 9,
-                "event_id": 4,
+                "id": 3,
                 "user_id": 1,
+                "event_id": 4,
                 "observed_at": "2026-01-15T19:00:00Z",
                 "recorded_at": "2026-01-15T19:00:00.123456Z",
-                "rooms": [{ "room": 2, "level": 6 }, { "room": 5, "level": 0 }],
-                "symptoms": [1, 2],
-                "note": null,
+                "note": "from the balcony",
                 "deleted_at": null,
+                "report": {
+                    "id": 9,
+                    "rooms": [{ "room": 2, "level": 6 }, { "room": 5, "level": 0 }],
+                    "symptoms": [1, 2],
+                },
+                "reading": { "id": 7, "value": 12.5 },
             })
         );
-        assert_eq!(report.audit_id(), 9);
-        let check = SmellReport {
+        assert_eq!(both.audit_id(), 3);
+        let reading_only = entry(None, Some(reading()));
+        assert_eq!(reading_only.snapshot()["report"], json!(null));
+        assert_eq!(
+            reading_only.snapshot()["reading"],
+            json!({ "id": 7, "value": 12.5 })
+        );
+        let check = LogEntry {
             event_id: None,
-            values: values(&[], None),
-            ..report
+            ..entry(Some(report(&[])), None)
         };
         assert_eq!(check.snapshot()["event_id"], json!(null));
-        assert_eq!(check.snapshot()["rooms"], json!([]));
+        assert_eq!(check.snapshot()["report"]["rooms"], json!([]));
+        assert_eq!(check.snapshot()["reading"], json!(null));
+    }
+
+    #[test]
+    fn views_copy_the_entry_fields_next_to_each_child() {
+        let both = entry(Some(report(&[(2, 6)])), Some(reading()));
+        let report_view = both.report_view().unwrap();
+        assert_eq!(
+            (report_view.id, report_view.entry_id, report_view.event_id),
+            (ReportId(9), LogEntryId(3), Some(EventId(4)))
+        );
+        assert_eq!(
+            report_view.note.as_ref().map(Note::as_str),
+            Some("from the balcony")
+        );
+        assert_eq!(report_view.values, values(&[(2, 6)]));
+        let reading_view = both.reading_view().unwrap();
+        assert_eq!(
+            (
+                reading_view.id,
+                reading_view.entry_id,
+                reading_view.observed_at
+            ),
+            (ReadingId(7), LogEntryId(3), t("2026-01-15T19:00:00Z"))
+        );
+        assert_eq!(reading_view.value, Pm25::new(12.5).unwrap());
+        assert!(entry(None, Some(reading())).report_view().is_none());
+        assert!(entry(Some(report(&[])), None).reading_view().is_none());
+    }
+
+    #[test]
+    fn an_entry_needs_a_report_or_a_reading() {
+        let new = |report, reading| {
+            NewEntry::new(
+                UserId(1),
+                None,
+                t("2026-01-15T19:00:00Z"),
+                None,
+                report,
+                reading,
+            )
+        };
+        assert_eq!(new(None, None), Err(DomainError::EntryWithoutChildren));
+        assert!(new(Some(values(&[(1, 1)])), None).is_ok());
+        assert!(new(None, Some(Pm25::new(3.0).unwrap())).is_ok());
     }
 
     #[test]
@@ -636,33 +806,6 @@ mod tests {
     }
 
     #[test]
-    fn reading_snapshot_has_exactly_the_audited_fields() {
-        let mut reading = Pm25Reading {
-            id: ReadingId(7),
-            user_id: UserId(1),
-            event_id: Some(EventId(4)),
-            observed_at: t("2026-01-15T19:00:00Z"),
-            recorded_at: t("2026-01-15T19:00:00.5Z"),
-            value: Pm25::new(12.5).unwrap(),
-            deleted_at: None,
-        };
-        assert_eq!(
-            reading.snapshot(),
-            json!({
-                "id": 7,
-                "user_id": 1,
-                "event_id": 4,
-                "observed_at": "2026-01-15T19:00:00Z",
-                "recorded_at": "2026-01-15T19:00:00.500Z",
-                "value": 12.5,
-                "deleted_at": null,
-            })
-        );
-        reading.event_id = None;
-        assert_eq!(reading.snapshot()["event_id"], json!(null));
-    }
-
-    #[test]
     fn an_event_is_open_until_it_has_a_closure() {
         let mut event = Event {
             id: EventId(4),
@@ -691,8 +834,7 @@ mod tests {
         assert_eq!(Room::ENTITY, AuditEntity::Room);
         assert_eq!(Symptom::ENTITY, AuditEntity::Symptom);
         assert_eq!(Event::ENTITY, AuditEntity::Event);
-        assert_eq!(SmellReport::ENTITY, AuditEntity::SmellReport);
-        assert_eq!(Pm25Reading::ENTITY, AuditEntity::Pm25Reading);
+        assert_eq!(LogEntry::ENTITY, AuditEntity::LogEntry);
         assert_eq!(Invite::ENTITY, AuditEntity::Invite);
     }
 

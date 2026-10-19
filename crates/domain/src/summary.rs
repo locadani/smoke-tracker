@@ -3,7 +3,7 @@
 
 use std::collections::BTreeSet;
 
-use crate::records::SmellReport;
+use crate::records::ReportView;
 use crate::schedule::DailySchedule;
 use crate::types::RoomId;
 
@@ -23,7 +23,7 @@ pub struct MonthSummary {
 /// Summarises `reports`, which the caller has already limited to one month and to what the
 /// viewer may see. `bedroom` is the starter bedroom room, if it exists.
 pub fn summarise(
-    reports: &[SmellReport],
+    reports: &[ReportView],
     bedroom: Option<RoomId>,
     schedule: &DailySchedule,
 ) -> MonthSummary {
@@ -55,13 +55,14 @@ mod tests {
 
     use super::*;
     use crate::records::{ReportValues, RoomLevel};
-    use crate::types::{EventId, Level, ReportId, UserId};
+    use crate::types::{EventId, Level, LogEntryId, ReportId, UserId};
 
     /// Event 0 stands for no event: a no-smell check.
-    fn report(id: i64, event: i64, at: &str, rooms: &[(i64, u8)]) -> SmellReport {
+    fn report(id: i64, event: i64, at: &str, rooms: &[(i64, u8)]) -> ReportView {
         let at: DateTime<Utc> = at.parse().unwrap();
-        SmellReport {
+        ReportView {
             id: ReportId(id),
+            entry_id: LogEntryId(id),
             event_id: (event != 0).then_some(EventId(event)),
             user_id: UserId(1),
             observed_at: at,
@@ -75,9 +76,9 @@ mod tests {
                     })
                     .collect(),
                 vec![],
-                None,
             )
             .unwrap(),
+            note: None,
             deleted_at: None,
         }
     }

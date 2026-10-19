@@ -12,7 +12,9 @@ use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
 use smoke_domain::events::{FUTURE_TOLERANCE, large_gap_indices};
 use smoke_domain::logbook::{close_event, reopen_event};
 use smoke_domain::permissions::{Action, Actor, can, can_see};
-use smoke_domain::records::{Event, Pm25Reading, SmellReport, User};
+use smoke_domain::records::{
+    Event, LogEntry, ReadingView, ReportView, User, reading_views, report_views,
+};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, UserId};
@@ -110,13 +112,13 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
         .max()
         .unwrap_or(to)
         .max(to);
-    let mut by_event: HashMap<EventId, Vec<SmellReport>> = HashMap::new();
+    let mut by_event: HashMap<EventId, Vec<ReportView>> = HashMap::new();
     let mut checks = Vec::new();
-    for report in state
+    let entries = state
         .store
-        .reports_between(window_start, window_end + TimeDelta::microseconds(1))
-        .await?
-    {
+        .entries_between(window_start, window_end + TimeDelta::microseconds(1))
+        .await?;
+    for report in report_views(&entries) {
         match report.event_id {
             Some(event) => by_event.entry(event).or_default().push(report),
             None => checks.push(report),
@@ -161,7 +163,8 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
                 });
         }
     }
-    for reading in state.store.readings_between(from, to).await?.iter().rev() {
+    let entries = state.store.entries_between(from, to).await?;
+    for reading in reading_views(&entries).iter().rev() {
         if reading.event_id.is_none() && can_see(&actor, reading.user_id, now) {
             day(&mut days, tr, schedule.local_date(reading.observed_at))
                 .readings
@@ -233,18 +236,18 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
     page(StatusCode::OK, &detail)
 }
 
-/// The event and all its reports, or `NotFound` when it does not exist or `actor` may not open
+/// The event and all its entries, or `NotFound` when it does not exist or `actor` may not open
 /// it: answering the same either way hides that the record exists.
 async fn openable<S: Store>(
     state: &AppState<S>,
     actor: &Actor,
     id: EventId,
     now: DateTime<Utc>,
-) -> Result<(Event, Vec<SmellReport>), AppError> {
+) -> Result<(Event, Vec<LogEntry>), AppError> {
     let event = state.store.event(id).await?.ok_or(AppError::NotFound)?;
-    let reports = state.store.reports_for_event(id).await?;
-    if can_open(actor, &event, &reports, now) {
-        Ok((event, reports))
+    let entries = state.store.entries_for_event(id).await?;
+    if can_open(actor, &event, &report_views(&entries), now) {
+        Ok((event, entries))
     } else {
         Err(AppError::NotFound)
     }
@@ -260,7 +263,7 @@ async fn detail<S: Store>(
     let now = state.clock.now();
     let tz = state.config.schedule.tz();
     let actor = user.actor();
-    let (event, reports) = openable(state, &actor, id, now).await?;
+    let (event, entries) = openable(state, &actor, id, now).await?;
     let sees_all = can(&actor, Action::ViewAll, now);
     let names: HashMap<UserId, String> = if sees_all {
         state
@@ -275,14 +278,11 @@ async fn detail<S: Store>(
     };
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
-    let reports: Vec<SmellReport> = reports
+    let reports: Vec<ReportView> = report_views(&entries)
         .into_iter()
         .filter(|r| can_see(&actor, r.user_id, now))
         .collect();
-    let readings: Vec<Pm25Reading> = state
-        .store
-        .readings_for_event(id)
-        .await?
+    let readings: Vec<ReadingView> = reading_views(&entries)
         .into_iter()
         .filter(|r| can_see(&actor, r.user_id, now))
         .collect();

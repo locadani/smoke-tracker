@@ -6,7 +6,7 @@ use axum::http::StatusCode;
 use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
-use smoke_domain::repos::{EventRepo, ReadingRepo, ReportRepo};
+use smoke_domain::repos::EventRepo;
 use smoke_domain::types::{CloseReason, EventId, Locale, ReportId, Role};
 
 /// The value of the hidden `asked` field on a question page.
@@ -51,10 +51,13 @@ async fn logging_with_nothing_open_saves_at_once_and_says_so() {
     assert_eq!(location(&response), Some("/?saved=report"));
 
     let open = app.store.open_event().await.unwrap().unwrap();
-    let reports = app.store.reports_for_event(open.id).await.unwrap();
+    let reports = app.reports_for_event(open.id).await;
     assert_eq!(reports[0].values.room_ids(), [bedroom]);
     assert_eq!(reports[0].values.intensity().get(), 6);
-    assert_eq!(reports[0].values.note(), Some("from the balcony"));
+    assert_eq!(
+        reports[0].note.as_ref().map(|n| n.as_str()),
+        Some("from the balcony")
+    );
     assert_eq!(reports[0].observed_at, t("2026-01-15T20:00:00Z"));
     let html = text(app.send(get_with("/?saved=report", &cookie)).await).await;
     assert!(html.contains("Report saved."), "{html}");
@@ -107,7 +110,7 @@ async fn with_an_event_open_the_same_smell_question_comes_first() {
     );
     let response = app.send(post_form("/log", &body, Some(&cookie))).await;
     assert_eq!(location(&response), Some("/?saved=report"));
-    assert_eq!(app.store.reports_for_event(id).await.unwrap().len(), 2);
+    assert_eq!(app.reports_for_event(id).await.len(), 2);
 }
 
 #[tokio::test]
@@ -269,10 +272,8 @@ async fn a_stale_answer_gets_the_current_question_instead_of_being_applied() {
     );
     assert!(html.contains("(started 20:58)"), "{html}");
     assert_eq!(
-        app.store
-            .reports_for_event(first.report.event_id.unwrap())
+        app.reports_for_event(first.report.event_id.unwrap())
             .await
-            .unwrap()
             .len(),
         1,
         "nothing joined the closed event"
@@ -328,7 +329,7 @@ async fn a_past_report_after_the_end_of_the_chosen_event_moves_its_end() {
     assert_eq!(location(&response), Some("/?saved=report"));
     let event = app.store.event(id).await.unwrap().unwrap();
     assert_eq!(event.closed.map(|c| c.at), Some(t("2026-01-15T11:00:00Z")));
-    assert_eq!(app.store.reports_for_event(id).await.unwrap().len(), 2);
+    assert_eq!(app.reports_for_event(id).await.len(), 2);
 }
 
 #[tokio::test]
@@ -436,11 +437,7 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
         .send(post_form("/log", "pm25=35.5&action=log", Some(&cookie)))
         .await;
     assert_eq!(location(&response), Some("/?saved=pm25"));
-    let readings = app
-        .store
-        .readings_for_event(open.report.event_id.unwrap())
-        .await
-        .unwrap();
+    let readings = app.readings_for_event(open.report.event_id.unwrap()).await;
     assert_eq!(readings.len(), 1);
     assert_eq!(readings[0].value.ugm3(), 35.5);
 
@@ -451,10 +448,8 @@ async fn pm25_alone_needs_no_room_and_joins_the_open_event() {
     app.send(post_form("/log", &with_smell, Some(&cookie)))
         .await;
     assert_eq!(
-        app.store
-            .readings_for_event(open.report.event_id.unwrap())
+        app.readings_for_event(open.report.event_id.unwrap())
             .await
-            .unwrap()
             .len(),
         2
     );
@@ -510,7 +505,7 @@ async fn the_log_button_saves_what_the_form_holds() {
     .await;
     assert_eq!(location(&smell), Some("/?saved=report"));
     let event = app.store.open_event().await.unwrap().expect("an event");
-    let readings = app.store.readings_for_event(event.id).await.unwrap();
+    let readings = app.readings_for_event(event.id).await;
     assert_eq!(readings.len(), 1, "PM2.5 saved alongside the report");
 }
 
@@ -577,7 +572,7 @@ async fn no_smell_with_nothing_open_saves_a_check_without_asking() {
         .await;
     assert_eq!(location(&response), Some("/?saved=no-smell"));
     assert_eq!(app.store.open_event().await.unwrap(), None);
-    let check = app.store.report(ReportId(1)).await.unwrap().unwrap();
+    let check = app.report(ReportId(1)).await;
     assert_eq!(check.event_id, None);
     assert!(check.values.rooms().is_empty(), "the whole home");
     let html = text(app.send(get_with("/?saved=no-smell", &cookie)).await).await;
@@ -616,7 +611,7 @@ async fn no_smell_with_an_event_open_joins_it_without_the_question() {
     assert_eq!(location(&response), Some("/?saved=no-smell"));
     let open = app.store.open_event().await.unwrap().unwrap();
     assert_eq!(Some(open.id), first.report.event_id, "still open");
-    let reports = app.store.reports_for_event(open.id).await.unwrap();
+    let reports = app.reports_for_event(open.id).await;
     assert_eq!(reports.len(), 2);
     assert!(reports[1].values.is_no_smell());
 
@@ -626,7 +621,7 @@ async fn no_smell_with_an_event_open_joins_it_without_the_question() {
     assert_eq!(location(&response), Some("/?saved=no-smell"));
     let open = app.store.open_event().await.unwrap().unwrap();
     assert_eq!(Some(open.id), first.report.event_id, "still open");
-    assert_eq!(app.store.reports_for_event(open.id).await.unwrap().len(), 3);
+    assert_eq!(app.reports_for_event(open.id).await.len(), 3);
 }
 
 #[tokio::test]
@@ -651,7 +646,7 @@ async fn a_past_no_smell_report_is_offered_no_event_instead_of_a_new_one() {
     let answer = format!("{body}&asked={}&choice=new", asked(&question));
     let response = app.send(post_form("/log", &answer, Some(&cookie))).await;
     assert_eq!(location(&response), Some("/?saved=no-smell"));
-    let check = app.store.report(ReportId(1)).await.unwrap().unwrap();
+    let check = app.report(ReportId(1)).await;
     assert_eq!(check.event_id, None);
     assert_eq!(app.store.event(EventId(1)).await.unwrap(), None);
 }
@@ -675,6 +670,6 @@ async fn no_smell_records_selected_rooms_at_zero_and_refuses_a_higher_level() {
 
     let body = format!("room={}&action=no-smell", bedroom.0);
     app.send(post_form("/log", &body, Some(&cookie))).await;
-    let check = app.store.report(ReportId(1)).await.unwrap().unwrap();
+    let check = app.report(ReportId(1)).await;
     assert_eq!(check.values.level_in(bedroom).map(|l| l.get()), Some(0));
 }

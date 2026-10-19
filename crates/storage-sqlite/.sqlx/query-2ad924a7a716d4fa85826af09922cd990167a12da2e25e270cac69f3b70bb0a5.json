@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.log_entry_id, p.value_ugm3 FROM pm25_readings p JOIN log_entries e ON e.id = p.log_entry_id WHERE e.deleted_at IS NULL AND e.observed_at >= $1 AND e.observed_at < $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "log_entry_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "log_entry_id"
+          }
+        }
+      },
+      {
+        "name": "value_ugm3",
+        "ordinal": 2,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "value_ugm3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2ad924a7a716d4fa85826af09922cd990167a12da2e25e270cac69f3b70bb0a5"
+}

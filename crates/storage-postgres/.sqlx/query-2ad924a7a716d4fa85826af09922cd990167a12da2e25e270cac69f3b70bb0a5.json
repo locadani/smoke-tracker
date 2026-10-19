@@ -1,0 +1,53 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id, p.log_entry_id, p.value_ugm3 FROM pm25_readings p JOIN log_entries e ON e.id = p.log_entry_id WHERE e.deleted_at IS NULL AND e.observed_at >= $1 AND e.observed_at < $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "log_entry_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "log_entry_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "value_ugm3",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "value_ugm3"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "2ad924a7a716d4fa85826af09922cd990167a12da2e25e270cac69f3b70bb0a5"
+}

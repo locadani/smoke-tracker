@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
-use smoke_domain::repos::{EventRepo, ReportRepo};
+use smoke_domain::repos::EventRepo;
 use smoke_domain::types::{CloseReason, Locale, Role};
 
 #[tokio::test]
@@ -265,7 +265,7 @@ async fn the_gap_warning_moves_the_report_after_it_to_a_new_event() {
         location(&moved),
         Some(format!("/reports/{}", late.report.id).as_str())
     );
-    let report = app.store.report(late.report.id).await.unwrap().unwrap();
+    let report = app.report(late.report.id).await;
     assert_ne!(report.event_id, Some(id), "a new event");
     let page = Page::parse(&text(app.send(get_with(&path, &resident)).await).await);
     assert!(!page.exists(".gap"), "the gap is gone with the report");

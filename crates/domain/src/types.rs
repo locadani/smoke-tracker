@@ -31,6 +31,8 @@ id_type!(
     ReportId,
     /// Identifies a PM2.5 reading.
     ReadingId,
+    /// Identifies a log entry: one logging action owning an optional report and reading.
+    LogEntryId,
     /// Identifies a room.
     RoomId,
     /// Identifies a symptom.

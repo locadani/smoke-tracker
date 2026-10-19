@@ -6,10 +6,10 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::history::{Change, report_history, was_corrected};
-use smoke_domain::logbook::{MoveTarget, correct_report, move_report};
+use smoke_domain::history::{Change, entry_history, was_corrected};
+use smoke_domain::logbook::{MoveTarget, ReportCorrection, correct_report, move_report};
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{SmellReport, Symptom, User};
+use smoke_domain::records::{ReportView, Symptom, User};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, ReportId, SymptomId, UserId};
@@ -31,12 +31,13 @@ async fn visible_report<S: Store>(
     state: &AppState<S>,
     user: &User,
     id: ReportId,
-) -> Result<SmellReport, AppError> {
+) -> Result<ReportView, AppError> {
     let now = state.clock.now();
     state
         .store
-        .report(id)
+        .entry_of_report(id)
         .await?
+        .and_then(|entry| entry.report_view())
         .filter(|r| can_see(&user.actor(), r.user_id, now))
         .ok_or(AppError::NotFound)
 }
@@ -149,11 +150,16 @@ async fn report_page<S: Store>(
         Vec::new()
     };
 
-    let entries = state
+    let entry_id = report.entry_id;
+    let old_rows = state
         .store
         .audit_history(AuditEntity::SmellReport, id.0)
         .await?;
-    let history = report_history(&entries);
+    let entry_rows = state
+        .store
+        .audit_history(AuditEntity::LogEntry, entry_id.0)
+        .await?;
+    let history = entry_history(&old_rows, &entry_rows);
     let lines = history
         .iter()
         .map(|entry| HistoryLine {
@@ -265,7 +271,7 @@ async fn report_page<S: Store>(
         ),
         rooms: labels::report_rooms(tr, &rooms, &report.values),
         symptoms: join(symptom_names(tr, &symptoms, report.values.symptoms())),
-        note: report.values.note().map(str::to_owned),
+        note: report.note.as_ref().map(|n| n.as_str().to_owned()),
         by: name(Some(report.user_id), &users),
         edited: was_corrected(&history),
         deleted: report.is_deleted(),
@@ -299,7 +305,7 @@ async fn editable_report<S: Store>(
     state: &AppState<S>,
     user: &User,
     id: ReportId,
-) -> Result<SmellReport, AppError> {
+) -> Result<ReportView, AppError> {
     let report = visible_report(state, user, id).await?;
     let allowed = can(
         &user.actor(),
@@ -321,7 +327,7 @@ async fn correct_page<S: Store>(
     state: &AppState<S>,
     user: &User,
     tr: Tr,
-    report: &SmellReport,
+    report: &ReportView,
     draft: Draft,
     error: Option<&'static str>,
 ) -> Result<CorrectPage, AppError> {
@@ -362,7 +368,11 @@ pub(crate) async fn correct_form<S: Store + Clone + 'static>(
         symptoms: report.values.symptoms().to_vec(),
         pm25: String::new(),
         observed_at: time::input_value(report.observed_at, state.config.schedule.tz()),
-        note: report.values.note().unwrap_or_default().to_owned(),
+        note: report
+            .note
+            .as_ref()
+            .map(|n| n.as_str().to_owned())
+            .unwrap_or_default(),
     };
     let correct_page = correct_page(&state, &user, tr, &report, draft, None).await?;
     page(StatusCode::OK, &correct_page)
@@ -387,18 +397,22 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
     let parsed = read_time(&form, "observed_at", schedule.tz()).and_then(|at| {
         let whole_home = report.values.rooms().is_empty();
         let smell = Smell::Correction { whole_home };
-        let values = read_values(&form, &offered_rooms, &offered_symptoms, smell)?;
-        Ok((at.unwrap_or(report.observed_at), values))
+        let (values, note) = read_values(&form, &offered_rooms, &offered_symptoms, smell)?;
+        Ok((at.unwrap_or(report.observed_at), values, note))
     });
     let error = match parsed {
-        Ok((observed_at, values)) => {
+        Ok((observed_at, values, note)) => {
             let mut tx = state.store.begin(Some(user.id)).await?;
+            let correction = ReportCorrection {
+                observed_at,
+                values,
+                note,
+            };
             match correct_report(
                 &mut tx,
                 &user.actor(),
                 report.id,
-                observed_at,
-                values,
+                correction,
                 &schedule,
                 now,
             )

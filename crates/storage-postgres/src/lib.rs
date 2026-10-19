@@ -6,13 +6,12 @@
 
 mod audit;
 mod convert;
+mod entries;
 mod error;
 mod events;
 mod invites;
 mod jobs;
 mod lists;
-mod readings;
-mod reports;
 mod sessions;
 mod tx;
 mod users;
@@ -46,12 +45,14 @@ impl PostgresStore {
         Ok(Self { pool, clock })
     }
 
-    /// Applies the embedded migrations. Safe to run on every start.
+    /// Applies the embedded migrations, then audits the log entries migration 0005 created
+    /// (once; see `entries::backfill_log_entry_audit`). Safe to run on every start.
     pub async fn migrate(&self) -> StoreResult<()> {
         sqlx::migrate!("./migrations")
             .run(&self.pool)
             .await
-            .map_err(|e| StoreError::Backend(Box::new(e)))
+            .map_err(|e| StoreError::Backend(Box::new(e)))?;
+        entries::backfill_log_entry_audit(self).await
     }
 
     async fn read(&self) -> StoreResult<PoolConnection<Postgres>> {
@@ -79,6 +80,6 @@ impl Transactional for PostgresStore {
             .execute(&mut *tx)
             .await
             .db()?;
-        Ok(PostgresTx::new(tx, actor, self.clock.clone()))
+        Ok(PostgresTx::new(tx, actor, &self.clock))
     }
 }

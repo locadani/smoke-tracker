@@ -2,20 +2,21 @@
 
 use chrono::TimeDelta;
 use smoke_domain::audit::{AuditAction, AuditEntity, ChainError, verify_chain};
-use smoke_domain::records::{NewReading, NewRoom, Pm25Reading, SmellReport};
-use smoke_domain::repos::{Commit, ListWrites, ReadingWrites, ReportWrites, Store, StoreError};
-use smoke_domain::types::{ListName, Pm25, RoomArea};
+use smoke_domain::records::{Closure, LogEntry, NewRoom};
+use smoke_domain::repos::{Commit, EntryWrites, ListWrites, Store, StoreError};
+use smoke_domain::types::{CloseReason, ListName, Pm25, RoomArea};
 use smoke_domain::verify::{SnapshotProblem, verify_store};
 
 use crate::Fixture;
-use crate::fixture::{add_report, report_values, scene, start};
+use crate::fixture::{add_entry, add_event, add_report, report_values, scene, start};
 
 struct Populated {
-    report: SmellReport,
-    reading: Pm25Reading,
+    report: LogEntry,
+    reading: LogEntry,
 }
 
-/// Seeding, a user, an event, a report (one room at level 6), a reading and a correction.
+/// Seeding, a user, an event, a report entry (one room at level 6), a reading entry and a
+/// correction of the report.
 async fn populate<S: Store>(fx: &Fixture<S>) -> Populated {
     let scene = scene(fx).await;
     let rooms = [scene.rooms[0].id, scene.rooms[1].id];
@@ -26,19 +27,24 @@ async fn populate<S: Store>(fx: &Fixture<S>) -> Populated {
         report_values(6, &rooms[..1], &[scene.symptoms[0].id]),
     )
     .await;
+    let reading = add_entry(
+        fx,
+        &scene,
+        start(),
+        None,
+        None,
+        Some(Pm25::new(42.0).unwrap()),
+    )
+    .await;
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
-    let reading = tx
-        .create_reading(NewReading {
-            user_id: scene.user.id,
-            event_id: Some(scene.event.id),
-            observed_at: start(),
-            value: Pm25::new(42.0).unwrap(),
-        })
-        .await
-        .unwrap();
-    tx.correct_report(report.id, report.observed_at, report_values(6, &rooms, &[]))
-        .await
-        .unwrap();
+    tx.correct_entry(
+        report.id,
+        report.observed_at,
+        None,
+        Some(report_values(6, &rooms, &[])),
+    )
+    .await
+    .unwrap();
     tx.commit().await.unwrap();
     Populated { report, reading }
 }
@@ -60,7 +66,7 @@ pub async fn the_history_of_a_record_lists_its_entries<S: Store>(fx: &Fixture<S>
     let p = populate(fx).await;
     let actions: Vec<_> = fx
         .store
-        .audit_history(AuditEntity::SmellReport, p.report.id.0)
+        .audit_history(AuditEntity::LogEntry, p.report.id.0)
         .await
         .unwrap()
         .iter()
@@ -73,7 +79,7 @@ pub async fn a_direct_record_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
     let latest = fx
         .store
-        .audit_history(AuditEntity::SmellReport, p.report.id.0)
+        .audit_history(AuditEntity::LogEntry, p.report.id.0)
         .await
         .unwrap()
         .pop()
@@ -87,7 +93,7 @@ pub async fn a_direct_record_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     assert_eq!(
         report.problems,
         [SnapshotProblem::Differs {
-            entity: AuditEntity::SmellReport,
+            entity: AuditEntity::LogEntry,
             entity_id: p.report.id.0,
             audit_id: latest.record.id,
         }]
@@ -120,12 +126,17 @@ pub async fn a_directly_inserted_record_is_detected<S: Store>(fx: &Fixture<S>) {
 
 pub async fn a_directly_deleted_record_is_detected<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
-    fx.raw("DELETE FROM pm25_readings").await.unwrap();
+    fx.raw(
+        "DELETE FROM pm25_readings; \
+         DELETE FROM log_entries WHERE id NOT IN (SELECT log_entry_id FROM smell_reports)",
+    )
+    .await
+    .unwrap();
     let report = verify_store(&fx.store).await.unwrap();
     assert_eq!(
         report.problems,
         [SnapshotProblem::Vanished {
-            entity: AuditEntity::Pm25Reading,
+            entity: AuditEntity::LogEntry,
             entity_id: p.reading.id.0,
         }]
     );
@@ -134,8 +145,8 @@ pub async fn a_directly_deleted_record_is_detected<S: Store>(fx: &Fixture<S>) {
 pub async fn soft_deletes_still_verify<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
     let mut tx = fx.store.begin(None).await.unwrap();
-    tx.delete_report(p.report.id).await.unwrap();
-    tx.delete_reading(p.reading.id).await.unwrap();
+    tx.delete_entry(p.report.id).await.unwrap();
+    tx.delete_entry(p.reading.id).await.unwrap();
     tx.commit().await.unwrap();
 
     let report = verify_store(&fx.store).await.unwrap();
@@ -146,22 +157,30 @@ pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
     let latest = fx
         .store
-        .audit_history(AuditEntity::SmellReport, p.report.id.0)
+        .audit_history(AuditEntity::LogEntry, p.report.id.0)
         .await
         .unwrap()
         .pop()
         .unwrap();
-    let stored = fx.store.report(p.report.id).await.unwrap().unwrap();
+    let stored = fx.store.entry(p.report.id).await.unwrap().unwrap();
     let in_event = fx
         .store
-        .reports_for_event(stored.event_id.unwrap())
+        .entries_for_event(stored.event_id.unwrap())
         .await
         .unwrap();
-    assert_eq!(in_event.len(), 1);
+    assert_eq!(in_event.len(), 2);
     let rooms = fx.store.rooms().await.unwrap();
     let target = rooms.last().unwrap();
     assert_eq!(target.i18n_key.as_deref(), Some("room-stairwell"));
-    assert!(!stored.values.room_ids().contains(&target.id));
+    assert!(
+        !stored
+            .report
+            .as_ref()
+            .unwrap()
+            .values
+            .room_ids()
+            .contains(&target.id)
+    );
     // `populate` makes the only report, and the stairwell (the last room) is not linked to it.
     fx.raw(
         "INSERT INTO smell_report_rooms (smell_report_id, room_id, level) \
@@ -175,7 +194,7 @@ pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     assert_eq!(
         report.problems,
         [SnapshotProblem::Differs {
-            entity: AuditEntity::SmellReport,
+            entity: AuditEntity::LogEntry,
             entity_id: p.report.id.0,
             audit_id: latest.record.id,
         }]
@@ -201,13 +220,13 @@ pub async fn an_edited_audit_entry_breaks_the_chain<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
     let first = fx
         .store
-        .audit_history(AuditEntity::SmellReport, p.report.id.0)
+        .audit_history(AuditEntity::LogEntry, p.report.id.0)
         .await
         .unwrap()
         .remove(0);
     fx.drop_audit_guard().await;
     fx.raw(
-        r#"UPDATE audit_log SET after_json = replace(after_json, '"level":6', '"level":9') WHERE entity = 'smell_report'"#,
+        r#"UPDATE audit_log SET after_json = replace(after_json, '"level":6', '"level":9') WHERE entity = 'log_entry'"#,
     )
     .await
     .unwrap();
@@ -275,10 +294,111 @@ pub async fn a_directly_edited_list_name_is_corrupt_not_normalised<S: Store>(fx:
 
 pub async fn a_directly_edited_note_is_corrupt_not_normalised<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
-    fx.raw("UPDATE smell_reports SET note = '  padded  '")
+    fx.raw("UPDATE log_entries SET note = '  padded  '")
         .await
         .unwrap();
 
-    let error = fx.store.report(p.report.id).await.unwrap_err();
+    let error = fx.store.entry(p.report.id).await.unwrap_err();
     assert!(matches!(error, StoreError::Corrupt(_)), "{error:?}");
+}
+
+/// A combined entry (report and reading) and a report-only entry, and a second event.
+async fn combined_and_report_only<S: Store>(fx: &Fixture<S>) -> (LogEntry, LogEntry) {
+    let scene = scene(fx).await;
+    let combined = add_entry(
+        fx,
+        &scene,
+        start() - TimeDelta::minutes(2),
+        None,
+        Some(report_values(5, &[scene.rooms[0].id], &[])),
+        Some(Pm25::new(20.0).unwrap()),
+    )
+    .await;
+    let report_only = add_report(
+        fx,
+        &scene,
+        start() - TimeDelta::minutes(1),
+        report_values(3, &[scene.rooms[1].id], &[]),
+    )
+    .await;
+    let yesterday = start() - TimeDelta::days(1);
+    add_event(
+        fx,
+        scene.user.id,
+        yesterday,
+        Some(Closure {
+            at: yesterday,
+            reason: CloseReason::Backdated,
+        }),
+    )
+    .await;
+    assert!(verify_store(&fx.store).await.unwrap().is_ok());
+    (combined, report_only)
+}
+
+async fn assert_differs<S: Store>(fx: &Fixture<S>, entries: &[&LogEntry]) {
+    let report = verify_store(&fx.store).await.unwrap();
+    assert_eq!(report.chain, Ok(()));
+    let mut expected: Vec<_> = entries.iter().map(|e| e.id.0).collect();
+    expected.sort_unstable();
+    let mut found: Vec<_> = report
+        .problems
+        .iter()
+        .map(|p| match p {
+            SnapshotProblem::Differs {
+                entity: AuditEntity::LogEntry,
+                entity_id,
+                ..
+            } => *entity_id,
+            other => panic!("unexpected problem {other:?}"),
+        })
+        .collect();
+    found.sort_unstable();
+    assert_eq!(found, expected, "{report:?}");
+}
+
+pub async fn a_direct_observed_time_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, report_only) = combined_and_report_only(fx).await;
+    fx.raw("UPDATE log_entries SET observed_at = observed_at + 1000000 WHERE id = (SELECT MIN(id) FROM log_entries)")
+        .await
+        .unwrap();
+    assert!(combined.id.0 < report_only.id.0);
+    assert_differs(fx, &[&combined]).await;
+}
+
+pub async fn a_direct_event_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, _) = combined_and_report_only(fx).await;
+    fx.raw("UPDATE log_entries SET event_id = (SELECT MAX(id) FROM events) WHERE id = (SELECT MIN(id) FROM log_entries)")
+        .await
+        .unwrap();
+    assert_differs(fx, &[&combined]).await;
+}
+
+pub async fn a_direct_reading_value_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, _) = combined_and_report_only(fx).await;
+    fx.raw("UPDATE pm25_readings SET value_ugm3 = value_ugm3 + 1")
+        .await
+        .unwrap();
+    assert_differs(fx, &[&combined]).await;
+}
+
+pub async fn relinking_a_reading_to_another_entry_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, report_only) = combined_and_report_only(fx).await;
+    fx.raw(
+        "UPDATE pm25_readings SET log_entry_id = \
+         (SELECT id FROM log_entries WHERE id NOT IN (SELECT log_entry_id FROM pm25_readings))",
+    )
+    .await
+    .unwrap();
+    assert_differs(fx, &[&combined, &report_only]).await;
+}
+
+pub async fn deleting_only_the_reading_of_a_combined_entry_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, _) = combined_and_report_only(fx).await;
+    fx.raw(
+        "DELETE FROM pm25_readings WHERE log_entry_id IN (SELECT log_entry_id FROM smell_reports)",
+    )
+    .await
+    .unwrap();
+    assert_differs(fx, &[&combined]).await;
 }
