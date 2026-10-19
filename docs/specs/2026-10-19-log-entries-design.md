@@ -45,9 +45,17 @@ pm25_readings   id, log_entry_id → log_entries.id UNIQUE NOT NULL, value_ugm3
 
 **Data migration** (pattern of 0004, decision #109, with the 0003 refusal guard):
 every report becomes an entry. A reading becomes the second child of a report's entry when both
-were written by one `log_smell` call: same `user_id`, `event_id`, `observed_at` and
-`recorded_at`. Any other reading gets its own entry with no note. If a reading would pair with
-more than one report, the migration refuses (guard) instead of guessing.
+were written by one `log_smell` call, recognised in the audit log: the reading's `create` entry
+is the one right after the report's `create` entry (audit id + 1), by the same actor, with the
+same `observed_at` in the two `create` snapshots. The current event, time and `recorded_at` are
+**not** compared: a report may have been moved or re-timed since, and the two rows of one call
+were stamped tens of milliseconds apart. The shared entry takes the report's current values.
+Any other reading gets its own entry with no note. If anything would pair twice, the migration
+refuses (guard) instead of guessing.
+
+Checked against production on 2026-10-19 (read-only queries): 21 reports, 20 readings,
+17 pairs (all audit id + 1, same actor), 4 reports alone, 3 readings alone, one moved report.
+The migration test fixture mirrors these cases with made-up data.
 
 ## 4. Domain
 
@@ -87,10 +95,14 @@ more than one report, the migration refuses (guard) instead of guessing.
 
 - **Entry ids are new** (their own sequence). The link lives only in `log_entry_id` on the
   children, so the audit upgrade step finds an old snapshot's entry through the kept child id.
-- **Pairing in the migration** relies on `log_smell` stamping both rows with one `now` (it
-  does). A report and a reading also pair only when their `deleted_at` match; otherwise each
-  gets its own entry. A read-only preflight query is written alongside and run against Neon
-  before deploying.
+- **Pairing in the migration** uses the audit log (§3). An earlier draft assumed both rows
+  share one `recorded_at`; they do not (see the next point). A read-only preflight query
+  (`scripts/neon-preflight-0005.sql`) is run against Neon before deploying.
+- **One "now" per transaction.** Today the storage layer reads the clock again for every row
+  it writes, so one Log press has several slightly different instants; tests miss it because
+  `FakeClock` is frozen. A write transaction now takes its instant once, when it begins, and
+  uses it for every row and audit entry it writes. A test with a clock that moves on every
+  read pins this.
 - **Backfill** runs inside `Store::migrate`, right after the SQL migrations, in one
   transaction that re-checks "no `log_entry` entries" inside it. A second instance racing it
   fails on the audit id (assigned as head + 1) and rolls back. `actor_id` none is already used
