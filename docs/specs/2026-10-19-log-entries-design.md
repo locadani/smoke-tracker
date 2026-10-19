@@ -81,15 +81,23 @@ The migration test fixture mirrors these cases with made-up data.
 
 ## 6. Audit
 
-- New audited entity `log_entry` with a snapshot like the others. The `smell_report` and
-  `pm25_reading` snapshots lose the fields that moved and gain `log_entry_id`.
-- Old snapshots are compared through an upgrade step, as `SmellReport::upgrade_snapshot` does
-  for 0003 (decision #104): drop the moved fields and look `log_entry_id` up by id.
-- Entries created by the migration have no audit entry yet. On the first start after 0005,
-  the app writes one `create` entry per entry (actor: none), once: only while the audit has
-  no `log_entry` entries at all. After that, an unaudited entry is reported as today.
-- History for a report reads its entry's audit entries too, so time and note changes still
-  appear.
+- **One audit row per log entry (decided by Daniele).** New activity is audited only as entity
+  `log_entry`: one row per Log press, correction, move or delete. Its snapshot is the whole log:
+  the entry's fields plus the report (id, rooms with levels, symptoms) and the reading (id,
+  value) when present. No new `smell_report` or `pm25_reading` audit rows are written.
+- The hash is computed as today (previous hash + the row as canonical JSON); existing rows are
+  never rewritten or re-hashed (decision #104).
+- Entries created by the migration have no audit row yet. On the first start after 0005, the
+  app writes one `create` row per entry with its whole-log snapshot (actor: none), once: only
+  while the audit has no `log_entry` rows at all. After that, an unaudited entry is reported as
+  today.
+- `verify-audit` compares log entries (with their children) against their latest `log_entry`
+  snapshot. Old `smell_report` / `pm25_reading` rows stay in the hash chain and are still
+  checked as links; their snapshots are no longer compared with current rows, because the
+  backfill snapshot covers every report and reading.
+- History for a log reads the old `smell_report` rows (shown through an upgrade step like
+  `SmellReport::upgrade_snapshot`) followed by the `log_entry` rows, and shows only what
+  changed by comparing consecutive snapshots, as today.
 
 ## 6a. Calls made by Claude (check these)
 
@@ -107,9 +115,7 @@ The migration test fixture mirrors these cases with made-up data.
   transaction that re-checks "no `log_entry` entries" inside it. A second instance racing it
   fails on the audit id (assigned as head + 1) and rolls back. `actor_id` none is already used
   for system entries.
-- **Audit per write:** a new log audits `create` for the entry, then the report, then the
-  reading. Time, note, event and delete are audited on the entry only; rooms, levels and
-  symptoms on the report; the value on the reading.
+- **Audit per write:** superseded by Daniele's decision in §6 (one `log_entry` row per write).
 - **Domain shape:** `LogEntry` with nested children is the model; graphs and summaries keep
   their current inputs through a thin adapter, so their output does not change.
 - **No database trigger** for "at least one child": domain plus contract test, keeping the
