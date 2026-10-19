@@ -267,7 +267,6 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
     for id in [id.0, id.0 + 1000] {
         for response in [
             app.send(get_with(&format!("/reports/{id}"), &cookie)).await,
-            app.send(get_with(&format!("/entries/{id}"), &cookie)).await,
             app.send(get_with(&format!("/reports/{id}/correct"), &cookie))
                 .await,
             app.send(post_form(
@@ -291,6 +290,13 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
         ] {
             assert_eq!(response.status(), StatusCode::NOT_FOUND);
         }
+    }
+    let entry = mine.report.entry_id.0;
+    for entry in [entry, entry + 1000] {
+        let response = app
+            .send(get_with(&format!("/entries/{entry}"), &cookie))
+            .await;
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
     }
     assert_eq!(app.report(id).await, mine.report);
 

@@ -242,6 +242,12 @@ async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
         .find(|entry| entry.report.is_none())
         .expect("the PM2.5-only entry")
         .id;
+    for entry in [1, 2, reading_only.0] {
+        let response = app
+            .send(get_with(&format!("/entries/{entry}"), &cookie))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK, "entry {entry}");
+    }
     let pages = [
         text(question).await,
         text(past_check_question).await,

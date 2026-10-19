@@ -90,6 +90,11 @@ async fn a_pm25_only_entry_page_has_no_edit_button() {
         !page.exists(r#"form[action$="/move"]"#),
         "no Move form: {html}"
     );
+    assert_eq!(
+        page.text("p.muted"),
+        "Only a PM2.5 reading: there is nothing to correct here."
+    );
+    assert!(!page.exists(".history"), "no History: {html}");
     assert!(
         !html.contains("Correct a mistake") && !html.contains("Intensity"),
         "{html}"
@@ -243,4 +248,27 @@ async fn a_deleted_entry_answers_404() {
         let response = app.send(get_with(&path, &cookie)).await;
         assert_eq!(response.status(), StatusCode::NOT_FOUND, "{path}");
     }
+}
+
+#[tokio::test]
+async fn a_pm25_only_entry_page_shows_its_note() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    app.send(post_form(
+        "/log",
+        "pm25=12&note=hazy+after+cooking&action=log",
+        Some(&cookie),
+    ))
+    .await;
+    let id = entry_ids(&app).await[0];
+
+    let html = text(app.send(get_with(&format!("/entries/{id}"), &cookie)).await).await;
+    let facts = Page::parse(&html).texts(".facts div");
+    assert!(
+        facts.iter().any(|f| f == "Note hazy after cooking"),
+        "{facts:?}"
+    );
+    assert!(facts.iter().any(|f| f == "PM2.5 12 µg/m³"), "{facts:?}");
 }
