@@ -1,31 +1,35 @@
 {% extends "base.html" %}
 {% import "components.html" as c %}
-{% block title %}{{ tr.t("report-title") }}{% endblock %}
+{% block title %}{{ tr.t("entry-title") }}{% endblock %}
 {% block content %}
 {% if let Some(event) = event %}
 {% call c::back("/events/{}"|format(event.id), tr.t1("event-title", "date", event.date)) %}{% endcall %}
 {% else %}
 {% call c::back("/events", tr.t("events-title")) %}{% endcall %}
 {% endif %}
-<h1>{{ tr.t("report-title") }}{% if edited %} <span class="tag">{{ tr.t("report-edited") }}</span>{% endif %}{% if deleted %} <span class="tag" data-tone="warn">{{ tr.t("report-deleted") }}</span>{% endif %}</h1>
+<h1>{{ tr.t("entry-title") }}{% if edited %} <span class="tag">{{ tr.t("report-edited") }}</span>{% endif %}</h1>
 {% if let Some(error) = error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <section class="card">
   <dl class="facts">
     <div><dt>{{ tr.t("report-event") }}</dt><dd>{% if let Some(event) = event %}<a href="/events/{{ event.id }}">{{ tr.t1("event-title", "date", event.date) }}</a>{% else %}{{ tr.t("report-no-event") }}{% endif %}</dd></div>
     <div><dt>{{ tr.t("report-observed") }}</dt><dd>{{ observed }}</dd></div>
     <div><dt>{{ tr.t("report-recorded") }}</dt><dd>{{ recorded }}</dd></div>
-    <div><dt>{{ tr.t("log-intensity") }}</dt><dd>{{ intensity }}</dd></div>
-    <div><dt>{{ tr.t("log-rooms") }}</dt><dd>{{ rooms }}</dd></div>
-    <div><dt>{{ tr.t("log-symptoms") }}</dt><dd>{{ symptoms }}</dd></div>
-    {% if let Some(note) = note %}<div><dt>{{ tr.t("report-note") }}</dt><dd>{{ note }}</dd></div>{% endif %}
+    {% if let Some(pm25) = pm25 %}<div><dt>{{ tr.t("entry-pm25-label") }}</dt><dd>{{ pm25 }}</dd></div>{% endif %}
+    {% if let Some(smell) = smell %}
+    <div><dt>{{ tr.t("log-intensity") }}</dt><dd>{{ smell.intensity }}</dd></div>
+    <div><dt>{{ tr.t("log-rooms") }}</dt><dd>{{ smell.rooms }}</dd></div>
+    <div><dt>{{ tr.t("log-symptoms") }}</dt><dd>{{ smell.symptoms }}</dd></div>
+    {% endif %}
+    {% if let Some(note) = note %}<div><dt>{{ tr.t("entry-note-label") }}</dt><dd>{{ note }}</dd></div>{% endif %}
     {% if let Some(by) = by %}<div><dt>{{ tr.t("report-by") }}</dt><dd>{{ by }}</dd></div>{% endif %}
   </dl>
 </section>
+{% if let Some(smell) = smell %}
 {% if editable %}
-<a href="/reports/{{ id }}/correct" class="button" data-variant="secondary">{{ tr.t("report-correct") }}</a>
+<a href="/reports/{{ smell.id }}/correct" class="button" data-variant="secondary">{{ tr.t("report-correct") }}</a>
 {% if !move_options.is_empty() %}
 {% call c::card(tr.t("report-move")) %}
-<form method="post" action="/reports/{{ id }}/move" class="split">
+<form method="post" action="/reports/{{ smell.id }}/move" class="split">
   <select name="target" aria-label="{{ tr.t("report-move") }}">
     {% for option in move_options %}
     <option value="{{ option.value }}">{{ option.label }}</option>
@@ -43,4 +47,7 @@
   {% endfor %}
 </ol>
 {% endcall %}
+{% else %}
+<p class="muted">{{ tr.t("entry-no-edit-for-reading") }}</p>
+{% endif %}
 {% endblock %}

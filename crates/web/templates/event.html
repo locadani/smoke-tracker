@@ -23,9 +23,9 @@
     {% endif %}
   </li>
   {% endif %}
-  <li{% if entry.report.is_none() %} data-kind="reading"{% endif %}>
+  <li{% if entry.reading %} data-kind="reading"{% endif %}>
     <span class="at">{{ entry.at }}</span>
-    <span class="entry">{% if let Some(report) = entry.report %}<a href="/reports/{{ report }}">{{ entry.text }}</a>{% else %}{{ entry.text }}{% endif %}{% if let Some(by) = entry.by %}<span class="muted">{{ by }}</span>{% endif %}</span>
+    <span class="entry"><a href="/entries/{{ entry.entry }}">{{ entry.text }}</a>{% if let Some(by) = entry.by %}<span class="muted">{{ by }}</span>{% endif %}</span>
   </li>
   {% endfor %}
 </ol>

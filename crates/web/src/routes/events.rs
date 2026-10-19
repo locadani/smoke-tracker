@@ -40,13 +40,14 @@ struct EventRow {
 }
 
 struct ReadingRow {
+    entry: i64,
     at: String,
     value: String,
 }
 
 /// A no-smell check made while no event was running.
 struct CheckRow {
-    id: i64,
+    entry: i64,
     at: String,
 }
 
@@ -158,7 +159,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
             day(&mut days, tr, schedule.local_date(check.observed_at))
                 .checks
                 .push(CheckRow {
-                    id: check.id.0,
+                    entry: check.entry_id.0,
                     at: time::clock(check.observed_at, tz),
                 });
         }
@@ -169,6 +170,7 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
             day(&mut days, tr, schedule.local_date(reading.observed_at))
                 .readings
                 .push(ReadingRow {
+                    entry: reading.entry_id.0,
                     at: time::clock(reading.observed_at, tz),
                     value: reading.value.ugm3().to_string(),
                 });
@@ -193,8 +195,10 @@ pub(crate) async fn list<S: Store + Clone + 'static>(
 /// One line of an event's timeline.
 struct Entry {
     at: String,
-    /// `Some` for a report (its id), `None` for a PM2.5 reading.
-    report: Option<i64>,
+    /// The log entry the line links to.
+    entry: i64,
+    /// A PM2.5 reading, as opposed to a smell report.
+    reading: bool,
     text: String,
     /// Shown to people who see everyone's data.
     by: Option<String>,
@@ -306,7 +310,8 @@ async fn detail<S: Store>(
             report.observed_at,
             Entry {
                 at: time::clock(report.observed_at, tz),
-                report: Some(report.id.0),
+                entry: report.entry_id.0,
+                reading: false,
                 text: parts
                     .into_iter()
                     .filter(|p| !p.is_empty())
@@ -332,7 +337,8 @@ async fn detail<S: Store>(
             reading.observed_at,
             Entry {
                 at: time::clock(reading.observed_at, tz),
-                report: None,
+                entry: reading.entry_id.0,
+                reading: true,
                 text: tr.t1("event-pm25", "value", &reading.value.ugm3().to_string()),
                 by: names.get(&reading.user_id).cloned(),
                 gap: None,

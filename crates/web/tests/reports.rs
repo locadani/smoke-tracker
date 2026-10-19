@@ -28,7 +28,10 @@ async fn a_report_shows_both_times_its_values_and_its_history() {
     let cookie = app.sign_in("daniele").await;
 
     let response = app
-        .send(get_with(&format!("/reports/{}", logged.report.id), &cookie))
+        .send(get_with(
+            &format!("/entries/{}", logged.report.entry_id),
+            &cookie,
+        ))
         .await;
     assert_eq!(response.status(), StatusCode::OK);
     let html = text(response).await;
@@ -104,8 +107,13 @@ async fn correcting_a_mistake_is_recorded_and_badged() {
             Some(&cookie),
         ))
         .await;
-    assert_eq!(location(&response), Some(&*format!("/reports/{id}")));
-    let html = text(app.send(get_with(&format!("/reports/{id}"), &cookie)).await).await;
+    let entry = logged.report.entry_id;
+    assert_eq!(location(&response), Some(&*format!("/entries/{entry}")));
+    let html = text(
+        app.send(get_with(&format!("/entries/{entry}"), &cookie))
+            .await,
+    )
+    .await;
     let page = Page::parse(&html);
     assert_eq!(page.text("h1 .tag"), "edited");
     assert_eq!(
@@ -188,7 +196,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
         )
         .await;
     let cookie = app.sign_in("daniele").await;
-    let path = format!("/reports/{}", joined.report.id);
+    let path = format!("/entries/{}", joined.report.entry_id);
     let html = text(app.send(get_with(&path, &cookie)).await).await;
     assert!(
         html.contains(r#"<option value="new">New event</option>"#),
@@ -199,7 +207,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
         "the evening event had not started: {html}"
     );
 
-    let path = format!("/reports/{}", stray.report.id);
+    let path = format!("/entries/{}", stray.report.entry_id);
     let html = text(app.send(get_with(&path, &cookie)).await).await;
     let morning_id = morning.report.event_id.unwrap();
     assert!(
@@ -210,7 +218,7 @@ async fn moving_offers_that_days_events_and_a_new_one() {
     );
     let response = app
         .send(post_form(
-            &format!("{path}/move"),
+            &format!("/reports/{}/move", stray.report.id),
             &format!("target=event-{morning_id}"),
             Some(&cookie),
         ))
@@ -259,6 +267,7 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
     for id in [id.0, id.0 + 1000] {
         for response in [
             app.send(get_with(&format!("/reports/{id}"), &cookie)).await,
+            app.send(get_with(&format!("/entries/{id}"), &cookie)).await,
             app.send(get_with(&format!("/reports/{id}/correct"), &cookie))
                 .await,
             app.send(post_form(
@@ -286,8 +295,11 @@ async fn guests_cannot_see_or_change_other_peoples_reports() {
     assert_eq!(app.report(id).await, mine.report);
 
     let own = text(
-        app.send(get_with(&format!("/reports/{}", theirs.report.id), &cookie))
-            .await,
+        app.send(get_with(
+            &format!("/entries/{}", theirs.report.entry_id),
+            &cookie,
+        ))
+        .await,
     )
     .await;
     assert!(own.contains(">Correct a mistake</a>"), "{own}");
@@ -314,7 +326,12 @@ async fn viewers_see_reports_but_cannot_change_them() {
         .await;
     let cookie = app.sign_in("lawyer").await;
     let id = logged.report.id;
-    let html = text(app.send(get_with(&format!("/reports/{id}"), &cookie)).await).await;
+    let entry = logged.report.entry_id;
+    let html = text(
+        app.send(get_with(&format!("/entries/{entry}"), &cookie))
+            .await,
+    )
+    .await;
     assert!(html.contains("<dd>daniele</dd>"), "{html}");
     assert!(
         !html.contains("Correct a mistake") && !html.contains("/move"),
@@ -364,8 +381,11 @@ async fn guests_see_other_events_in_the_move_options_without_their_end() {
     let cookie = app.sign_in("guest").await;
 
     let html = text(
-        app.send(get_with(&format!("/reports/{}", theirs.report.id), &cookie))
-            .await,
+        app.send(get_with(
+            &format!("/entries/{}", theirs.report.entry_id),
+            &cookie,
+        ))
+        .await,
     )
     .await;
     assert!(
@@ -390,7 +410,11 @@ async fn a_check_has_no_event_and_cannot_be_corrected_to_a_smell() {
     let cookie = app.sign_in("daniele").await;
     let id = check.id;
 
-    let html = text(app.send(get_with(&format!("/reports/{id}"), &cookie)).await).await;
+    let html = text(
+        app.send(get_with(&format!("/entries/{}", check.entry_id), &cookie))
+            .await,
+    )
+    .await;
     assert!(html.contains("<dd>None: a no-smell check</dd>"), "{html}");
     assert!(html.contains("<dd>whole home</dd>"), "{html}");
     assert!(html.contains("<dd>0 · Clean</dd>"), "{html}");
@@ -431,7 +455,10 @@ async fn a_check_has_no_event_and_cannot_be_corrected_to_a_smell() {
             Some(&cookie),
         ))
         .await;
-    assert_eq!(location(&response), Some(&*format!("/reports/{id}")));
+    assert_eq!(
+        location(&response),
+        Some(&*format!("/entries/{}", check.entry_id))
+    );
 }
 
 #[tokio::test]
@@ -465,7 +492,10 @@ async fn a_correction_with_no_room_is_refused_unless_the_report_covered_the_whol
     let path = format!("/reports/{}/correct", check.id);
     let body = "observed_at=2026-01-15T20:30&note=looked+twice";
     let saved = app.send(post_form(&path, body, Some(&cookie))).await;
-    assert_eq!(location(&saved), Some(&*format!("/reports/{}", check.id)));
+    assert_eq!(
+        location(&saved),
+        Some(&*format!("/entries/{}", check.entry_id))
+    );
     let after = app.report(check.id).await;
     assert!(after.values.rooms().is_empty(), "still the whole home");
     assert_eq!(
@@ -563,6 +593,7 @@ async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
     );
     let cookie = app.sign_in("daniele").await;
     let path = format!("/reports/{id}");
+    let entry_path = format!("/entries/{}", report.entry_id);
 
     let form = text(
         app.send(get_with(&format!("{path}/correct"), &cookie))
@@ -581,7 +612,7 @@ async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
     let response = app
         .send(post_form(&format!("{path}/correct"), &body, Some(&cookie)))
         .await;
-    assert_eq!(location(&response), Some(&*path));
+    assert_eq!(location(&response), Some(&*entry_path));
 
     let corrected = app.report(id).await;
     assert_eq!(corrected.entry_id, report.entry_id);
@@ -605,7 +636,7 @@ async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
             Some(&cookie),
         ))
         .await;
-    assert_eq!(location(&response), Some(&*path));
+    assert_eq!(location(&response), Some(&*entry_path));
     let moved = app.report(id).await;
     assert_ne!(moved.event_id, report.event_id);
     let entry = app.store.entry(report.entry_id).await.unwrap().unwrap();
@@ -616,7 +647,7 @@ async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
         "the other report stays where it was"
     );
 
-    let html = text(app.send(get_with(&path, &cookie)).await).await;
+    let html = text(app.send(get_with(&entry_path, &cookie)).await).await;
     let page = Page::parse(&html);
     let lines = page.texts(".history li");
     assert_eq!(lines.len(), 3, "{lines:?}");

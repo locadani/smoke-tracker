@@ -2,6 +2,7 @@
 
 pub(crate) mod accept;
 pub(crate) mod entries;
+pub(crate) mod entry_page;
 pub(crate) mod events;
 pub(crate) mod graphs;
 pub(crate) mod guide;

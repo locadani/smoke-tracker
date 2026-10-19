@@ -16,10 +16,10 @@
     {% call c::row("/events/{}"|format(event.id), event.span, event.detail) %}<span class="badge" data-tone="warn">{{ event.badge }}</span>{% endcall %}
     {% endfor %}
     {% for check in day.checks %}
-    {% call c::row("/reports/{}"|format(check.id), check.at, tr.t("events-check")) %}<span class="badge">0</span>{% endcall %}
+    {% call c::row("/entries/{}"|format(check.entry), check.at, tr.t("events-check")) %}<span class="badge">0</span>{% endcall %}
     {% endfor %}
     {% for reading in day.readings %}
-    {% call c::row("", reading.at, tr.t1("event-pm25", "value", reading.value)) %}<span class="badge" data-tone="muted">PM</span>{% endcall %}
+    {% call c::row("/entries/{}"|format(reading.entry), reading.at, tr.t1("event-pm25", "value", reading.value)) %}<span class="badge" data-tone="muted">PM</span>{% endcall %}
     {% endfor %}
   </div>
 </section>
