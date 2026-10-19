@@ -51,6 +51,7 @@ enum Entry {
     Pm25Only {
         observed_at: DateTime<Utc>,
         value: Pm25,
+        note: Option<Note>,
     },
 }
 
@@ -144,10 +145,11 @@ pub(crate) fn read_values(
 /// and symptoms the form offers (not hidden) are accepted.
 ///
 /// "No smell" has its own button. The one Log button decides from what is filled in (look-and-
-/// feel spec §6.1): rooms make a smell report, or a clean check when every level is 0, with the
-/// PM2.5 value saved alongside; without rooms a PM2.5 value alone is a reading, while symptoms
-/// or a note still need a room. Rooms ticked without any level count as no rooms next to a
-/// PM2.5 value: the Log screen ticks the rooms of the person's last report in the open event.
+/// feel spec §6.1, log entries spec §5): rooms make a smell report, or a clean check when every
+/// level is 0, with the PM2.5 value saved alongside; without rooms a PM2.5 value is a reading
+/// that keeps the note, while symptoms still need a room and a note alone is not enough. Rooms
+/// ticked without any level count as no rooms next to a PM2.5 value: the Log screen ticks the
+/// rooms of the person's last report in the open event.
 fn read(
     form: &Pairs,
     rooms: &[Room],
@@ -177,11 +179,17 @@ fn read(
         .all(|&room| level_field(form, RoomId(room)).is_none());
     if unrated && !no_smell {
         let symptoms = form.ids("symptom").ok_or("log-error-form")?;
-        let described = form.get("note").is_some() || !symptoms.is_empty();
         match pm25 {
-            Some(value) if !described => return Ok(Entry::Pm25Only { observed_at, value }),
+            Some(value) if symptoms.is_empty() => {
+                let note = Note::parse(form.get("note")).map_err(|_| "log-error-note")?;
+                return Ok(Entry::Pm25Only {
+                    observed_at,
+                    value,
+                    note,
+                });
+            }
             _ if !picked.is_empty() => {}
-            _ if described => return Err("log-error-rooms"),
+            _ if !symptoms.is_empty() => return Err("log-error-rooms"),
             _ => return Err("log-error-empty"),
         }
     }
@@ -264,12 +272,16 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         Err(key) => return back_to_form(&state, &user, tr, now, &form, key).await,
     };
     let entry = match entry {
-        Entry::Pm25Only { observed_at, value } => {
+        Entry::Pm25Only {
+            observed_at,
+            value,
+            note,
+        } => {
             let mut tx = state.store.begin(Some(user.id)).await?;
             let reading = ReadingEntry {
                 observed_at,
                 value,
-                note: None,
+                note,
             };
             if let Err(error) = log_reading(&mut tx, &actor, reading, now).await {
                 drop(tx);
@@ -589,53 +601,86 @@ mod tests {
         assert!(check.values.is_no_smell());
         assert_eq!(check.values.room_ids(), [RoomId(1)]);
 
-        let Ok(Entry::Pm25Only { observed_at, value }) = read_form(&[
+        let Ok(Entry::Pm25Only {
+            observed_at, value, ..
+        }) = read_form(&[
             ("action", "log"),
             ("pm25", "12,5"),
             ("observed_at", "2026-01-15T20:30"),
-        ]) else {
+        ])
+        else {
             panic!("no rooms, only PM2.5: a reading");
         };
         assert_eq!(observed_at, now() - TimeDelta::minutes(30));
         assert_eq!(value.ugm3(), 12.5);
 
-        for pairs in [
-            &[("action", "log"), ("symptom", "1")][..],
-            &[("action", "log"), ("note", "acrid")][..],
-            &[("action", "log"), ("note", "acrid"), ("pm25", "12")][..],
-        ] {
-            assert_eq!(read_form(pairs).err(), Some("log-error-rooms"), "{pairs:?}");
-        }
-        assert_eq!(
-            read_form(&[("action", "log"), ("note", "  ")]).err(),
-            Some("log-error-empty"),
-            "a blank note is no note"
-        );
-        assert_eq!(
-            read_form(&[("action", "log")]).err(),
-            Some("log-error-empty")
-        );
-        assert_eq!(
-            read_form(&[]).err(),
-            Some("log-error-empty"),
-            "no action: Log"
-        );
         let Ok(Entry::Pm25Only { .. }) =
             read_form(&[("action", "log"), ("room", "1"), ("pm25", "18")])
         else {
             panic!("a ticked room without a level beside PM2.5: a reading");
         };
+        assert_eq!(
+            read_form(&[("action", "log"), ("room", "1")]).err(),
+            Some("log-error-level")
+        );
+    }
+
+    #[test]
+    fn pm25_with_a_note_and_no_rooms_saves_a_reading_entry_with_the_note() {
         for pairs in [
-            &[("action", "log"), ("room", "1")][..],
+            &[("action", "log"), ("pm25", "12"), ("note", "  acrid ")][..],
             &[
                 ("action", "log"),
                 ("room", "1"),
-                ("pm25", "18"),
-                ("note", "acrid"),
+                ("pm25", "12"),
+                ("note", "  acrid "),
             ][..],
         ] {
-            assert_eq!(read_form(pairs).err(), Some("log-error-level"), "{pairs:?}");
+            let Ok(Entry::Pm25Only { value, note, .. }) = read_form(pairs) else {
+                panic!("PM2.5 and a note without a level: a reading, {pairs:?}");
+            };
+            assert_eq!(value.ugm3(), 12.0);
+            assert_eq!(note.as_ref().map(Note::as_str), Some("acrid"), "{pairs:?}");
         }
+    }
+
+    #[test]
+    fn a_note_alone_asks_for_a_room_or_a_pm25_value() {
+        assert_eq!(
+            read_form(&[("action", "log"), ("note", "acrid")]).err(),
+            Some("log-error-empty")
+        );
+    }
+
+    #[test]
+    fn symptoms_without_rooms_or_pm25_still_ask_for_a_room() {
+        for pairs in [
+            &[("action", "log"), ("symptom", "1")][..],
+            &[("action", "log"), ("symptom", "1"), ("note", "acrid")][..],
+            &[("action", "log"), ("symptom", "1"), ("pm25", "12")][..],
+        ] {
+            assert_eq!(read_form(pairs).err(), Some("log-error-rooms"), "{pairs:?}");
+        }
+    }
+
+    #[test]
+    fn nothing_filled_in_asks_for_a_room_or_a_pm25_value() {
+        for pairs in [
+            &[("action", "log")][..],
+            &[][..],
+            &[("action", "log"), ("note", "  ")][..],
+        ] {
+            assert_eq!(read_form(pairs).err(), Some("log-error-empty"), "{pairs:?}");
+        }
+    }
+
+    #[test]
+    fn a_note_over_2000_characters_shows_the_existing_error() {
+        let long = "x".repeat(Note::MAX_CHARS + 1);
+        assert_eq!(
+            read_form(&[("action", "log"), ("pm25", "12"), ("note", &long)]).err(),
+            Some("log-error-note")
+        );
     }
 
     #[test]

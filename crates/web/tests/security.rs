@@ -7,6 +7,7 @@ use axum::http::header::CONTENT_TYPE;
 use axum::http::{Request, StatusCode};
 use common::page::Page;
 use common::*;
+use smoke_domain::repos::EntryRepo;
 use smoke_domain::types::{Locale, Role};
 
 const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; \
@@ -230,13 +231,30 @@ async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
             Some(&cookie),
         ))
         .await;
+    app.send(post_form("/log", "pm25=12&action=log", Some(&cookie)))
+        .await;
+    let reading_only = app
+        .store
+        .entries_between(t("2026-01-01T00:00:00Z"), t("2026-02-01T00:00:00Z"))
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.report.is_none())
+        .expect("the PM2.5-only entry")
+        .id;
+    for entry in [1, 2, reading_only.0] {
+        let response = app
+            .send(get_with(&format!("/entries/{entry}"), &cookie))
+            .await;
+        assert_eq!(response.status(), StatusCode::OK, "entry {entry}");
+    }
     let pages = [
         text(question).await,
         text(past_check_question).await,
         text(app.send(get_with("/events", &cookie)).await).await,
         text(app.send(get_with("/events/1", &cookie)).await).await,
-        text(app.send(get_with("/reports/1", &cookie)).await).await,
-        text(app.send(get_with("/reports/2", &cookie)).await).await,
+        text(app.send(get_with("/entries/1", &cookie)).await).await,
+        text(app.send(get_with("/entries/2", &cookie)).await).await,
         text(app.send(get_with("/reports/2/correct", &cookie)).await).await,
         text(app.send(get("/login")).await).await,
         text(app.send(get_with("/", &cookie)).await).await,
@@ -255,6 +273,11 @@ async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
         text(app.send(get_with("/graphs?year=2026", &cookie)).await).await,
         text(app.send(get_with("/guide/logging", &cookie)).await).await,
         text(app.send(get("/missing")).await).await,
+        text(
+            app.send(get_with(&format!("/entries/{reading_only}"), &cookie))
+                .await,
+        )
+        .await,
         text(app.attempt("daniele", "not the password").await).await,
     ];
     assert!(pages[1].contains("No event: just a check"), "{}", pages[1]);

@@ -168,7 +168,7 @@ mod tests {
 
     use super::*;
     use crate::routes::login::Notice;
-    use crate::routes::{self, entries, graphs, guide, lists, people, reports, settings};
+    use crate::routes::{self, entries, entry_page, graphs, guide, lists, people, settings};
     use crate::{error, header, labels};
 
     const DIR: &str = env!("CARGO_MANIFEST_DIR");
@@ -259,7 +259,7 @@ mod tests {
         used.extend(labels::keys().into_iter().map(str::to_owned));
         used.extend(entries::FORM_ERRORS.map(str::to_owned));
         used.extend(routes::REFUSALS.map(str::to_owned));
-        used.extend(reports::HISTORY_KEYS.map(str::to_owned));
+        used.extend(entry_page::HISTORY_KEYS.map(str::to_owned));
         used.extend(settings::keys().into_iter().map(str::to_owned));
         used.extend(lists::KEYS.map(str::to_owned));
         used.extend(people::keys().into_iter().map(str::to_owned));

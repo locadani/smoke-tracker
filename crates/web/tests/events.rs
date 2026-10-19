@@ -66,8 +66,14 @@ async fn the_list_groups_a_months_events_by_day_newest_first() {
         page.text(&format!("{second} .row-text strong"))
             .starts_with("08:30–")
     );
-    assert_eq!(page.text("div.row .badge[data-tone=muted]"), "PM");
-    assert_eq!(page.text("div.row .row-text"), "14:00 PM2.5 12.5 µg/m³");
+    assert_eq!(
+        page.text(r#"a.row[href^="/entries/"] .badge[data-tone=muted]"#),
+        "PM"
+    );
+    assert_eq!(
+        page.text(r#"a.row[href^="/entries/"] .row-text"#),
+        "14:00 PM2.5 12.5 µg/m³"
+    );
 
     let empty = text(app.send(get_with("/events?month=2025-11", &cookie)).await).await;
     assert!(empty.contains("No events this month."), "{empty}");
@@ -167,8 +173,8 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
     );
     assert_eq!(
         page.text(&format!(
-            r#".timeline a[href="/reports/{}"]"#,
-            first.report.id
+            r#".timeline a[href="/entries/{}"]"#,
+            first.report.entry_id
         )),
         "intensity 3 · Bedroom 3"
     );
@@ -197,8 +203,8 @@ async fn the_event_page_shows_the_timeline_and_warns_about_large_gaps() {
         "{order:?}"
     );
     assert!(page.exists(&format!(
-        r#".timeline a[href="/reports/{}"]"#,
-        late.report.id
+        r#".timeline a[href="/entries/{}"]"#,
+        late.report.entry_id
     )));
 }
 
@@ -263,7 +269,7 @@ async fn the_gap_warning_moves_the_report_after_it_to_a_new_event() {
         .await;
     assert_eq!(
         location(&moved),
-        Some(format!("/reports/{}", late.report.id).as_str())
+        Some(format!("/entries/{}", late.report.entry_id).as_str())
     );
     let report = app.report(late.report.id).await;
     assert_ne!(report.event_id, Some(id), "a new event");
@@ -639,7 +645,7 @@ async fn the_list_shows_each_days_checks_to_those_who_may_see_them() {
     let html = text(app.send(get_with("/events?month=2026-01", &resident)).await).await;
     let page = Page::parse(&html);
     for check in [&mine, &theirs] {
-        let row = format!(r#"a.row[href="/reports/{}"]"#, check.report.id);
+        let row = format!(r#"a.row[href="/entries/{}"]"#, check.report.entry_id);
         assert_eq!(
             page.text(&format!("{row} .row-text")),
             "09:00 no smell (check)"
@@ -651,11 +657,11 @@ async fn the_list_shows_each_days_checks_to_those_who_may_see_them() {
     let cookie = app.sign_in("guest").await;
     let html = text(app.send(get_with("/events?month=2026-01", &cookie)).await).await;
     assert!(
-        html.contains(&format!("/reports/{}", theirs.report.id)),
+        html.contains(&format!("/entries/{}", theirs.report.entry_id)),
         "{html}"
     );
     assert!(
-        !html.contains(&format!("/reports/{}", mine.report.id)),
+        !html.contains(&format!("/entries/{}", mine.report.entry_id)),
         "{html}"
     );
 }

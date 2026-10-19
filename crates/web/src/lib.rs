@@ -54,7 +54,8 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
         .route("/events/{id}/close", post(routes::events::close::<S>))
         .route("/events/{id}/reopen", post(routes::events::reopen::<S>))
         .route("/graphs", get(routes::graphs::show::<S>))
-        .route("/reports/{id}", get(routes::reports::show::<S>))
+        .route("/entries/{id}", get(routes::entry_page::show::<S>))
+        .route("/reports/{id}", get(routes::entry_page::from_report::<S>))
         .route(
             "/reports/{id}/correct",
             get(routes::reports::correct_form::<S>).post(routes::reports::correct::<S>),

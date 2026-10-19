@@ -1,29 +1,28 @@
-//! A report's page (spec §9, screen 4): its values, observed and recorded times, the "edited"
-//! badge and History; "Correct a mistake" and "Move to another event" for those allowed to.
+//! The routes that change a smell report: "Correct a mistake" and "Move to another event".
+//! The report's page itself is its entry's (`routes::entry_page`).
 
 use askama::Template;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
-use smoke_domain::audit::{AuditAction, AuditEntity};
-use smoke_domain::history::{Change, entry_history, was_corrected};
 use smoke_domain::logbook::{MoveTarget, ReportCorrection, correct_report, move_report};
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{ReportView, Symptom, User};
+use smoke_domain::records::{ReportView, User};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{EventId, ReportId, SymptomId, UserId};
+use smoke_domain::types::{EventId, ReportId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::forms::Pairs;
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
-use crate::routes::entries::{Smell, joinable_events, read_time, read_values};
+use crate::routes::entries::{Smell, read_time, read_values};
+use crate::routes::entry_page;
 use crate::routes::log::{Draft, Fields, fields, offered};
 use crate::routes::refusal;
 use crate::state::AppState;
-use crate::{labels, time};
+use crate::time;
 
 /// The report, if it exists and `user` may see it; otherwise "not found", so nobody learns
 /// that someone else's report exists.
@@ -42,246 +41,6 @@ async fn visible_report<S: Store>(
         .ok_or(AppError::NotFound)
 }
 
-fn symptom_names(tr: Tr, symptoms: &[Symptom], ids: &[SymptomId]) -> Vec<String> {
-    symptoms
-        .iter()
-        .filter(|s| ids.contains(&s.id))
-        .map(|s| labels::symptom(tr, s))
-        .collect()
-}
-
-struct HistoryLine {
-    at: String,
-    by: Option<String>,
-    action: &'static str,
-    changes: Vec<String>,
-}
-
-struct EventLink {
-    id: i64,
-    date: String,
-}
-
-struct MoveOption {
-    value: String,
-    label: String,
-}
-
-#[derive(Template)]
-#[template(path = "report.html")]
-struct ReportPage {
-    tr: Tr,
-    signed_in: Option<SignedIn>,
-    id: i64,
-    /// `None` for a no-smell check outside any event.
-    event: Option<EventLink>,
-    observed: String,
-    recorded: String,
-    intensity: String,
-    rooms: String,
-    symptoms: String,
-    note: Option<String>,
-    by: Option<String>,
-    edited: bool,
-    deleted: bool,
-    history: Vec<HistoryLine>,
-    /// Shown to those who may correct and move the report.
-    editable: bool,
-    move_options: Vec<MoveOption>,
-    error: Option<&'static str>,
-}
-
-fn action_key(action: AuditAction) -> &'static str {
-    match action {
-        AuditAction::Create => "history-create",
-        AuditAction::Move => "history-move",
-        AuditAction::Delete => "history-delete",
-        _ => "history-update",
-    }
-}
-
-/// Every key [`action_key`] can return, for the translation tests.
-#[cfg(test)]
-pub(crate) const HISTORY_KEYS: [&str; 4] = [
-    "history-create",
-    "history-move",
-    "history-delete",
-    "history-update",
-];
-
-pub(crate) async fn show<S: Store + Clone + 'static>(
-    State(state): State<AppState<S>>,
-    CurrentUser(user): CurrentUser,
-    tr: Tr,
-    Path(id): Path<i64>,
-) -> Result<Response, AppError> {
-    let report_page = report_page(&state, &user, tr, ReportId(id), None).await?;
-    page(StatusCode::OK, &report_page)
-}
-
-async fn report_page<S: Store>(
-    state: &AppState<S>,
-    user: &User,
-    tr: Tr,
-    id: ReportId,
-    error: Option<&'static str>,
-) -> Result<ReportPage, AppError> {
-    let now = state.clock.now();
-    let schedule = &state.config.schedule;
-    let tz = schedule.tz();
-    let actor = user.actor();
-    let report = visible_report(state, user, id).await?;
-    let event = match report.event_id {
-        Some(id) => Some(state.store.event(id).await?.ok_or(AppError::NotFound)?),
-        None => None,
-    };
-    let rooms = state.store.rooms().await?;
-    let symptoms = state.store.symptoms().await?;
-    let sees_all = can(&actor, Action::ViewAll, now);
-    let name = |id: Option<UserId>, users: &[User]| -> Option<String> {
-        users
-            .iter()
-            .find(|u| Some(u.id) == id)
-            .map(|u| u.username.to_string())
-    };
-    let users = if sees_all {
-        state.store.users().await?
-    } else {
-        Vec::new()
-    };
-
-    let entry_id = report.entry_id;
-    let old_rows = state
-        .store
-        .audit_history(AuditEntity::SmellReport, id.0)
-        .await?;
-    let entry_rows = state
-        .store
-        .audit_history(AuditEntity::LogEntry, entry_id.0)
-        .await?;
-    let history = entry_history(&old_rows, &entry_rows);
-    let lines = history
-        .iter()
-        .map(|entry| HistoryLine {
-            at: time::date_time(tr.0, entry.at, tz),
-            by: name(entry.actor, &users),
-            action: action_key(entry.action),
-            changes: entry
-                .changes
-                .iter()
-                .map(|change| match change {
-                    Change::ObservedAt { from, to } => tr.t1(
-                        "history-time",
-                        "change",
-                        &format!(
-                            "{} → {}",
-                            time::date_time(tr.0, *from, tz),
-                            time::date_time(tr.0, *to, tz)
-                        ),
-                    ),
-                    Change::LevelChanged { room, from, to } => format!(
-                        "{} {} → {}",
-                        labels::room_by_id(tr, &rooms, *room),
-                        from.get(),
-                        to.get()
-                    ),
-                    Change::RoomAdded(at) => tr.t1(
-                        "history-added",
-                        "name",
-                        &labels::room_level(tr, &rooms, *at),
-                    ),
-                    Change::RoomRemoved(room) => tr.t1(
-                        "history-removed",
-                        "name",
-                        &labels::room_by_id(tr, &rooms, *room),
-                    ),
-                    Change::SymptomAdded(symptom) => tr.t1(
-                        "history-added",
-                        "name",
-                        &symptom_names(tr, &symptoms, &[*symptom]).concat(),
-                    ),
-                    Change::SymptomRemoved(symptom) => tr.t1(
-                        "history-removed",
-                        "name",
-                        &symptom_names(tr, &symptoms, &[*symptom]).concat(),
-                    ),
-                    Change::Note { .. } => tr.t("history-note"),
-                    Change::Moved { from, to } => {
-                        let event = |id: &Option<EventId>| {
-                            id.map_or("—".to_owned(), |id| format!("#{id}"))
-                        };
-                        tr.t1(
-                            "history-moved",
-                            "change",
-                            &format!("{} → {}", event(from), event(to)),
-                        )
-                    }
-                })
-                .collect(),
-        })
-        .collect();
-
-    let editable = !report.is_deleted()
-        && can(
-            &actor,
-            Action::EditEntry {
-                owner: report.user_id,
-            },
-            now,
-        );
-    let mut move_options = Vec::new();
-    if editable {
-        let joinable = joinable_events(state, user, tr, report.observed_at, report.event_id);
-        for (id, label) in joinable.await? {
-            move_options.push(MoveOption {
-                value: format!("event-{id}"),
-                label,
-            });
-        }
-        if !report.values.is_no_smell() {
-            move_options.push(MoveOption {
-                value: "new".to_owned(),
-                label: tr.t("prompt-new-event"),
-            });
-        }
-    }
-
-    let none = || tr.t("report-none");
-    let join = |names: Vec<String>| {
-        if names.is_empty() {
-            none()
-        } else {
-            names.join(", ")
-        }
-    };
-    let intensity = report.values.intensity().get();
-    Ok(ReportPage {
-        tr,
-        signed_in: SignedIn::of(user, now, Tab::Events),
-        id: id.0,
-        event: event.map(|event| EventLink {
-            id: event.id.0,
-            date: time::date(tr.0, schedule.local_date(event.opened_at)),
-        }),
-        observed: time::date_time(tr.0, report.observed_at, tz),
-        recorded: time::date_time(tr.0, report.recorded_at, tz),
-        intensity: format!(
-            "{intensity} · {}",
-            tr.t(&format!("intensity-{intensity}-name"))
-        ),
-        rooms: labels::report_rooms(tr, &rooms, &report.values),
-        symptoms: join(symptom_names(tr, &symptoms, report.values.symptoms())),
-        note: report.note.as_ref().map(|n| n.as_str().to_owned()),
-        by: name(Some(report.user_id), &users),
-        edited: was_corrected(&history),
-        deleted: report.is_deleted(),
-        history: lines,
-        editable,
-        move_options,
-        error,
-    })
-}
-
 pub(crate) struct CorrectForm {
     fields: Fields,
     observed_at: String,
@@ -295,6 +54,7 @@ struct CorrectPage {
     tr: Tr,
     signed_in: Option<SignedIn>,
     id: i64,
+    entry_id: i64,
     /// A no-smell check: its levels stay at 0.
     check: bool,
     form: CorrectForm,
@@ -339,6 +99,7 @@ async fn correct_page<S: Store>(
         tr,
         signed_in: SignedIn::of(user, state.clock.now(), Tab::Events),
         id: report.id.0,
+        entry_id: report.entry_id.0,
         check: report.event_id.is_none(),
         form: CorrectForm {
             fields: fields(tr, &rooms, &symptoms, &draft, keep),
@@ -420,7 +181,8 @@ pub(crate) async fn correct<S: Store + Clone + 'static>(
             {
                 Ok(_) => {
                     tx.commit().await?;
-                    return Ok(Redirect::to(&format!("/reports/{id}")).into_response());
+                    let to = format!("/entries/{}", report.entry_id);
+                    return Ok(Redirect::to(&to).into_response());
                 }
                 Err(error) => refusal(error)?,
             }
@@ -442,7 +204,7 @@ pub(crate) async fn relocate<S: Store + Clone + 'static>(
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     auto_close(&state.store, &state.config.schedule, now).await?;
-    visible_report(&state, &user, ReportId(id)).await?;
+    let report = visible_report(&state, &user, ReportId(id)).await?;
     let target = match form.get("target") {
         Some("new") => MoveTarget::New,
         Some(value) => match value.strip_prefix("event-").and_then(|v| v.parse().ok()) {
@@ -456,13 +218,12 @@ pub(crate) async fn relocate<S: Store + Clone + 'static>(
     match move_report(&mut tx, &user.actor(), ReportId(id), target, &schedule, now).await {
         Ok(_) => {
             tx.commit().await?;
-            Ok(Redirect::to(&format!("/reports/{id}")).into_response())
+            Ok(Redirect::to(&format!("/entries/{}", report.entry_id)).into_response())
         }
         Err(error) => {
             drop(tx);
             let key = refusal(error)?;
-            let report_page = report_page(&state, &user, tr, ReportId(id), Some(key)).await?;
-            page(StatusCode::UNPROCESSABLE_ENTITY, &report_page)
+            entry_page::refused(&state, &user, tr, report.entry_id, key).await
         }
     }
 }

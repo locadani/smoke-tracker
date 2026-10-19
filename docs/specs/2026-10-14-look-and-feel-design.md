@@ -78,7 +78,7 @@ Screens on the canvas are drawn; the others reuse the same components with no ne
 | **Log** | ✅ | §5 |
 | **Events** list | ✅ | Month switcher card (‹ October 2026 ›); one card per day; rows with a square badge: amber + max level for an event, green "0" for a clean check, "PM" for a reading. Row text as today ("21:40 – in progress", "3 reports · max 6"). |
 | **Event detail** | ✅ | Back link "‹ Events"; title + "span · Started by …"; timeline card (time column, dots, line; PM2.5 entries as hollow dots); large-gap warning inside the timeline with the move button (§6.4); "Close this event" card (end time + button); Reopen as a secondary button. |
-| **Report detail** | ✅ | Back link to its event; "edited"/"deleted" badges; facts as label/value rows in a card; **Correct a mistake** as a full-width secondary button; "Move to another event" card (select + Move); History card. |
+| **Log detail** (`/entries/{id}`) | ✅ | Back link to its event; "edited" badge; facts as label/value rows in a card (time, author, PM2.5, rooms, symptoms, note); **Correct a mistake** as a full-width secondary button and the "Move to another event" card (select + Move) only when the log has a smell report; History card when the log has a smell report. A deleted log answers "Page not found" (Daniele, 2026-10-19: nothing can be deleted yet). |
 | **Graphs** | ✅ | §7 |
 | **Settings** | ✅ | Install card at the top (§6.5); Language; **Password**, **Rooms**, **Symptoms** as collapsible cards (lists: hidden items struck through with "Show again"; add field + Add; Inside/Common for rooms); Guides card with two links. |
 | **People** | ✅ | "Invite someone" primary button beside the title; one card per person: avatar, name, status line, role tag (resident green, guest amber, viewer grey); actions as outlined buttons ("End access now" in red); expired accounts show the "Access ends" chips, date and Reactivate. |
@@ -119,11 +119,14 @@ The form decides from what is filled in (web route only):
 
 | Filled in | Log does |
 |---|---|
-| Rooms with levels, any above 0 | Smell report as today ("Log smell"); PM2.5 saved alongside if given |
+| Rooms with levels, any above 0 | Smell report as today ("Log smell"); PM2.5 saved alongside if given; the note goes on the log |
 | Rooms, all at 0 | Clean check as today |
-| No rooms, only a PM2.5 value | PM2.5 reading alone (today's "Log PM2.5 only") |
-| No rooms but symptoms or a note | Error: "Pick at least one room." |
+| No rooms, a PM2.5 value (± note) | PM2.5 reading alone, with the note |
+| No rooms but symptoms | Error: "Pick at least one room." |
+| No rooms, no PM2.5, only a note | Error: "Pick a room, or enter a PM2.5 value." |
 | Nothing | Error: "Pick a room, or enter a PM2.5 value." |
+
+*Updated by the log-entries spec (2026-10-19, decision #147).*
 
 *No smell* is unchanged.
 

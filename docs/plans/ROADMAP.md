@@ -16,6 +16,7 @@ guesses.
 | 7 | **Neon readiness** | ~~`migrate-to-postgres` command and its CI test~~ Not needed: production starts on Postgres (decision #77) | §10.2 | — |
 | 7b | **Look & feel** | Soft-card design in light and dark (tokens, CSS layers, Askama components, icon sprite, ES modules), avatar menu and tab bar, one Log button, event banner counts, graph filters with per-person lines, move-to-new-event from the gap warning, Biome and an accessibility CI job | Look-and-feel spec §1–§10 | `07b-look-and-feel.md` |
 | 8 | **Learning pack** | `docs/learning/` notes per area with an index, 17 optional exercises with tests in `exercises/` (outside the app), walkthroughs and quizzes on request in chat | Decision #43 | `08-learning-pack.md` |
+| 9 | **Log entries** ([#25](https://github.com/locadani/smoke-tracker/issues/25)) | One log entry owns a report and/or a reading; note on PM2.5-only logs; a page per log; migration 0005 with audit backfill | Log-entries spec | `09-log-entries.md` |
 
 **After milestone 1 (done):** GitHub repo created, branch protection (ruleset) and push protection enabled, push-reminder issue created (#3).
 
