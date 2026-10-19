@@ -34,6 +34,7 @@ str_enum!(
         Event => "event",
         SmellReport => "smell_report",
         Pm25Reading => "pm25_reading",
+        LogEntry => "log_entry",
     }
 );
 
@@ -158,6 +159,16 @@ mod tests {
     use serde_json::{Map, json};
 
     use super::*;
+
+    #[test]
+    fn log_entry_is_a_snapshot_entity() {
+        assert_eq!(
+            "log_entry".parse::<AuditEntity>().unwrap(),
+            AuditEntity::LogEntry
+        );
+        assert_eq!(AuditEntity::LogEntry.as_str(), "log_entry");
+        assert!(AuditEntity::LogEntry.has_snapshot());
+    }
 
     fn record(id: i64, after: Value) -> AuditRecord {
         AuditRecord {

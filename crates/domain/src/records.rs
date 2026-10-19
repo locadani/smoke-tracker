@@ -205,6 +205,31 @@ pub struct RoomLevel {
     pub level: Level,
 }
 
+/// A free-text note: trimmed, never blank, at most [`Note::MAX_CHARS`] characters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Note(String);
+
+impl Note {
+    pub const MAX_CHARS: usize = 2000;
+
+    /// A blank or missing note is no note.
+    pub fn parse(raw: Option<&str>) -> Result<Option<Self>, DomainError> {
+        let Some(text) = raw.map(str::trim).filter(|n| !n.is_empty()) else {
+            return Ok(None);
+        };
+        let chars = text.chars().count();
+        if chars > Self::MAX_CHARS {
+            return Err(DomainError::NoteTooLong(chars));
+        }
+        Ok(Some(Self(text.to_owned())))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// What a smell report says: the rooms checked, each with its level, sorted by room; the
 /// symptoms, sorted and unique; a note, where a blank note is no note. No rooms at all means
 /// "no smell anywhere in the home" (spec §7.1).
@@ -533,6 +558,23 @@ mod tests {
             ReportValues::new(vec![at(1, 1)], vec![], Some(&over)),
             Err(DomainError::NoteTooLong(2001))
         );
+    }
+
+    #[test]
+    fn note_rules_are_unchanged() {
+        assert_eq!(Note::parse(None), Ok(None));
+        assert_eq!(Note::parse(Some("  \n ")), Ok(None));
+        let trimmed = Note::parse(Some("  smoky  ")).unwrap().unwrap();
+        assert_eq!(trimmed.as_str(), "smoky");
+        assert_eq!(serde_json::to_value(&trimmed).unwrap(), json!("smoky"));
+        let at_limit = "ç".repeat(Note::MAX_CHARS);
+        assert!(Note::parse(Some(&at_limit)).unwrap().is_some());
+        let over = "x".repeat(Note::MAX_CHARS + 1);
+        assert_eq!(
+            Note::parse(Some(&over)),
+            Err(DomainError::NoteTooLong(2001))
+        );
+        assert_eq!(Note::MAX_CHARS, ReportValues::NOTE_MAX_CHARS);
     }
 
     #[test]
