@@ -73,6 +73,8 @@ summary-reports = { $count ->
    *[other] { $count } reports
 }
 log-level-hint = Pick a level from 0 to 10.
+log-rooms-hint = Tick only the rooms you checked now. Unticked rooms count as "not checked", not clean. Clean = 0.
+log-rooms-hint-prefilled = Rooms from your last report are already ticked: untick the ones you didn't check now. Unticked rooms count as "not checked", not clean. Clean = 0.
 optional = optional
 action-add = Add
 action-change = Change
@@ -159,6 +161,7 @@ events-max-intensity = max { $level }
 event-title = Event of { $date }
 event-started-by = Started by { $username }
 event-timeline = Timeline
+event-timeline-hint = Each report shows only the rooms checked at that time.
 event-close-title = Close this event
 event-gap = More than 3 hours since the previous report: is this still the same event?
 event-gap-move = Move { $time } to a new event
