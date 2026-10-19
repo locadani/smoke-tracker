@@ -13,7 +13,7 @@
   {% endcall %}
   {% call f::report_cards(form.fields, form.note) %}{% endcall %}
   <div class="actions">
-    <a href="/reports/{{ id }}" class="button" data-variant="secondary">{{ tr.t("prompt-cancel") }}</a>
+    <a href="/entries/{{ entry_id }}" class="button" data-variant="secondary">{{ tr.t("prompt-cancel") }}</a>
     <button type="submit" class="button">{{ tr.t("correct-submit") }}</button>
   </div>
 </form>

@@ -99,6 +99,46 @@ async fn a_pm25_only_entry_page_has_no_edit_button() {
         !html.contains("Correct a mistake") && !html.contains("Intensity"),
         "{html}"
     );
+    assert!(
+        page.texts(".facts div")
+            .iter()
+            .any(|f| f.contains("Event") && f.contains("None")),
+        "{html}"
+    );
+    assert!(!html.contains("no-smell check"), "{html}");
+}
+
+#[tokio::test]
+async fn a_guest_without_access_to_the_event_gets_no_link_to_it() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let guest = app.add_user("guest", Role::Guest, Locale::En).await;
+    let logged = app
+        .log(
+            &me,
+            "2026-01-15T19:00:00Z",
+            6,
+            &[],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+    let event = logged.report.event_id.expect("an event").0;
+    let reading = app.log_pm25(&guest, "2026-01-15T19:30:00Z", 14.0).await;
+    assert_eq!(reading.event_id.map(|id| id.0), Some(event));
+    let cookie = app.sign_in("guest").await;
+
+    let html = text(
+        app.send(get_with(&format!("/entries/{}", reading.entry_id), &cookie))
+            .await,
+    )
+    .await;
+    let page = Page::parse(&html);
+    assert!(
+        !page.exists(&format!(r#"a[href="/events/{event}"]"#)),
+        "{html}"
+    );
+    assert!(page.exists(r#"a[href="/events"]"#), "{html}");
 }
 
 #[tokio::test]

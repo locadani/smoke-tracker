@@ -9,7 +9,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::history::{Change, entry_history, was_corrected};
 use smoke_domain::permissions::{Action, can, can_see};
-use smoke_domain::records::{LogEntry, Symptom, User};
+use smoke_domain::records::{LogEntry, Symptom, User, report_views};
 use smoke_domain::repos::Store;
 use smoke_domain::types::{EventId, LogEntryId, ReportId, SymptomId, UserId};
 
@@ -17,6 +17,7 @@ use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
+use crate::routes::can_open;
 use crate::routes::entries::joinable_events;
 use crate::state::AppState;
 use crate::{labels, time};
@@ -55,6 +56,8 @@ struct HistoryLine {
 struct EventLink {
     id: i64,
     date: String,
+    /// Whether the viewer may open the event; otherwise it is named but not linked.
+    openable: bool,
 }
 
 struct MoveOption {
@@ -77,6 +80,7 @@ struct EntryPage {
     signed_in: Option<SignedIn>,
     /// `None` for a no-smell check outside any event, and for a reading outside every event.
     event: Option<EventLink>,
+    has_report: bool,
     observed: String,
     recorded: String,
     pm25: Option<String>,
@@ -160,7 +164,12 @@ async fn entry_page<S: Store>(
     let actor = user.actor();
     let entry = visible_entry(state, user, id).await?;
     let event = match entry.event_id {
-        Some(id) => Some(state.store.event(id).await?.ok_or(AppError::NotFound)?),
+        Some(id) => {
+            let event = state.store.event(id).await?.ok_or(AppError::NotFound)?;
+            let entries = state.store.entries_for_event(id).await?;
+            let openable = can_open(&actor, &event, &report_views(&entries), now);
+            Some((event, openable))
+        }
         None => None,
     };
     let rooms = state.store.rooms().await?;
@@ -302,10 +311,12 @@ async fn entry_page<S: Store>(
     Ok(EntryPage {
         tr,
         signed_in: SignedIn::of(user, now, Tab::Events),
-        event: event.map(|event| EventLink {
+        event: event.map(|(event, openable)| EventLink {
             id: event.id.0,
             date: time::date(tr.0, schedule.local_date(event.opened_at)),
+            openable,
         }),
+        has_report: report.is_some(),
         observed: time::date_time(tr.0, entry.observed_at, tz),
         recorded: time::date_time(tr.0, entry.recorded_at, tz),
         pm25: entry.reading.as_ref().map(|reading| {

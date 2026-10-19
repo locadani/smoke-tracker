@@ -3,7 +3,11 @@
 {% block title %}{{ tr.t("entry-title") }}{% endblock %}
 {% block content %}
 {% if let Some(event) = event %}
+{% if event.openable %}
 {% call c::back("/events/{}"|format(event.id), tr.t1("event-title", "date", event.date)) %}{% endcall %}
+{% else %}
+{% call c::back("/events", tr.t("events-title")) %}{% endcall %}
+{% endif %}
 {% else %}
 {% call c::back("/events", tr.t("events-title")) %}{% endcall %}
 {% endif %}
@@ -11,7 +15,7 @@
 {% if let Some(error) = error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <section class="card">
   <dl class="facts">
-    <div><dt>{{ tr.t("report-event") }}</dt><dd>{% if let Some(event) = event %}<a href="/events/{{ event.id }}">{{ tr.t1("event-title", "date", event.date) }}</a>{% else %}{{ tr.t("report-no-event") }}{% endif %}</dd></div>
+    <div><dt>{{ tr.t("report-event") }}</dt><dd>{% if let Some(event) = event %}{% if event.openable %}<a href="/events/{{ event.id }}">{{ tr.t1("event-title", "date", event.date) }}</a>{% else %}{{ tr.t1("event-title", "date", event.date) }}{% endif %}{% else if has_report %}{{ tr.t("report-no-event") }}{% else %}{{ tr.t("entry-no-event") }}{% endif %}</dd></div>
     <div><dt>{{ tr.t("report-observed") }}</dt><dd>{{ observed }}</dd></div>
     <div><dt>{{ tr.t("report-recorded") }}</dt><dd>{{ recorded }}</dd></div>
     {% if let Some(pm25) = pm25 %}<div><dt>{{ tr.t("entry-pm25-label") }}</dt><dd>{{ pm25 }}</dd></div>{% endif %}

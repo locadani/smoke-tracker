@@ -171,13 +171,14 @@ event-close = Olayı kapat
 event-close-at = Bitiş saati
 event-reopen = Yeniden aç
 
-entry-title = Kayıt
+entry-title = Günlük kaydı
 entry-pm25-label = PM2.5
 entry-pm25-value = { $value } µg/m³
 entry-note-label = Not
 entry-no-edit-for-reading = Yalnızca bir PM2.5 ölçümü: burada düzeltilecek bir şey yok.
 report-event = Olay
 report-no-event = Yok: kokusuz bir kontrol
+entry-no-event = Yok
 report-observed = Gözlem
 report-recorded = Kayıt
 report-by = Kaydeden

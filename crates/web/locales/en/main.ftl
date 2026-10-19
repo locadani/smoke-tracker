@@ -178,6 +178,7 @@ entry-note-label = Note
 entry-no-edit-for-reading = Only a PM2.5 reading: there is nothing to correct here.
 report-event = Event
 report-no-event = None: a no-smell check
+entry-no-event = None
 report-observed = Observed
 report-recorded = Recorded
 report-by = Logged by
