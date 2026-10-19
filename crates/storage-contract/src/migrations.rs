@@ -1,17 +1,18 @@
 //! Data written before a migration, and what each backend must make of it. Backends load the
 //! rows into a database migrated up to the version before, then run the remaining migrations.
 
-use crate::fixture::EntryExt;
+use crate::fixture::{EntryExt, RawSql};
 use chrono::{DateTime, TimeDelta, Utc};
 use serde_json::{Value, json};
 use smoke_domain::audit::verify_chain;
 use smoke_domain::audit::{AuditAction, AuditEntity, AuditRecord, ChainedEntry, GENESIS_HASH};
 use smoke_domain::records::{Audited, Closure, Event, LogEntry, Note, Room, Symptom, User};
-use smoke_domain::repos::{AuditRepo, EntryRepo, StoreError};
+use smoke_domain::repos::{AuditRepo, EntryRepo, SnapshotRepo, StoreError, StoreResult};
 use smoke_domain::types::{
     CloseReason, EventId, Level, ListName, Locale, LogEntryId, Pm25, ReadingId, ReportId, Role,
     RoomArea, RoomId, SymptomId, UserId, Username,
 };
+use smoke_domain::verify::{SnapshotProblem, verify_store};
 
 /// Rows as the schema of migration 0002 stores them: two rooms and a symptom; report 1 at
 /// intensity 6 in both rooms, with the symptom; report 2 at intensity 4 in the second room.
@@ -735,11 +736,156 @@ pub async fn keeps_report_and_reading_ids<S: EntryRepo>(store: &S) {
     );
 }
 
-/// The migration never touches the audit log: the chain written by version 4 still verifies and
-/// has no `log_entry` entry yet.
-pub async fn keeps_the_audit_chain_valid<S: AuditRepo>(store: &S) {
+/// The migration never rewrites the audit log: the chain written by version 4 still verifies,
+/// and the entries the migration added are all `log_entry` entries.
+pub async fn keeps_the_audit_chain_valid<S: AuditRepo>(store: &S, before: &[ChainedEntry]) {
     let log = store.audit_log().await.unwrap();
-    assert!(!log.is_empty());
+    assert!(!before.is_empty());
     assert_eq!(verify_chain(&log), Ok(()));
+    assert_eq!(
+        &log[..before.len()],
+        before,
+        "existing entries are untouched"
+    );
+    assert!(
+        log[before.len()..]
+            .iter()
+            .all(|e| e.record.entity == AuditEntity::LogEntry)
+    );
+}
+
+/// The backfill wrote exactly one `create` entry per log entry after the entries version 4
+/// wrote (`before`, the audit log read before migrating): actor none, no `before`, the whole-log
+/// snapshot, in entry id order, one instant, and the store verifies clean.
+pub async fn backfill_writes_one_create_entry_per_log_entry_once<
+    S: AuditRepo + EntryRepo + SnapshotRepo,
+>(
+    store: &S,
+    before: &[ChainedEntry],
+) {
+    let entries = all_entries(store).await;
+    let log = store.audit_log().await.unwrap();
+    assert_eq!(
+        &log[..before.len()],
+        before,
+        "existing entries are untouched"
+    );
+    let added = &log[before.len()..];
+    assert_eq!(added.len(), entries.len(), "one entry per log entry");
+    for (id, (row, entry)) in (before.len() as i64 + 1..).zip(added.iter().zip(&entries)) {
+        let record = &row.record;
+        assert_eq!(record.id, id, "ids continue the chain");
+        assert_eq!(record.entity, AuditEntity::LogEntry);
+        assert_eq!(record.entity_id, entry.id.0);
+        assert_eq!(record.action, AuditAction::Create);
+        assert_eq!(record.actor_id, None);
+        assert_eq!(record.before, None);
+        assert_eq!(record.after, Some(entry.snapshot()));
+        assert_eq!(record.at_micros, added[0].record.at_micros, "one instant");
+    }
+    assert_eq!(
+        added
+            .iter()
+            .filter(|e| e.record.entity != AuditEntity::LogEntry)
+            .count(),
+        0
+    );
+    assert_eq!(verify_chain(&log), Ok(()));
+    let report = verify_store(store).await.unwrap();
+    assert!(report.is_ok(), "{report:?}");
+}
+
+/// Tampering with any part of a migrated log is caught, and putting it back verifies clean.
+/// Each pair is the edit and its inverse.
+pub async fn a_direct_edit_of_any_part_of_a_log_is_caught<S: SnapshotRepo>(
+    store: &S,
+    raw: &RawSql,
+) {
+    let edits: [(&'static str, &'static str); 4] = [
+        (
+            "UPDATE log_entries SET note = 'edited' \
+             WHERE id = (SELECT log_entry_id FROM smell_reports WHERE id = 2)",
+            "UPDATE log_entries SET note = 'kitchen smells of smoke' \
+             WHERE id = (SELECT log_entry_id FROM smell_reports WHERE id = 2)",
+        ),
+        (
+            "UPDATE smell_report_rooms SET level = level + 1 WHERE smell_report_id = 1",
+            "UPDATE smell_report_rooms SET level = level - 1 WHERE smell_report_id = 1",
+        ),
+        (
+            "UPDATE pm25_readings SET value_ugm3 = value_ugm3 + 1 WHERE id = 1",
+            "UPDATE pm25_readings SET value_ugm3 = value_ugm3 - 1 WHERE id = 1",
+        ),
+        (
+            "UPDATE pm25_readings SET log_entry_id = \
+             (SELECT log_entry_id FROM smell_reports WHERE id = 3) WHERE id = 1",
+            "UPDATE pm25_readings SET log_entry_id = \
+             (SELECT log_entry_id FROM smell_reports WHERE id = 1) WHERE id = 1",
+        ),
+    ];
+    assert!(verify_store(store).await.unwrap().is_ok());
+    for (edit, undo) in edits {
+        raw(edit).await.unwrap();
+        let verdict = verify_store(store).await.unwrap();
+        assert!(
+            !verdict.problems.is_empty()
+                && verdict.problems.iter().all(|p| matches!(
+                    p,
+                    SnapshotProblem::Differs {
+                        entity: AuditEntity::LogEntry,
+                        ..
+                    }
+                )),
+            "{edit}: {verdict:?}"
+        );
+        raw(undo).await.unwrap();
+        assert!(verify_store(store).await.unwrap().is_ok(), "{undo}");
+    }
+}
+
+/// An entry written directly after the backfill is not backfilled by a later `migrate`: the
+/// audit has `log_entry` entries, so the guard holds, and the entry is reported as unaudited.
+pub async fn an_entry_logged_after_the_backfill_is_not_backfilled<S, M, Fut>(
+    store: &S,
+    raw: &RawSql,
+    migrate: M,
+) where
+    S: AuditRepo + SnapshotRepo,
+    M: Fn() -> Fut,
+    Fut: std::future::Future<Output = StoreResult<()>>,
+{
+    let audited = store.audit_log().await.unwrap();
+    raw(
+        "INSERT INTO log_entries (user_id, event_id, observed_at, recorded_at, note) \
+         VALUES (1, NULL, 1000000, 1000000, NULL)",
+    )
+    .await
+    .unwrap();
+    raw("INSERT INTO pm25_readings (log_entry_id, value_ugm3) \
+         VALUES ((SELECT max(id) FROM log_entries), 5.0)")
+    .await
+    .unwrap();
+    migrate().await.unwrap();
+    assert_eq!(
+        store.audit_log().await.unwrap(),
+        audited,
+        "nothing was written"
+    );
+    let report = verify_store(store).await.unwrap();
+    assert!(
+        matches!(
+            report.problems[..],
+            [SnapshotProblem::Unaudited {
+                entity: AuditEntity::LogEntry,
+                ..
+            }]
+        ),
+        "{report:?}"
+    );
+}
+
+/// A database that never had reports or readings gets no `log_entry` entries.
+pub async fn an_empty_database_migrates_without_backfill_entries<S: AuditRepo>(store: &S) {
+    let log = store.audit_log().await.unwrap();
     assert!(log.iter().all(|e| e.record.entity != AuditEntity::LogEntry));
 }

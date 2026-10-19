@@ -4,7 +4,7 @@
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
 
-use crate::audit::{AuditAction, ChainedEntry};
+use crate::audit::{AuditAction, AuditEntity, ChainedEntry};
 use crate::records::{RoomLevel, SmellReport};
 use crate::types::{EventId, Level, RoomId, SymptomId, UserId};
 
@@ -81,14 +81,22 @@ fn flat_snapshot(value: &serde_json::Value) -> serde_json::Value {
 /// A log's audit entries as history: the old `smell_report` entries of its report (oldest
 /// first, from `AuditRepo::audit_history`), then its `log_entry` entries. What each one
 /// changed comes from comparing its two snapshots; the creation and a deletion show none, and
-/// neither does the backfill `create` entry that adopted a log written before the migration.
+/// the backfill `create` entry that adopted a log written before the migration (a
+/// `log_entry` creation with no actor) is left out, so a migrated log's History reads as before.
 pub fn entry_history(
     old_report_rows: &[ChainedEntry],
     entry_rows: &[ChainedEntry],
 ) -> Vec<HistoryEntry> {
+    let is_backfill = |entry: &&ChainedEntry| {
+        let record = &entry.record;
+        record.entity == AuditEntity::LogEntry
+            && record.action == AuditAction::Create
+            && record.actor_id.is_none()
+    };
     old_report_rows
         .iter()
         .chain(entry_rows)
+        .filter(|entry| !is_backfill(entry))
         .map(|entry| {
             let record = &entry.record;
             let snapshot = |value: &Option<serde_json::Value>| -> Option<Snapshot> {
@@ -415,5 +423,35 @@ mod tests {
                 to: Some("windy".to_owned()),
             }]
         );
+    }
+
+    #[test]
+    fn the_backfill_create_row_is_not_shown_in_history() {
+        let adopted = report(&[(1, 6)]);
+        let mut backfill = entry(AuditAction::Create, None, &adopted);
+        backfill.record.actor_id = None;
+        let mut old_create = entry(AuditAction::Create, None, &adopted);
+        old_create.record.entity = AuditEntity::SmellReport;
+        old_create.record.actor_id = Some(UserId(2));
+        let mut renoted = adopted.clone();
+        renoted.note = Note::parse(Some("later")).unwrap();
+        let later = entry(AuditAction::Update, Some(&adopted), &renoted);
+
+        let history = entry_history(&[old_create], &[backfill, later]);
+        assert_eq!(
+            history.iter().map(|e| e.action).collect::<Vec<_>>(),
+            [AuditAction::Create, AuditAction::Update],
+            "one logged line, from the old report entry"
+        );
+        assert_eq!(history[0].actor, Some(UserId(2)));
+    }
+
+    #[test]
+    fn a_log_created_after_the_migration_still_shows_its_logged_line() {
+        let created = entry(AuditAction::Create, None, &report(&[(1, 6)]));
+        let history = entry_history(&[], &[created]);
+        assert_eq!(history.len(), 1);
+        assert_eq!(history[0].action, AuditAction::Create);
+        assert_eq!(history[0].actor, Some(UserId(2)));
     }
 }

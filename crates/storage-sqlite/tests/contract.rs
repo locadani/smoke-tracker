@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
+use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::{FakeClock, SystemClock};
-use smoke_storage_contract::fixture::{Fixture, raw_runner, start};
+use smoke_domain::repos::AuditRepo;
+use smoke_storage_contract::fixture::{Fixture, RawSql, raw_runner, start};
 use smoke_storage_contract::migrations;
 use smoke_storage_sqlite::SqliteStore;
 use sqlx::AssertSqlSafe;
@@ -216,13 +218,35 @@ async fn after_the_rebuild_the_link_tables_still_refer_to_the_reports() {
     }
 }
 
-async fn migrated_0005() -> (TempDir, SqliteStore) {
+/// A version-4 database with [`migrations::rows_before_0005`], not yet migrated, and its audit
+/// log as version 4 left it.
+async fn unmigrated_0005() -> (TempDir, String, SqliteStore, Vec<ChainedEntry>) {
     let (dir, url) = database_at(4, &migrations::rows_before_0005()).await;
     let store = SqliteStore::connect(&url, Arc::new(SystemClock))
         .await
         .unwrap();
+    let before = store.audit_log().await.unwrap();
+    (dir, url, store, before)
+}
+
+async fn migrated_0005() -> (TempDir, SqliteStore) {
+    let (dir, _, store, _) = unmigrated_0005().await;
     store.migrate().await.unwrap();
     (dir, store)
+}
+
+async fn raw_sql_on(url: &str) -> RawSql {
+    let pool = SqlitePool::connect(url).await.unwrap();
+    raw_runner(move |sql| {
+        let pool = pool.clone();
+        async move {
+            sqlx::raw_sql(sql)
+                .execute(&pool)
+                .await
+                .map(drop)
+                .map_err(|e| e.to_string())
+        }
+    })
 }
 
 macro_rules! migration_0005_checks {
@@ -249,7 +273,73 @@ migration_0005_checks! {
     migration_0005_moves_each_report_note_to_its_entry =>
         migrations::moves_each_report_note_to_its_entry,
     migration_0005_keeps_report_and_reading_ids => migrations::keeps_report_and_reading_ids,
-    migration_0005_keeps_the_audit_chain_valid => migrations::keeps_the_audit_chain_valid,
+}
+
+#[tokio::test]
+async fn migration_0005_keeps_the_audit_chain_valid() {
+    let (_dir, _, store, before) = unmigrated_0005().await;
+    store.migrate().await.unwrap();
+    migrations::keeps_the_audit_chain_valid(&store, &before).await;
+}
+
+#[tokio::test]
+async fn backfill_writes_one_create_entry_per_log_entry_once() {
+    let (_dir, _, store, before) = unmigrated_0005().await;
+    store.migrate().await.unwrap();
+    migrations::backfill_writes_one_create_entry_per_log_entry_once(&store, &before).await;
+}
+
+#[tokio::test]
+async fn a_direct_edit_of_any_part_of_a_log_is_caught() {
+    let (_dir, url, store, _) = unmigrated_0005().await;
+    store.migrate().await.unwrap();
+    let raw = raw_sql_on(&url).await;
+    migrations::a_direct_edit_of_any_part_of_a_log_is_caught(&store, &raw).await;
+}
+
+#[tokio::test]
+async fn migrate_twice_adds_no_second_set_of_entries() {
+    let (_dir, _, store, before) = unmigrated_0005().await;
+    store.migrate().await.unwrap();
+    store.migrate().await.unwrap();
+    migrations::backfill_writes_one_create_entry_per_log_entry_once(&store, &before).await;
+}
+
+#[tokio::test]
+async fn a_second_backfill_racing_the_first_changes_nothing() {
+    let (_dir, _, store, before) = unmigrated_0005().await;
+    let other = store.clone();
+    let (first, second) = tokio::join!(store.migrate(), other.migrate());
+    first.unwrap();
+    second.unwrap();
+    migrations::backfill_writes_one_create_entry_per_log_entry_once(&store, &before).await;
+}
+
+#[tokio::test]
+async fn an_entry_logged_after_the_backfill_is_not_backfilled() {
+    let (_dir, url, store, _) = unmigrated_0005().await;
+    store.migrate().await.unwrap();
+    let raw = raw_sql_on(&url).await;
+    migrations::an_entry_logged_after_the_backfill_is_not_backfilled(&store, &raw, || {
+        store.migrate()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn an_empty_database_migrates_without_backfill_entries() {
+    let (_dir, url) = database_at(
+        4,
+        "INSERT INTO users (id, username, role, locale, created_at) \
+         VALUES (1, 'daniele', 'resident', 'en', 0);",
+    )
+    .await;
+    let store = SqliteStore::connect(&url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    migrations::an_empty_database_migrates_without_backfill_entries(&store).await;
+    assert_eq!(store.audit_log().await.unwrap(), []);
 }
 
 async fn refused_and_unchanged(extra_row: &'static str) {

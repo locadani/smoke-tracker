@@ -9,7 +9,9 @@ use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::records::{
     LogEntry, NewEntry, Note, Pm25Reading, ReportValues, RoomLevel, SmellReport,
 };
-use smoke_domain::repos::{Conflict, EntryRepo, EntryWrites, StoreError, StoreResult};
+use smoke_domain::repos::{
+    Commit, Conflict, EntryRepo, EntryWrites, StoreError, StoreResult, Transactional,
+};
 use smoke_domain::types::{
     EventId, Level, LogEntryId, Pm25, ReadingId, ReportId, RoomId, SymptomId, UserId,
 };
@@ -551,4 +553,48 @@ pub(crate) async fn fetch_all(conn: &mut SqliteConnection) -> StoreResult<Vec<Lo
     .await
     .db()?;
     load_all(conn, rows).await
+}
+
+/// Whether the audit has any `log_entry` entry.
+async fn has_log_entry_audit(conn: &mut SqliteConnection) -> StoreResult<bool> {
+    Ok(sqlx::query_scalar!(
+        "SELECT id FROM audit_log WHERE entity = $1 LIMIT 1",
+        AuditEntity::LogEntry.as_str(),
+    )
+    .fetch_optional(conn)
+    .await
+    .db()?
+    .is_some())
+}
+
+/// Audits the entries migration 0005 created: one `create` entry each, whole-log snapshot, no
+/// actor, in one transaction. It runs only while the audit has no `log_entry` entry at all,
+/// checked again once the writer lock is held. A second instance that loses the race finds
+/// the entries there (or fails on the audit id), rolls back and returns `Ok`.
+pub(crate) async fn backfill_log_entry_audit(store: &SqliteStore) -> StoreResult<()> {
+    match write_backfill(store).await {
+        Err(StoreError::Conflict(Conflict::ChainForked)) => {
+            if has_log_entry_audit(&mut *store.read().await?).await? {
+                Ok(())
+            } else {
+                Err(Conflict::ChainForked.into())
+            }
+        }
+        other => other,
+    }
+}
+
+async fn write_backfill(store: &SqliteStore) -> StoreResult<()> {
+    let mut tx = store.begin(None).await?;
+    if has_log_entry_audit(tx.conn()).await? {
+        return Ok(());
+    }
+    let entries = fetch_all(tx.conn()).await?;
+    if entries.is_empty() {
+        return Ok(());
+    }
+    for entry in &entries {
+        tx.record(AuditAction::Create, None, entry).await?;
+    }
+    tx.commit().await
 }

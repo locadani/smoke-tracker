@@ -2,8 +2,10 @@ mod common;
 
 use std::sync::Arc;
 
+use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::{FakeClock, SystemClock};
-use smoke_storage_contract::fixture::{Fixture, raw_runner, start};
+use smoke_domain::repos::AuditRepo;
+use smoke_storage_contract::fixture::{Fixture, RawSql, raw_runner, start};
 use smoke_storage_contract::migrations;
 use smoke_storage_postgres::PostgresStore;
 use sqlx::AssertSqlSafe;
@@ -116,7 +118,9 @@ async fn migration_0003_refuses_a_report_without_rooms_and_changes_nothing() {
     assert_eq!(intensities, [6, 4, 5]);
 }
 
-async fn migrated_0005() -> Option<(common::TestDatabase, PostgresStore)> {
+/// A version-4 database with [`migrations::rows_before_0005`], not yet migrated, and its audit
+/// log as version 4 left it.
+async fn unmigrated_0005() -> Option<(common::TestDatabase, PostgresStore, Vec<ChainedEntry>)> {
     let (database, pool) = database_at(4, &migrations::rows_before_0005()).await?;
     sqlx::raw_sql(migrations::POSTGRES_SEQUENCES_AFTER_0005_ROWS)
         .execute(&pool)
@@ -125,8 +129,27 @@ async fn migrated_0005() -> Option<(common::TestDatabase, PostgresStore)> {
     let store = PostgresStore::connect(&database.url, Arc::new(SystemClock))
         .await
         .unwrap();
+    let before = store.audit_log().await.unwrap();
+    Some((database, store, before))
+}
+
+async fn migrated_0005() -> Option<(common::TestDatabase, PostgresStore)> {
+    let (database, store, _) = unmigrated_0005().await?;
     store.migrate().await.unwrap();
     Some((database, store))
+}
+
+fn raw_sql_on(pool: PgPool) -> RawSql {
+    raw_runner(move |sql| {
+        let pool = pool.clone();
+        async move {
+            sqlx::raw_sql(sql)
+                .execute(&pool)
+                .await
+                .map(drop)
+                .map_err(|e| e.to_string())
+        }
+    })
 }
 
 macro_rules! migration_0005_checks {
@@ -155,7 +178,89 @@ migration_0005_checks! {
     migration_0005_moves_each_report_note_to_its_entry =>
         migrations::moves_each_report_note_to_its_entry,
     migration_0005_keeps_report_and_reading_ids => migrations::keeps_report_and_reading_ids,
-    migration_0005_keeps_the_audit_chain_valid => migrations::keeps_the_audit_chain_valid,
+}
+
+#[tokio::test]
+async fn migration_0005_keeps_the_audit_chain_valid() {
+    let Some((_database, store, before)) = unmigrated_0005().await else {
+        return;
+    };
+    store.migrate().await.unwrap();
+    migrations::keeps_the_audit_chain_valid(&store, &before).await;
+}
+
+#[tokio::test]
+async fn backfill_writes_one_create_entry_per_log_entry_once() {
+    let Some((_database, store, before)) = unmigrated_0005().await else {
+        return;
+    };
+    store.migrate().await.unwrap();
+    migrations::backfill_writes_one_create_entry_per_log_entry_once(&store, &before).await;
+}
+
+#[tokio::test]
+async fn a_direct_edit_of_any_part_of_a_log_is_caught() {
+    let Some((database, store)) = migrated_0005().await else {
+        return;
+    };
+    let raw = raw_sql_on(PgPool::connect(&database.url).await.unwrap());
+    migrations::a_direct_edit_of_any_part_of_a_log_is_caught(&store, &raw).await;
+}
+
+#[tokio::test]
+async fn migrate_twice_adds_no_second_set_of_entries() {
+    let Some((_database, store, before)) = unmigrated_0005().await else {
+        return;
+    };
+    store.migrate().await.unwrap();
+    store.migrate().await.unwrap();
+    migrations::backfill_writes_one_create_entry_per_log_entry_once(&store, &before).await;
+}
+
+#[tokio::test]
+async fn a_second_backfill_racing_the_first_changes_nothing() {
+    let Some((database, store, before)) = unmigrated_0005().await else {
+        return;
+    };
+    let other = PostgresStore::connect(&database.url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    let (first, second) = tokio::join!(store.migrate(), other.migrate());
+    first.unwrap();
+    second.unwrap();
+    migrations::backfill_writes_one_create_entry_per_log_entry_once(&store, &before).await;
+}
+
+#[tokio::test]
+async fn an_entry_logged_after_the_backfill_is_not_backfilled() {
+    let Some((database, store)) = migrated_0005().await else {
+        return;
+    };
+    let raw = raw_sql_on(PgPool::connect(&database.url).await.unwrap());
+    migrations::an_entry_logged_after_the_backfill_is_not_backfilled(&store, &raw, || {
+        store.migrate()
+    })
+    .await;
+}
+
+#[tokio::test]
+async fn an_empty_database_migrates_without_backfill_entries() {
+    let Some((database, pool)) = database_at(
+        4,
+        "INSERT INTO users (id, username, role, locale, created_at) \
+         VALUES (1, 'daniele', 'resident', 'en', 0);",
+    )
+    .await
+    else {
+        return;
+    };
+    drop(pool);
+    let store = PostgresStore::connect(&database.url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    migrations::an_empty_database_migrates_without_backfill_entries(&store).await;
+    assert_eq!(store.audit_log().await.unwrap(), []);
 }
 
 async fn refused_and_unchanged(extra_row: &'static str) {
@@ -296,8 +401,8 @@ async fn preflight_counts_match_what_0005_creates() {
     );
     assert_eq!(
         preflight.info_audit_rows,
-        count("SELECT count(*) FROM audit_log").await,
-        "the migration writes no audit rows"
+        count("SELECT count(*) FROM audit_log WHERE entity <> 'log_entry'").await,
+        "the migration changes no existing audit row and adds only log_entry rows"
     );
 }
 
