@@ -2,13 +2,13 @@
 
 use chrono::TimeDelta;
 use smoke_domain::audit::{AuditAction, AuditEntity, ChainError, verify_chain};
-use smoke_domain::records::{LogEntry, NewRoom};
+use smoke_domain::records::{Closure, LogEntry, NewRoom};
 use smoke_domain::repos::{Commit, EntryWrites, ListWrites, Store, StoreError};
-use smoke_domain::types::{ListName, Pm25, RoomArea};
+use smoke_domain::types::{CloseReason, ListName, Pm25, RoomArea};
 use smoke_domain::verify::{SnapshotProblem, verify_store};
 
 use crate::Fixture;
-use crate::fixture::{add_entry, add_report, report_values, scene, start};
+use crate::fixture::{add_entry, add_event, add_report, report_values, scene, start};
 
 struct Populated {
     report: LogEntry,
@@ -300,4 +300,105 @@ pub async fn a_directly_edited_note_is_corrupt_not_normalised<S: Store>(fx: &Fix
 
     let error = fx.store.entry(p.report.id).await.unwrap_err();
     assert!(matches!(error, StoreError::Corrupt(_)), "{error:?}");
+}
+
+/// A combined entry (report and reading) and a report-only entry, and a second event.
+async fn combined_and_report_only<S: Store>(fx: &Fixture<S>) -> (LogEntry, LogEntry) {
+    let scene = scene(fx).await;
+    let combined = add_entry(
+        fx,
+        &scene,
+        start() - TimeDelta::minutes(2),
+        None,
+        Some(report_values(5, &[scene.rooms[0].id], &[])),
+        Some(Pm25::new(20.0).unwrap()),
+    )
+    .await;
+    let report_only = add_report(
+        fx,
+        &scene,
+        start() - TimeDelta::minutes(1),
+        report_values(3, &[scene.rooms[1].id], &[]),
+    )
+    .await;
+    let yesterday = start() - TimeDelta::days(1);
+    add_event(
+        fx,
+        scene.user.id,
+        yesterday,
+        Some(Closure {
+            at: yesterday,
+            reason: CloseReason::Backdated,
+        }),
+    )
+    .await;
+    assert!(verify_store(&fx.store).await.unwrap().is_ok());
+    (combined, report_only)
+}
+
+async fn assert_differs<S: Store>(fx: &Fixture<S>, entries: &[&LogEntry]) {
+    let report = verify_store(&fx.store).await.unwrap();
+    assert_eq!(report.chain, Ok(()));
+    let mut expected: Vec<_> = entries.iter().map(|e| e.id.0).collect();
+    expected.sort_unstable();
+    let mut found: Vec<_> = report
+        .problems
+        .iter()
+        .map(|p| match p {
+            SnapshotProblem::Differs {
+                entity: AuditEntity::LogEntry,
+                entity_id,
+                ..
+            } => *entity_id,
+            other => panic!("unexpected problem {other:?}"),
+        })
+        .collect();
+    found.sort_unstable();
+    assert_eq!(found, expected, "{report:?}");
+}
+
+pub async fn a_direct_observed_time_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, report_only) = combined_and_report_only(fx).await;
+    fx.raw("UPDATE log_entries SET observed_at = observed_at + 1000000 WHERE id = (SELECT MIN(id) FROM log_entries)")
+        .await
+        .unwrap();
+    assert!(combined.id.0 < report_only.id.0);
+    assert_differs(fx, &[&combined]).await;
+}
+
+pub async fn a_direct_event_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, _) = combined_and_report_only(fx).await;
+    fx.raw("UPDATE log_entries SET event_id = (SELECT MAX(id) FROM events) WHERE id = (SELECT MIN(id) FROM log_entries)")
+        .await
+        .unwrap();
+    assert_differs(fx, &[&combined]).await;
+}
+
+pub async fn a_direct_reading_value_edit_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, _) = combined_and_report_only(fx).await;
+    fx.raw("UPDATE pm25_readings SET value_ugm3 = value_ugm3 + 1")
+        .await
+        .unwrap();
+    assert_differs(fx, &[&combined]).await;
+}
+
+pub async fn relinking_a_reading_to_another_entry_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, report_only) = combined_and_report_only(fx).await;
+    fx.raw(
+        "UPDATE pm25_readings SET log_entry_id = \
+         (SELECT id FROM log_entries WHERE id NOT IN (SELECT log_entry_id FROM pm25_readings))",
+    )
+    .await
+    .unwrap();
+    assert_differs(fx, &[&combined, &report_only]).await;
+}
+
+pub async fn deleting_only_the_reading_of_a_combined_entry_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (combined, _) = combined_and_report_only(fx).await;
+    fx.raw(
+        "DELETE FROM pm25_readings WHERE log_entry_id IN (SELECT log_entry_id FROM smell_reports)",
+    )
+    .await
+    .unwrap();
+    assert_differs(fx, &[&combined]).await;
 }

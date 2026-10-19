@@ -13,11 +13,12 @@ use smoke_domain::records::{
     RoomLevel, Symptom, User,
 };
 use smoke_domain::repos::{
-    AuditRepo, Commit, EntryWrites, EventWrites, ListRepo, ListWrites, Transactional, UserWrites,
+    AuditRepo, Commit, EntryRepo, EntryWrites, EventWrites, ListRepo, ListWrites, Transactional,
+    UserWrites,
 };
 use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::types::{
-    Level, Locale, Pm25, ReportId, Role, RoomId, SymptomId, UserId, Username,
+    Level, Locale, LogEntryId, Pm25, ReportId, Role, RoomId, SymptomId, UserId, Username,
 };
 
 /// Runs SQL directly against the test database, bypassing the store: how tests tamper.
@@ -229,15 +230,18 @@ where
 }
 
 /// Fails if any log entry has neither a report nor a reading: the domain keeps this rule, the
-/// schema cannot. The insert violates a NOT NULL constraint only when such an entry exists.
-pub async fn assert_no_childless_entries<S>(fx: &Fixture<S>) {
-    fx.raw(
-        "INSERT INTO jobs (name, last_run_at) \
-         SELECT 'childless entry', NULL WHERE EXISTS ( \
-             SELECT 1 FROM log_entries e \
-             WHERE NOT EXISTS (SELECT 1 FROM smell_reports r WHERE r.log_entry_id = e.id) \
-               AND NOT EXISTS (SELECT 1 FROM pm25_readings p WHERE p.log_entry_id = e.id))",
-    )
-    .await
-    .expect("every log entry has a report or a reading");
+/// schema cannot.
+pub async fn assert_no_childless_entries<S: EntryRepo>(fx: &Fixture<S>) {
+    let mut childless = Vec::new();
+    let mut id = 1;
+    while let Some(entry) = fx.store.entry(LogEntryId(id)).await.expect("entry") {
+        if entry.report.is_none() && entry.reading.is_none() {
+            childless.push(id);
+        }
+        id += 1;
+    }
+    assert!(
+        childless.is_empty(),
+        "log entries without a report or a reading: {childless:?}"
+    );
 }

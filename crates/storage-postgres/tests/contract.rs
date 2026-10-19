@@ -300,3 +300,70 @@ async fn preflight_counts_match_what_0005_creates() {
         "the migration writes no audit rows"
     );
 }
+
+#[tokio::test]
+async fn the_children_are_tied_to_their_entry_and_the_indexes_are_right() {
+    let Some(database) = common::fresh_database().await else {
+        return;
+    };
+    let store = PostgresStore::connect(&database.url, Arc::new(SystemClock))
+        .await
+        .unwrap();
+    store.migrate().await.unwrap();
+    let pool = PgPool::connect(&database.url).await.unwrap();
+    for table in ["smell_reports", "pm25_readings"] {
+        let not_null: bool = sqlx::query_scalar(
+            "SELECT is_nullable = 'NO' FROM information_schema.columns \
+             WHERE table_schema = current_schema() AND table_name = $1 \
+               AND column_name = 'log_entry_id'",
+        )
+        .bind(table)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert!(not_null, "{table}.log_entry_id is NOT NULL");
+        let unique: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_constraint c \
+             WHERE c.conrelid = $1::regclass AND c.contype = 'u' \
+               AND (SELECT array_agg(a.attname::text) FROM pg_attribute a \
+                    WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY['log_entry_id']",
+        )
+        .bind(table)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(unique, 1, "{table}.log_entry_id is UNIQUE");
+        let references: i64 = sqlx::query_scalar(
+            "SELECT count(*) FROM pg_constraint c \
+             WHERE c.conrelid = $1::regclass AND c.contype = 'f' \
+               AND c.confrelid = 'log_entries'::regclass \
+               AND (SELECT array_agg(a.attname::text) FROM pg_attribute a \
+                    WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) = ARRAY['log_entry_id'] \
+               AND (SELECT array_agg(a.attname::text) FROM pg_attribute a \
+                    WHERE a.attrelid = c.confrelid AND a.attnum = ANY (c.confkey)) = ARRAY['id']",
+        )
+        .bind(table)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(
+            references, 1,
+            "{table}.log_entry_id references log_entries(id)"
+        );
+    }
+    let indexes: Vec<String> = sqlx::query_scalar(
+        "SELECT indexname::text FROM pg_indexes WHERE schemaname = current_schema() \
+         AND indexname IN ('log_entries_event', 'smell_reports_event', 'pm25_readings_event') \
+         ORDER BY indexname",
+    )
+    .fetch_all(&pool)
+    .await
+    .unwrap();
+    assert_eq!(indexes, ["log_entries_event"]);
+    let columns: String =
+        sqlx::query_scalar("SELECT indexdef FROM pg_indexes WHERE indexname = 'log_entries_event'")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert!(columns.contains("(event_id, observed_at)"), "{columns}");
+}
