@@ -1,0 +1,125 @@
+# Log entries — design
+
+**Status:** draft for review · 2026-10-19
+**Issue:** [#25](https://github.com/locadani/smoke-tracker/issues/25) "cannot add notes to sole pm level logging"
+**Builds on:** the design spec `2026-10-13-smoke-tracker-design.md` §6–§7 and the look-and-feel spec §6.1.
+
+## 1. Why
+
+One press of **Log** can save a smell report, a PM2.5 reading, or both. Today these are two
+unrelated tables that each repeat the author, time and event, and only the report has a note.
+So:
+
+- a PM2.5 value with a note is refused ("Pick at least one room."), which is issue #25;
+- a combined log is two rows that nothing links: moving the report leaves its reading in the
+  old event, and correcting the report's time leaves the reading's time behind.
+
+The fix is in the data model: **one log entry** holds what the person logged once (who, when,
+which event, the note) and owns an optional smell report and an optional PM2.5 reading.
+
+## 2. Goals, non-goals, anti-goals
+
+- **Goals:** a PM2.5 value alone can carry a note; a combined log is one record; moving or
+  re-timing a log moves both halves; the audit chain still verifies, old entries included.
+- **Non-goals:** a correction or delete UI for readings (none exists today); showing notes in
+  the event timeline; changing graphs, filters or summaries.
+- **Anti-goals:** rewriting or re-hashing existing audit entries (decision #104); losing or
+  duplicating a note; changing report URLs (`/reports/{id}` stays).
+
+## 3. Schema (migration 0005, SQLite and Postgres)
+
+```
+log_entries     id, user_id → users, event_id → events (nullable), observed_at, recorded_at,
+                note (nullable, canonical form), deleted_at
+smell_reports   id, log_entry_id → log_entries.id UNIQUE NOT NULL
+                (+ smell_report_rooms, smell_report_symptoms as today)
+pm25_readings   id, log_entry_id → log_entries.id UNIQUE NOT NULL, value_ugm3
+```
+
+- `user_id`, `event_id`, `observed_at`, `recorded_at`, `note` and `deleted_at` leave the two child
+  tables. Index `log_entries (event_id, observed_at)` replaces the two per-table indexes.
+- Report and reading **ids are kept**, so URLs and audit `entity_id`s stay valid.
+- **An entry has at least one child.** The schema cannot say this; the domain enforces it and a
+  storage contract test checks it.
+- Delete is per entry (no delete UI exists; the storage methods become `delete_entry`).
+
+**Data migration** (pattern of 0004, decision #109, with the 0003 refusal guard):
+every report becomes an entry. A reading becomes the second child of a report's entry when both
+were written by one `log_smell` call: same `user_id`, `event_id`, `observed_at` and
+`recorded_at`. Any other reading gets its own entry with no note. If a reading would pair with
+more than one report, the migration refuses (guard) instead of guessing.
+
+## 4. Domain
+
+- A `LogEntry` record (id, user, event, observed/recorded time, note, deleted) with
+  `report: Option<…>` and `reading: Option<…>`. The note moves out of `ReportValues` into the
+  entry, with the same rules (trimmed, blank = none, ≤ 2000 chars, decision #51).
+- `log_smell` writes one entry plus its children; `log_reading` writes an entry with a reading
+  and an optional note.
+- `correct_report` corrects the entry's time and note and the report's rooms, levels and
+  symptoms; the reading keeps the corrected time because it no longer has its own.
+- `move_report` moves the entry, so its reading moves with it.
+- `latest_report_at` keeps counting smell reports only (readings never opened or closed events).
+
+## 5. Log button rules (replaces the note row of look-and-feel §6.1 and decision #135)
+
+| Filled in | Result |
+|---|---|
+| Rooms with levels (± PM2.5, ± note) | one entry: report (+ reading), note on the entry |
+| No rooms, PM2.5 (± note) | one entry: reading, note on the entry |
+| No rooms, symptoms (± note) | "Pick at least one room." (as today) |
+| No rooms, no PM2.5, only a note | "Pick a room, or enter a PM2.5 value." |
+| Nothing | "Pick a room, or enter a PM2.5 value." (as today) |
+
+## 6. Audit
+
+- New audited entity `log_entry` with a snapshot like the others. The `smell_report` and
+  `pm25_reading` snapshots lose the fields that moved and gain `log_entry_id`.
+- Old snapshots are compared through an upgrade step, as `SmellReport::upgrade_snapshot` does
+  for 0003 (decision #104): drop the moved fields and look `log_entry_id` up by id.
+- Entries created by the migration have no audit entry yet. On the first start after 0005,
+  the app writes one `create` entry per entry (actor: none), once: only while the audit has
+  no `log_entry` entries at all. After that, an unaudited entry is reported as today.
+- History for a report reads its entry's audit entries too, so time and note changes still
+  appear.
+
+## 6a. Calls made by Claude (check these)
+
+- **Entry ids are new** (their own sequence). The link lives only in `log_entry_id` on the
+  children, so the audit upgrade step finds an old snapshot's entry through the kept child id.
+- **Pairing in the migration** relies on `log_smell` stamping both rows with one `now` (it
+  does). A report and a reading also pair only when their `deleted_at` match; otherwise each
+  gets its own entry. A read-only preflight query is written alongside and run against Neon
+  before deploying.
+- **Backfill** runs inside `Store::migrate`, right after the SQL migrations, in one
+  transaction that re-checks "no `log_entry` entries" inside it. A second instance racing it
+  fails on the audit id (assigned as head + 1) and rolls back. `actor_id` none is already used
+  for system entries.
+- **Audit per write:** a new log audits `create` for the entry, then the report, then the
+  reading. Time, note, event and delete are audited on the entry only; rooms, levels and
+  symptoms on the report; the value on the reading.
+- **Domain shape:** `LogEntry` with nested children is the model; graphs and summaries keep
+  their current inputs through a thin adapter, so their output does not change.
+- **No database trigger** for "at least one child": domain plus contract test, keeping the
+  two backends alike.
+
+## 7. Where the note shows
+
+**Decided (Daniele): every log gets its own page.** `/entries/{id}` shows the time, author,
+PM2.5 value, rooms/levels/symptoms when present, and the note. PM2.5 lines in the event
+timeline and the "PM" rows of the Events list become links to it, like report lines are today.
+Seeing it follows `can_see` on the entry's author, as for reports.
+
+Claude's call: `/reports/{id}` keeps working and redirects to its entry's page; the report's
+correct and move routes stay where they are. Correcting a reading-only entry stays out of
+scope (§2), so its page has no Edit button.
+
+## 8. Docs to update (with approval)
+
+Spec §6, §6.1, §7.6 ("two records" → one entry), §7.7; look-and-feel §6.1; a new decision
+#147 superseding the note part of #135 and refining #3; learning notes later (M8).
+
+## 9. Left to the builder
+
+Type and module names, query shapes, how `reports_between` / `readings_between` join, the
+order of tasks, test names. Back up the Neon database before running 0005 in production.
