@@ -120,6 +120,26 @@ async fn rename_user_refuses_an_unknown_or_unchanged_name() {
 }
 
 #[tokio::test]
+async fn rename_user_refuses_a_taken_username() {
+    let (_dir, _url, store) = prepared().await;
+    for name in ["daniele", "duygu"] {
+        create_resident::create(&store, username(name), password(), Locale::En)
+            .await
+            .unwrap();
+    }
+    let error = rename_user::rename(&store, &username("duygu"), username("daniele"))
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error.downcast_ref::<StoreError>(),
+            Some(StoreError::Conflict(Conflict::UsernameTaken))
+        ),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
 async fn verify_audit_passes_on_honest_data() {
     let (_dir, _url, store) = prepared().await;
     create_resident::create(&store, username("daniele"), password(), Locale::En)

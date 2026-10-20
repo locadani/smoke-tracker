@@ -133,7 +133,7 @@ where
 
 pub async fn a_rename_to_a_taken_name_is_a_conflict<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites>,
+    S: Transactional<Tx: UserWrites> + AuditRepo,
 {
     add_user(fx, "daniele", Role::Resident).await;
     let other = add_user(fx, "duygu", Role::Resident).await;
@@ -146,6 +146,8 @@ where
         matches!(error, StoreError::Conflict(Conflict::UsernameTaken)),
         "{error:?}"
     );
+    drop(tx);
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), 2);
 }
 
 pub async fn guests_can_be_expired_and_reactivated<S>(fx: &Fixture<S>)
