@@ -118,7 +118,7 @@ flowchart LR
 | [`crates/storage-sqlite`](crates/storage-sqlite), [`crates/storage-postgres`](crates/storage-postgres) | The two backends: migrations kept in step (a test compares the schemas) and queries checked at compile time by `sqlx`; every write transaction appends its audit entry |
 | [`crates/storage-contract`](crates/storage-contract) | One behaviour suite written against the traits and run on both backends |
 | [`crates/web`](crates/web) | Axum routes (one module per screen), Askama templates, Fluent translations, and the static files compiled into the binary |
-| [`crates/app`](crates/app) | The `smoke-tracker` binary: configuration from the environment, wiring, the 04:00 auto-close timer, and the CLI (`serve`, `migrate`, `create-resident`, `verify-audit`) |
+| [`crates/app`](crates/app) | The `smoke-tracker` binary: configuration from the environment, wiring, the 04:00 auto-close timer, and the CLI (`serve`, `migrate`, `create-resident`, `rename-user`, `verify-audit`) |
 
 Some choices, each recorded with its alternatives in the [decision log](docs/DECISIONS.md):
 
@@ -171,6 +171,7 @@ cp .env.example .env && mkdir -p data
 set -a; . ./.env; set +a
 cargo run -p smoke-tracker -- create-resident <username>   # prompts for the password
 cargo run -p smoke-tracker -- serve                        # http://localhost:8080
+cargo run -p smoke-tracker -- rename-user <current> <new>   # never edit usernames in the database
 cargo run -p smoke-tracker -- verify-audit                 # exits with 1 if the history was altered
 ```
 

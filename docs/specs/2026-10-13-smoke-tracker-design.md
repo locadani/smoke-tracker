@@ -494,7 +494,7 @@ The command has its own CI test: seed SQLite, migrate, verify.
 - Static musl build on a distroless base image, roughly 15–20 MB.
 
 ### 10.4 CLI
-`serve`, `migrate`, `create-resident`, `verify-audit`, `migrate-to-postgres`.
+`serve`, `migrate`, `create-resident`, `rename-user`, `verify-audit`, `migrate-to-postgres`.
 
 ### 10.5 Configuration (environment only; `.env.example` committed, `.env` ignored)
 `DATABASE_URL`, `APP_BASE_URL`, `APP_TIMEZONE` (default `Europe/Rome`), `AUTO_CLOSE_HOUR`
