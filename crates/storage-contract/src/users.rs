@@ -108,6 +108,48 @@ where
     assert_eq!(update.after.as_ref().unwrap()["locale"], "tr");
 }
 
+pub async fn a_rename_is_audited_and_frees_the_old_name<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites> + UserRepo + AuditRepo,
+{
+    let user = add_user(fx, "dugyu", Role::Resident).await;
+    let new_name = Username::new("Duygu").unwrap();
+    let mut tx = fx.store.begin(None).await.unwrap();
+    let renamed = tx.set_username(user.id, new_name.clone()).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(renamed.username.as_str(), "duygu");
+    let old_name = Username::new("dugyu").unwrap();
+    assert_eq!(fx.store.user_by_username(&old_name).await.unwrap(), None);
+    assert_eq!(
+        fx.store.user_by_username(&new_name).await.unwrap(),
+        Some(renamed.clone())
+    );
+    let entry = last_entry(fx).await.record;
+    assert_eq!(entry.action, AuditAction::Update);
+    assert_eq!(entry.before.as_ref().unwrap()["username"], "dugyu");
+    assert_eq!(entry.after, Some(renamed.snapshot()));
+}
+
+pub async fn a_rename_to_a_taken_name_is_a_conflict<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites> + AuditRepo,
+{
+    add_user(fx, "daniele", Role::Resident).await;
+    let other = add_user(fx, "duygu", Role::Resident).await;
+    let mut tx = fx.store.begin(None).await.unwrap();
+    let error = tx
+        .set_username(other.id, Username::new("DANIELE").unwrap())
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::UsernameTaken)),
+        "{error:?}"
+    );
+    drop(tx);
+    assert_eq!(fx.store.audit_log().await.unwrap().len(), 2);
+}
+
 pub async fn guests_can_be_expired_and_reactivated<S>(fx: &Fixture<S>)
 where
     S: Transactional<Tx: UserWrites> + AuditRepo,

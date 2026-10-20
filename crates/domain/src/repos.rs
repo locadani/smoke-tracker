@@ -192,6 +192,13 @@ pub trait UserWrites: Send {
         id: UserId,
         locale: Locale,
     ) -> impl Future<Output = StoreResult<User>> + Send;
+    /// Audited as `update`; sessions stay valid, since they follow the id. Fails with
+    /// [`Conflict::UsernameTaken`].
+    fn set_username(
+        &mut self,
+        id: UserId,
+        username: Username,
+    ) -> impl Future<Output = StoreResult<User>> + Send;
     /// Sets `expires_at` to now and ends every session of the user. Residents cannot expire.
     fn expire_user(&mut self, id: UserId) -> impl Future<Output = StoreResult<User>> + Send;
     fn reactivate_user(
