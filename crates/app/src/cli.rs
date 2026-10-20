@@ -28,6 +28,14 @@ pub enum Command {
         #[arg(long, default_value = "en", value_parser = parse_locale)]
         locale: Locale,
     },
+    /// Rename a user through an audited change. Never edit usernames in the database directly:
+    /// `verify-audit` would flag the account.
+    RenameUser {
+        /// The username the account has now.
+        current: String,
+        /// The new username, with the same rules as create-resident.
+        new: String,
+    },
     /// Check the audit hash chain and that every record matches its latest audit entry.
     /// Exits with 1 when anything is wrong.
     VerifyAudit,
@@ -59,6 +67,13 @@ mod tests {
         assert_eq!(parse(&["serve"]).unwrap(), Command::Serve);
         assert_eq!(parse(&["migrate"]).unwrap(), Command::Migrate);
         assert_eq!(parse(&["verify-audit"]).unwrap(), Command::VerifyAudit);
+        assert_eq!(
+            parse(&["rename-user", "dugyu", "duygu"]).unwrap(),
+            Command::RenameUser {
+                current: "dugyu".into(),
+                new: "duygu".into()
+            }
+        );
         assert_eq!(
             parse(&["create-resident", "daniele"]).unwrap(),
             Command::CreateResident {
