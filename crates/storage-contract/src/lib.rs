@@ -37,6 +37,8 @@ macro_rules! contract_tests {
             users::creating_a_user_is_audited_without_the_password_hash,
             users::a_password_change_is_always_audited,
             users::a_locale_change_is_audited_but_a_no_op_is_not,
+            users::a_rename_is_audited_and_frees_the_old_name,
+            users::a_rename_to_a_taken_name_is_a_conflict,
             users::guests_can_be_expired_and_reactivated,
             users::residents_cannot_expire,
             users::a_dropped_transaction_leaves_no_trace,

@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use smoke_app::backend::Backend;
-use smoke_app::commands::{create_resident, verify_audit};
+use smoke_app::commands::{create_resident, rename_user, verify_audit};
 use smoke_domain::clock::SystemClock;
 use smoke_domain::repos::{AuditRepo, Conflict, ListRepo, StoreError, UserRepo};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
@@ -79,6 +79,55 @@ async fn create_resident_refuses_a_taken_username() {
         .await
         .unwrap();
     let error = create_resident::create(&store, username("DANIELE"), password(), Locale::En)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(
+            error.downcast_ref::<StoreError>(),
+            Some(StoreError::Conflict(Conflict::UsernameTaken))
+        ),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
+async fn rename_user_keeps_verify_audit_clean() {
+    let (_dir, _url, store) = prepared().await;
+    let user = create_resident::create(&store, username("dugyu"), password(), Locale::En)
+        .await
+        .unwrap();
+    let renamed = rename_user::rename(&store, &username("dugyu"), username("Duygu"))
+        .await
+        .unwrap();
+    assert_eq!((renamed.id, renamed.username.as_str()), (user.id, "duygu"));
+    assert!(verify_audit::run(&store).await.unwrap().is_ok());
+}
+
+#[tokio::test]
+async fn rename_user_refuses_an_unknown_or_unchanged_name() {
+    let (_dir, _url, store) = prepared().await;
+    create_resident::create(&store, username("daniele"), password(), Locale::En)
+        .await
+        .unwrap();
+    let error = rename_user::rename(&store, &username("nobody"), username("someone"))
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "no user is called nobody");
+    let error = rename_user::rename(&store, &username("daniele"), username("DANIELE"))
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "daniele already has that username");
+}
+
+#[tokio::test]
+async fn rename_user_refuses_a_taken_username() {
+    let (_dir, _url, store) = prepared().await;
+    for name in ["daniele", "duygu"] {
+        create_resident::create(&store, username(name), password(), Locale::En)
+            .await
+            .unwrap();
+    }
+    let error = rename_user::rename(&store, &username("duygu"), username("daniele"))
         .await
         .unwrap_err();
     assert!(
