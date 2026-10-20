@@ -159,6 +159,19 @@ impl UserWrites for PostgresTx {
         audited(self, AuditAction::Update, before).await
     }
 
+    async fn set_username(&mut self, id: UserId, username: Username) -> StoreResult<User> {
+        let before = require(self.conn(), id).await?;
+        sqlx::query!(
+            "UPDATE users SET username = $1 WHERE id = $2",
+            username.as_str(),
+            id.0,
+        )
+        .execute(self.conn())
+        .await
+        .db()?;
+        audited(self, AuditAction::Update, before).await
+    }
+
     async fn expire_user(&mut self, id: UserId) -> StoreResult<User> {
         let before = require(self.conn(), id).await?;
         if before.role == Role::Resident {

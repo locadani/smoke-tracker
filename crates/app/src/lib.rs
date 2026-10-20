@@ -16,7 +16,7 @@ use tracing_subscriber::EnvFilter;
 
 use crate::backend::{Backend, with_store};
 use crate::cli::{Cli, Command};
-use crate::commands::{create_resident, serve, verify_audit};
+use crate::commands::{create_resident, rename_user, serve, verify_audit};
 use crate::config::{ServeConfig, env};
 
 /// Logs go to stderr, filtered by `RUST_LOG` (default `info`), so command output on stdout
@@ -60,6 +60,16 @@ pub async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
                 create_resident::create(store, username, password, locale).await
             })?;
             println!("Created resident {}.", user.username);
+        }
+        Command::RenameUser { current, new } => {
+            let current = Username::new(&current)?;
+            let new = Username::new(&new)?;
+            let backend = Backend::connect(&database_url, clock).await?;
+            backend.prepare().await?;
+            let user = with_store!(&backend, |store| {
+                rename_user::rename(store, &current, new).await
+            })?;
+            println!("Renamed {current} to {}.", user.username);
         }
         Command::VerifyAudit => {
             let backend = Backend::connect(&database_url, clock).await?;
