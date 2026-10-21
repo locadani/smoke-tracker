@@ -32,13 +32,22 @@ pub struct Actor {
 impl Actor {
     /// Expired once `now` reaches `expires_at`.
     pub fn is_expired(&self, now: u64) -> bool {
-        todo!()
+        match self.expires_at {
+            Some(expiration) => {
+                expiration <= now
+            },
+            None => false
+        }
     }
 
     /// Everyone may sign in except an expired viewer (an expired guest keeps read access to
     /// their own data).
     pub fn can_sign_in(&self, now: u64) -> bool {
-        todo!()
+        match self.role {
+            Role::Resident => true,
+            Role::Guest => true,
+            Role::Viewer => !Self::is_expired(self, now)
+        }
     }
 }
 
@@ -54,11 +63,41 @@ pub enum Action {
 }
 
 pub fn can(actor: &Actor, action: Action, now: u64) -> bool {
-    todo!()
+    if actor.can_sign_in(now) {
+        match actor.role {
+            Role::Resident => true,
+            Role::Guest => {
+                match action {
+                    Action::LogEntry => !actor.is_expired(now),
+                    Action::ViewOwn => true,
+                    Action::EditEntry { owner } => !actor.is_expired(now) && owner == actor.id,
+                    Action::ManageEvent { owner } => !actor.is_expired(now) && owner == actor.id,
+                    _ => false
+                }
+
+            }
+            Role::Viewer => {
+                if !actor.is_expired(now) {
+                    match action {
+                        Action::ViewAll => true,
+                        Action::ViewOwn => true,
+                        _ => false,
+                    }
+                }
+                else {
+                    false
+                }
+
+            }
+        }
+    }
+    else {
+        false
+    }
 }
 
 /// Whether `actor` may see something logged by `owner`: everything with `ViewAll`, otherwise
 /// only their own.
 pub fn can_see(actor: &Actor, owner: u32, now: u64) -> bool {
-    todo!()
+    can(actor, Action::ViewAll, now) || (actor.id == owner && can(actor, Action::ViewOwn, now))
 }
