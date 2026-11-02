@@ -59,9 +59,11 @@ showing the clock; real use won't.
    - **Our camera fails to start** (permission denied, no camera): it shows a "Use phone
      camera" button (a browser only opens the camera app from a tap).
    - To verify on both phones: that iPhone Safari does not report torch support.
-3. **After the shot (both paths):** the phone burns the watermark into the top-left of the
-   upright image, shrinks it to at most the size limit (§5), shows a preview with **Retake** and
-   **Remove**, and sends it to the reader. The PM2.5 field is pre-filled and highlighted with
+3. **After the shot (both paths):** the phone shrinks the upright image to at most the size limit
+   (§5) and makes two copies: one **without** the watermark, sent only to the reader (never
+   stored, so the date and time can't be mistaken for the reading), and one with the watermark
+   burned into the top-left, which is the photo attached and saved (user, 2026-11-02). It shows a
+   preview with **Retake** and **Remove**. The PM2.5 field is pre-filled and highlighted with
    "Read from photo, check it". If nothing could be read: "Couldn't read the number, please type
    it"; the photo stays attached.
 4. **Log:** the form is sent as `multipart/form-data` with the photo (the page keeps the
