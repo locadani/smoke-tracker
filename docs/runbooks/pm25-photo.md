@@ -10,6 +10,6 @@ Adds the private photo bucket (Frankfurt) and Cloud Vision reading. All Google c
 6. **iPhone.** Safari: the camera app path opens (no in-page camera). Safari must not offer the torch. Take the photo, confirm the value, save.
 7. **Audit.** Open Cloud Shell and run, as in `docs/runbooks/0005-neon.md` step 5, `verify-audit`. It must report the chain clean.
 
-**Rollback.** Terraform only: set `PM25_READER = "none"` in `infra/prod/main.tf`, open a PR, apply on merge. Readings go back to manual entry. Stored photos stay. Do not edit the Cloud Run service in the console.
+**Rollback.** Terraform only: set `PM25_READER = "none"` in `infra/prod/main.tf`, open a PR, merge, then plan and apply in Cloud Shell as in step 3. Readings go back to manual entry. Stored photos stay. Do not edit the Cloud Run service in the console.
 
 **Orphan photo file.** `verify-audit` reporting `photo file without entry: <key>` means a file is in the bucket that no entry points to (an upload whose save failed). Check the key is not referenced by any entry, then delete the file in the Cloud Storage console. This is a one-off data cleanup, not configuration; the app's service account cannot delete.
