@@ -14,7 +14,7 @@ use smoke_domain::clock::{Clock, SystemClock};
 use smoke_domain::types::Username;
 use tracing_subscriber::EnvFilter;
 
-use crate::backend::{Backend, with_store};
+use crate::backend::{Backend, BackendKind, with_store};
 use crate::cli::{Cli, Command};
 use crate::commands::{create_resident, rename_user, serve, verify_audit};
 use crate::config::{ServeConfig, env};
@@ -75,7 +75,22 @@ pub async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             let backend = Backend::connect(&database_url, clock).await?;
             let report = with_store!(&backend, |store| verify_audit::run(store).await)?;
             print!("{}", verify_audit::describe(&report));
-            if !report.is_ok() {
+            let store_or_reason = BackendKind::of(&database_url)
+                .map_err(|e| e.to_string())
+                .and_then(|kind| {
+                    let config =
+                        config::PhotoConfig::from_lookup(env).map_err(|e| e.to_string())?;
+                    verify_audit::photo_store(kind, &config)
+                });
+            let photos = match store_or_reason {
+                Ok(photos) => {
+                    with_store!(&backend, |store| verify_audit::check_photos(store, &photos)
+                        .await)?
+                }
+                Err(reason) => verify_audit::PhotoCheck::NotChecked(reason),
+            };
+            print!("{}", photos.describe());
+            if !report.is_ok() || !photos.is_ok() {
                 return Ok(ExitCode::from(1));
             }
         }
