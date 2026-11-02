@@ -317,6 +317,39 @@ async fn an_oversized_photo_is_refused() {
 }
 
 #[tokio::test]
+async fn a_photo_of_exactly_the_limit_is_accepted_by_both_routes() {
+    let (app, cookie) = signed_in_resident().await;
+    let photo = jpeg(LIMIT, 7);
+    let read = app
+        .send(post_multipart(
+            "/log/pm25/read",
+            &[],
+            Some(&photo),
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(read.status(), StatusCode::OK);
+
+    let response = app
+        .send(post_multipart(
+            "/log",
+            &[
+                ("pm25", "19.0"),
+                ("photo_taken_at", TAKEN),
+                ("action", "log"),
+            ],
+            Some(&photo),
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location(&response), Some("/?saved=pm25"));
+    let all = entries(&app).await;
+    let stored = all[0].reading.as_ref().unwrap().photo.as_ref().unwrap();
+    assert_eq!(stored.bytes as usize, LIMIT);
+}
+
+#[tokio::test]
 async fn a_png_is_refused() {
     let (app, cookie) = signed_in_resident().await;
     let png = [&[0x89, b'P', b'N', b'G'][..], &[7u8; 500][..]].concat();
