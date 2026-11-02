@@ -51,8 +51,9 @@ test.describe("photo on the log form", () => {
     await expect(page.locator("[data-photo-read-none]")).toBeVisible();
     await expect(page.locator("[data-photo-read-ok]")).toBeHidden();
     await expect(page.locator("[data-photo-attached]")).toBeVisible();
-    await expect(page.locator("[data-photo-retake]")).toBeVisible();
     await expect(page.locator("[data-photo-remove]")).toBeVisible();
+    // One photo per log: only Remove is offered until it is gone.
+    await expect(page.locator("[data-pm25-photo]")).toBeHidden();
     await expect(page.locator("input[name=pm25]")).toHaveValue("");
     await expect(page.locator("input[name=photo_taken_at]")).toHaveValue(
       /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d+)?Z$/,
@@ -72,15 +73,15 @@ test.describe("photo on the log form", () => {
     await page.route("**/log/pm25/read", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: '{"value":30}' }),
     );
-    await page
-      .locator("[data-photo-retake]")
-      .click()
-      .catch(() => {});
+    await page.locator("[data-photo-remove]").click();
+    await expect(field).toHaveValue("");
     await choose(page, await syntheticPhoto(page));
     await expect(field).toHaveValue("30");
 
     await field.fill("7");
     await expect(field).not.toHaveAttribute("data-from-photo", "");
+    await page.locator("[data-photo-remove]").click();
+    await expect(field).toHaveValue("7");
     await choose(page, await syntheticPhoto(page));
     await expect(page.locator("[data-photo-preview-image]")).toHaveAttribute("src", /^blob:/);
     await expect(field).toHaveValue("7");
@@ -208,6 +209,8 @@ test.describe("photo on the log form", () => {
     const field = page.locator("input[name=pm25]");
     await choose(page, await syntheticPhoto(page));
     await expect(page.locator("[data-photo-preview-image]")).toHaveAttribute("src", /^blob:/);
+    // No second photo can start while the first is still being read.
+    await expect(page.locator("[data-pm25-photo]")).toBeHidden();
     await page.click("button[value=log]", { noWaitAfter: true });
     release();
     await expect(field).toHaveValue("12.5");
@@ -220,7 +223,9 @@ test.describe("photo on the log form", () => {
     await expect.poll(() => posts).toBe(1);
   });
 
-  test("a_log_tap_during_a_retake_read_never_saves_the_unseen_new_number", async ({ page }) => {
+  test("a_log_tap_during_a_second_photo_read_never_saves_the_unseen_new_number", async ({
+    page,
+  }) => {
     let release;
     const gate = new Promise((resolve) => {
       release = resolve;
@@ -253,6 +258,7 @@ test.describe("photo on the log form", () => {
     const bytes = await syntheticPhoto(page);
     await choose(page, bytes);
     await expect(field).toHaveValue("10");
+    await page.locator("[data-photo-remove]").click();
     await choose(page, bytes);
     await secondStarted;
     await page.click("button[value=log]", { noWaitAfter: true });
@@ -311,6 +317,7 @@ test.describe("photo on the log form", () => {
     await choose(page, await syntheticPhoto(page));
     await expect(page.locator("[data-photo-invalid]")).toBeVisible();
     await expect(page.locator("[data-photo-preview]")).toBeHidden();
+    await expect(page.locator("[data-pm25-photo]")).toBeVisible();
     expect(
       await page.evaluate(() => document.querySelector("input[name=photo]").files.length),
     ).toBe(0);
@@ -326,8 +333,8 @@ test.describe("photo on the log form", () => {
     await expect(page.locator("[data-photo-preview]")).toBeHidden();
     await expect(page.locator("[data-photo-attached]")).toBeHidden();
     await expect(page.locator("[data-photo-remove]")).toBeHidden();
-    await expect(page.locator("[data-photo-retake]")).toBeHidden();
     await expect(page.locator("[data-photo-read-none]")).toBeHidden();
+    await expect(page.locator("[data-pm25-photo]")).toBeVisible();
     expect(
       await page.evaluate(() => document.querySelector("input[name=photo]").files.length),
     ).toBe(0);
@@ -356,6 +363,25 @@ test.describe("photo on the log form", () => {
       await expect(page.locator(`input[name=${name}]`)).toHaveCount(0);
     }
     await expect(page.locator("[data-photo-attached]")).toBeHidden();
+    await expect(page.locator("[data-pm25-photo]")).toBeVisible();
+  });
+
+  test("a_re_rendered_draft_with_a_photo_offers_only_remove", async ({ page }) => {
+    // A draft sent back with an error keeps its photo: the page arrives with it attached.
+    await page.route("**/", async (route) => {
+      const response = await route.fetch();
+      const body = (await response.text())
+        .replace("data-photo-attached hidden", "data-photo-attached")
+        .replace("data-photo-remove hidden", "data-photo-remove");
+      return route.fulfill({ response, body });
+    });
+    await page.reload();
+    await expect(page.locator("[data-photo-attached]")).toBeVisible();
+    await expect(page.locator("[data-photo-remove]")).toBeVisible();
+    await expect(page.locator("[data-pm25-photo]")).toBeHidden();
+
+    await page.locator("[data-photo-remove]").click();
+    await expect(page.locator("[data-pm25-photo]")).toBeVisible();
   });
 
   test("the_log_button_disables_on_submit", async ({ page }) => {

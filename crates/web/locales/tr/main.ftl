@@ -50,7 +50,6 @@ photo-store-unavailable = Fotoğraf şu anda kaydedilemedi. Hiçbir şey kaydedi
 photo-take = 📷 Sensörün fotoğrafını çek
 photo-read-ok = Fotoğraftan okundu, kontrol et
 photo-read-none = Sayı okunamadı, lütfen yaz
-photo-retake = Yeniden çek
 photo-remove = Fotoğrafı kaldır
 photo-attached = Fotoğraf eklendi ✓
 photo-card-title = Sensör fotoğrafı
