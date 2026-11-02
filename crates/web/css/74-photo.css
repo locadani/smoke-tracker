@@ -51,15 +51,29 @@
     inset: 0;
     z-index: 100;
     display: grid;
-    grid-template: "view bar" 1fr / 1fr auto;
+    /* minmax(0, …): a 4K camera frame must not stretch the tracks past the screen. */
+    grid-template: "view bar" minmax(0, 1fr) / minmax(0, 1fr) auto;
+    /* The page uses viewport-fit=cover: keep the controls clear of the notch and home bar. */
+    block-size: 100dvh;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+      env(safe-area-inset-left);
+    overflow: hidden;
     background: var(--camera-bg);
     color: var(--camera-fg);
   }
 
-  .camera-video {
+  /* iOS Safari paints a playing video above later siblings unless they stack higher. */
+  .camera > * {
+    position: relative;
+    z-index: 1;
+  }
+
+  .camera > .camera-video {
+    z-index: 0;
     grid-area: view;
     inline-size: 100%;
     block-size: 100%;
+    min-inline-size: 0;
     min-block-size: 0;
     object-fit: contain;
   }
@@ -131,7 +145,7 @@
 
   @media (orientation: portrait) {
     .camera {
-      grid-template: "view" 1fr "bar" auto / 1fr;
+      grid-template: "view" minmax(0, 1fr) "bar" auto / minmax(0, 1fr);
     }
 
     .camera-bar {
