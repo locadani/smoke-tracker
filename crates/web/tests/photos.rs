@@ -12,7 +12,7 @@ use smoke_domain::types::{Locale, Role};
 
 const NOW: &str = "2026-11-02T20:00:00Z";
 const TAKEN: &str = "2026-11-02T19:58:30Z";
-const LIMIT: usize = 307_200;
+const LIMIT: usize = 409_600;
 
 async fn entries(app: &TestApp) -> Vec<LogEntry> {
     app.store

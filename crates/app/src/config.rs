@@ -127,7 +127,7 @@ impl PhotoConfig {
 }
 
 impl ServeConfig {
-    pub const DEFAULT_PHOTO_MAX_BYTES: usize = 307_200;
+    pub const DEFAULT_PHOTO_MAX_BYTES: usize = 409_600;
     pub const MIN_PHOTO_MAX_BYTES: usize = 10_240;
     pub const MAX_PHOTO_MAX_BYTES: usize = 5_242_880;
     pub const DEFAULT_TIMEZONE: &str = "Europe/Rome";
@@ -240,7 +240,7 @@ mod tests {
         assert_eq!(config.web.schedule.hour(), 4);
         assert_eq!(config.bind_addr, "127.0.0.1:8080".parse().unwrap());
         assert_eq!(config.web.client_ip_header, None);
-        assert_eq!(config.web.photo_max_bytes, 307_200);
+        assert_eq!(config.web.photo_max_bytes, 409_600);
         assert_eq!(
             config.photos,
             PhotoConfig {

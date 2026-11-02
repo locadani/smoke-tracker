@@ -2,7 +2,7 @@
 // page. The camera, the torch and the rotation of a real phone are not reachable from here.
 import { expect, test } from "@playwright/test";
 
-const LIMIT = 307200;
+const LIMIT = 409600;
 
 /** A noisy 4000x3000 JPEG that cannot fit the limit at full size. */
 async function syntheticPhoto(page) {

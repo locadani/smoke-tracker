@@ -67,7 +67,7 @@ impl TestApp {
             base_url: BaseUrl::parse(base_url).unwrap(),
             client_ip_header: client_ip_header.map(HeaderName::from_static),
             schedule: schedule(),
-            photo_max_bytes: 307_200,
+            photo_max_bytes: 409_600,
         };
         let photos = PhotoStore::Local(LocalPhotoStore::new(dir.path().join("photos")));
         let router = smoke_web::router(AppState::new(

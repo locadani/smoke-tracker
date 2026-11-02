@@ -384,7 +384,7 @@ async fn the_log_form_offers_a_photo_with_the_limit() {
     assert_eq!(
         page.attr("button[data-pm25-photo]", "data-max-bytes")
             .as_deref(),
-        Some("307200"),
+        Some("409600"),
         "{html}"
     );
     assert_eq!(
