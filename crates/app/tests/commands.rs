@@ -176,7 +176,7 @@ mod photo_files {
     use chrono::{DateTime, Utc};
     use smoke_app::backend::BackendKind;
     use smoke_app::commands::verify_audit::{PhotoCheck, PhotoProblem, check_photos, photo_store};
-    use smoke_app::config::PhotoConfig;
+    use smoke_app::config::{PhotoConfig, PhotoLocation};
     use smoke_domain::records::{NewEntry, NewReading, Pm25Photo};
     use smoke_domain::repos::{Commit, EntryWrites, Transactional};
     use smoke_domain::types::Pm25;
@@ -331,20 +331,47 @@ mod photo_files {
         );
     }
 
+    fn lookup(pairs: &'static [(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (*v).to_owned())
+        }
+    }
+
     #[test]
     fn the_production_database_without_a_bucket_is_not_checked() {
-        let lookup = |pairs: &'static [(&str, &str)]| {
-            PhotoConfig::from_lookup(move |name| {
-                pairs
-                    .iter()
-                    .find(|(k, _)| *k == name)
-                    .map(|(_, v)| (*v).to_owned())
-            })
-            .unwrap()
-        };
-        let none = lookup(&[]);
+        let none = PhotoLocation::from_lookup(lookup(&[]));
         let reason = photo_store(BackendKind::Postgres, &none).unwrap_err();
         assert_eq!(reason, "PHOTO_BUCKET is not set");
         assert!(photo_store(BackendKind::Sqlite, &none).is_ok());
+    }
+
+    #[test]
+    fn a_bad_reader_setting_does_not_mask_the_photo_check() {
+        let env = &[("PM25_READER", "bogus"), ("PHOTO_DIR", "pics")];
+        assert!(PhotoConfig::from_lookup(lookup(env)).is_err());
+        let location = PhotoLocation::from_lookup(lookup(env));
+        assert!(photo_store(BackendKind::Sqlite, &location).is_ok());
+    }
+
+    #[tokio::test]
+    async fn verify_audit_reports_an_unreadable_photo_file_apart_from_a_changed_one() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let photo = stored_photo(&photos, 1).await;
+        let path = root.path().join(photo.key.as_str());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let id = entry_with(&store, photo).await;
+        let check = check_photos(&store, &photos).await.unwrap();
+        let text = check.describe();
+        assert!(
+            text.contains(&format!("photo file unreadable: entry {id} (")),
+            "{text}"
+        );
+        assert!(!text.contains("changed or missing"), "{text}");
     }
 }

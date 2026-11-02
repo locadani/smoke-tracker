@@ -13,7 +13,7 @@ use smoke_domain::verify::{AuditReport, SnapshotProblem, verify_store};
 use smoke_photos::{PhotoError, PhotoStore};
 
 use crate::backend::BackendKind;
-use crate::config::PhotoConfig;
+use crate::config::PhotoLocation;
 
 pub async fn run<S: SnapshotRepo>(store: &S) -> anyhow::Result<AuditReport> {
     Ok(verify_store(store).await?)
@@ -32,6 +32,10 @@ pub enum PhotoProblem {
     ChangedOrMissing { entry_id: i64 },
     /// A file in the store that no entry (deleted ones included) points to.
     WithoutEntry { key: String },
+    /// The store failed to read the entry's file (permissions, I/O).
+    Unreadable { entry_id: i64, reason: String },
+    /// The entry's stored photo key is not a valid key.
+    InvalidReference { entry_id: i64 },
 }
 
 impl PhotoCheck {
@@ -56,6 +60,12 @@ impl PhotoCheck {
                         PhotoProblem::WithoutEntry { key } => {
                             writeln!(out, "  photo file without entry: {key}")
                         }
+                        PhotoProblem::Unreadable { entry_id, reason } => {
+                            writeln!(out, "  photo file unreadable: entry {entry_id} ({reason})")
+                        }
+                        PhotoProblem::InvalidReference { entry_id } => {
+                            writeln!(out, "  photo reference invalid: entry {entry_id}")
+                        }
                     };
                 }
                 out
@@ -67,12 +77,11 @@ impl PhotoCheck {
 /// The store to check, or why there is none. Uses the same variables as `serve`. The
 /// production database without `PHOTO_BUCKET` is not checked: an empty local folder would make
 /// every photo look missing.
-pub fn photo_store(kind: BackendKind, config: &PhotoConfig) -> Result<PhotoStore, String> {
-    use crate::config::PhotoLocation;
-    if kind == BackendKind::Postgres && !matches!(config.location, PhotoLocation::Gcs { .. }) {
+pub fn photo_store(kind: BackendKind, location: &PhotoLocation) -> Result<PhotoStore, String> {
+    if kind == BackendKind::Postgres && !matches!(location, PhotoLocation::Gcs { .. }) {
         return Err("PHOTO_BUCKET is not set".to_owned());
     }
-    config.build_store().map_err(|e| e.to_string())
+    location.build_store().map_err(|e| e.to_string())
 }
 
 /// Re-fingerprints the photo of every entry, deleted ones included, and looks for files no
@@ -81,6 +90,11 @@ pub async fn check_photos<S: SnapshotRepo>(
     store: &S,
     photos: &PhotoStore,
 ) -> anyhow::Result<PhotoCheck> {
+    let listed = match photos.list_photos().await {
+        Ok(keys) => keys,
+        Err(PhotoError::Unavailable(reason)) => return Ok(PhotoCheck::NotChecked(reason)),
+        Err(error) => return Err(error.into()),
+    };
     let state = store.audit_state().await?;
     let mut problems = Vec::new();
     let mut referenced = BTreeSet::new();
@@ -94,32 +108,29 @@ pub async fn check_photos<S: SnapshotRepo>(
             continue;
         };
         referenced.insert(raw_key.to_owned());
-        let intact = match PhotoKey::parse(raw_key) {
-            Ok(key) => match photos.get(&key).await {
-                Ok(Some(file)) => {
-                    photo["bytes"].as_u64() == Some(file.len() as u64)
-                        && photo["sha256"].as_str()
-                            == Some(hex::encode(Sha256::digest(&file)).as_str())
-                }
-                Ok(None) => false,
-                Err(PhotoError::Unavailable(reason)) => {
-                    return Ok(PhotoCheck::NotChecked(reason));
-                }
-                Err(_) => false,
-            },
-            Err(_) => false,
+        let entry_id = snapshot.entity_id;
+        let Ok(key) = PhotoKey::parse(raw_key) else {
+            problems.push(PhotoProblem::InvalidReference { entry_id });
+            continue;
         };
-        if !intact {
-            problems.push(PhotoProblem::ChangedOrMissing {
-                entry_id: snapshot.entity_id,
-            });
+        match photos.get(&key).await {
+            Ok(Some(file)) => {
+                let intact = photo["bytes"].as_u64() == Some(file.len() as u64)
+                    && photo["sha256"].as_str()
+                        == Some(hex::encode(Sha256::digest(&file)).as_str());
+                if !intact {
+                    problems.push(PhotoProblem::ChangedOrMissing { entry_id });
+                }
+            }
+            Ok(None) | Err(PhotoError::Missing | PhotoError::Mismatch) => {
+                problems.push(PhotoProblem::ChangedOrMissing { entry_id });
+            }
+            Err(error) => problems.push(PhotoProblem::Unreadable {
+                entry_id,
+                reason: error.to_string(),
+            }),
         }
     }
-    let listed = match photos.list_photos().await {
-        Ok(keys) => keys,
-        Err(PhotoError::Unavailable(reason)) => return Ok(PhotoCheck::NotChecked(reason)),
-        Err(error) => return Err(error.into()),
-    };
     for key in listed {
         if !referenced.contains(key.as_str()) {
             problems.push(PhotoProblem::WithoutEntry {

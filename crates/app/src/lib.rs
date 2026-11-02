@@ -78,9 +78,7 @@ pub async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             let store_or_reason = BackendKind::of(&database_url)
                 .map_err(|e| e.to_string())
                 .and_then(|kind| {
-                    let config =
-                        config::PhotoConfig::from_lookup(env).map_err(|e| e.to_string())?;
-                    verify_audit::photo_store(kind, &config)
+                    verify_audit::photo_store(kind, &config::PhotoLocation::from_lookup(env))
                 });
             let photos = match store_or_reason {
                 Ok(photos) => {

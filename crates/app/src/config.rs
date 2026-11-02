@@ -47,6 +47,34 @@ pub enum PhotoLocation {
     Gcs { bucket: String },
 }
 
+impl PhotoLocation {
+    pub const DEFAULT_DIR: &str = "data/photos";
+
+    /// Only the store settings (`PHOTO_BUCKET`, `PHOTO_DIR`), so `verify-audit` is not
+    /// affected by the reader settings.
+    pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Self {
+        let set = |name: &str| get(name).filter(|v| !v.trim().is_empty());
+        match set("PHOTO_BUCKET") {
+            Some(bucket) => Self::Gcs {
+                bucket: bucket.trim().to_owned(),
+            },
+            None => Self::Local(PathBuf::from(
+                set("PHOTO_DIR").unwrap_or_else(|| Self::DEFAULT_DIR.to_owned()),
+            )),
+        }
+    }
+
+    /// The configured store. Google calls authenticate through the metadata server only.
+    pub fn build_store(&self) -> Result<PhotoStore, PhotoError> {
+        Ok(match self {
+            Self::Local(dir) => PhotoStore::Local(LocalPhotoStore::new(dir.clone())),
+            Self::Gcs { bucket } => {
+                PhotoStore::Gcs(GcsPhotoStore::new(bucket.clone(), GoogleAuth::new()?))
+            }
+        })
+    }
+}
+
 /// Which reader turns a sensor photo into a number (`PM25_READER`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReaderKind {
@@ -62,18 +90,9 @@ pub struct PhotoConfig {
 }
 
 impl PhotoConfig {
-    pub const DEFAULT_DIR: &str = "data/photos";
-
     pub fn from_lookup(get: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
         let set = |name: &str| get(name).filter(|v| !v.trim().is_empty());
-        let location = match set("PHOTO_BUCKET") {
-            Some(bucket) => PhotoLocation::Gcs {
-                bucket: bucket.trim().to_owned(),
-            },
-            None => PhotoLocation::Local(PathBuf::from(
-                set("PHOTO_DIR").unwrap_or_else(|| Self::DEFAULT_DIR.to_owned()),
-            )),
-        };
+        let location = PhotoLocation::from_lookup(&get);
         let reader = match set("PM25_READER").as_deref().map(str::trim) {
             None | Some("none") => ReaderKind::None,
             Some("vision") => ReaderKind::Vision,
@@ -87,14 +106,8 @@ impl PhotoConfig {
         Ok(Self { location, reader })
     }
 
-    /// The configured store. Google calls authenticate through the metadata server only.
     pub fn build_store(&self) -> Result<PhotoStore, PhotoError> {
-        Ok(match &self.location {
-            PhotoLocation::Local(dir) => PhotoStore::Local(LocalPhotoStore::new(dir.clone())),
-            PhotoLocation::Gcs { bucket } => {
-                PhotoStore::Gcs(GcsPhotoStore::new(bucket.clone(), GoogleAuth::new()?))
-            }
-        })
+        self.location.build_store()
     }
 
     pub fn build_reader(&self) -> Result<Pm25Reader, PhotoError> {
