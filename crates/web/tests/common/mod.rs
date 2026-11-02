@@ -24,6 +24,7 @@ use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, Level, Pm25, ReportId, RoomId, SymptomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
+use smoke_photos::{LocalPhotoStore, PhotoStore, Pm25Reader};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
 use smoke_web::{AppState, password};
@@ -66,8 +67,16 @@ impl TestApp {
             base_url: BaseUrl::parse(base_url).unwrap(),
             client_ip_header: client_ip_header.map(HeaderName::from_static),
             schedule: schedule(),
+            photo_max_bytes: 307_200,
         };
-        let router = smoke_web::router(AppState::new(store.clone(), clock.clone(), config));
+        let photos = PhotoStore::Local(LocalPhotoStore::new(dir.path().join("photos")));
+        let router = smoke_web::router(AppState::new(
+            store.clone(),
+            clock.clone(),
+            config,
+            photos,
+            Pm25Reader::None,
+        ));
         Self {
             router,
             store,
