@@ -121,6 +121,68 @@ test.describe("photo on the log form", () => {
     expect(body.includes(Buffer.from([0xff, 0xd8, 0xff]))).toBe(true);
   });
 
+  test("the_reader_gets_the_photo_without_the_watermark_and_the_form_keeps_it", async ({
+    page,
+  }) => {
+    let readBody = null;
+    await page.route("**/log/pm25/read", (route) => {
+      readBody = route.request().postDataBuffer();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: '{"value":null}',
+      });
+    });
+    const light = await page.evaluate(async () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1200;
+      canvas.height = 900;
+      const context = canvas.getContext("2d");
+      context.fillStyle = "#f2f2f2";
+      context.fillRect(0, 0, 1200, 900);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.95));
+      const reader = new FileReader();
+      return new Promise((resolve) => {
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.readAsDataURL(blob);
+      });
+    });
+    await choose(page, light);
+    await expect(page.locator("[data-photo-preview-image]")).toHaveAttribute("src", /^blob:/);
+    await expect.poll(() => readBody).not.toBeNull();
+
+    const start = readBody.indexOf(Buffer.from([0xff, 0xd8, 0xff]));
+    const end = readBody.lastIndexOf(Buffer.from([0xff, 0xd9])) + 2;
+    expect(start).toBeGreaterThan(0);
+    const readJpeg = readBody.subarray(start, end).toString("base64");
+
+    const patches = await page.evaluate(async (readBase64) => {
+      const luminance = async (blob) => {
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext("2d");
+        context.drawImage(bitmap, 0, 0);
+        const { data } = context.getImageData(0, 0, 10, 10);
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          sum += (data[i] + data[i + 1] + data[i + 2]) / 3;
+        }
+        return { luminance: sum / (data.length / 4), width: bitmap.width, height: bitmap.height };
+      };
+      const bytes = Uint8Array.from(atob(readBase64), (c) => c.charCodeAt(0));
+      return {
+        read: await luminance(new Blob([bytes], { type: "image/jpeg" })),
+        stored: await luminance(document.querySelector("input[name=photo]").files[0]),
+      };
+    }, readJpeg);
+    expect(patches.read.luminance).toBeGreaterThan(200);
+    expect(patches.stored.luminance).toBeLessThan(100);
+    expect(patches.read.width).toBe(patches.stored.width);
+    expect(patches.read.height).toBe(patches.stored.height);
+  });
+
   test("a_log_tap_during_the_read_never_saves_a_number_the_person_has_not_seen", async ({
     page,
   }) => {

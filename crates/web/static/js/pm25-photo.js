@@ -40,18 +40,32 @@ function encode(canvas, quality) {
   return new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
 }
 
+/** Draws the photo at `width` x `height`, with the time burnt in when `text` is given. */
+function render(canvas, bitmap, width, height, text) {
+  const context = canvas.getContext("2d");
+  context.imageSmoothingQuality = "high";
+  canvas.width = width;
+  canvas.height = height;
+  context.drawImage(bitmap, 0, 0, width, height);
+  if (text) {
+    burn(context, width, height, text);
+  }
+}
+
 /**
  * Draws the photo upright with the time burnt into its top-left corner and encodes it as JPEG:
  * quality 0.85, 0.75, 0.65, 0.55 at a longest side of 2400 px, then the same at 2000, 1600 and
  * 1280 px; the first result within `maxBytes` wins. When none fits, the smallest comes back
  * with `fits: false`.
+ *
+ * With `plain: true` a winning result also carries `plain`: the same picture at the same size
+ * without the time, for the reader only, at the first quality from the winning one downwards
+ * that fits (`null` when none does).
  */
-export async function shrinkToLimit(source, { maxBytes, takenAt, timeZone }) {
+export async function shrinkToLimit(source, { maxBytes, takenAt, timeZone, plain = false }) {
   const bitmap = await createImageBitmap(source, { imageOrientation: "from-image" });
   const text = stamp(takenAt, timeZone);
   const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  context.imageSmoothingQuality = "high";
   let last = null;
   let lastSize = "";
   try {
@@ -63,14 +77,14 @@ export async function shrinkToLimit(source, { maxBytes, takenAt, timeZone }) {
         continue;
       }
       lastSize = `${width}x${height}`;
-      canvas.width = width;
-      canvas.height = height;
-      context.drawImage(bitmap, 0, 0, width, height);
-      burn(context, width, height, text);
+      render(canvas, bitmap, width, height, text);
       for (const quality of QUALITIES) {
         const blob = await encode(canvas, quality);
         last = { blob, width, height, quality, fits: blob.size <= maxBytes };
         if (last.fits) {
+          if (plain) {
+            last.plain = await encodePlain(canvas, bitmap, last, maxBytes);
+          }
           return last;
         }
       }
@@ -79,6 +93,17 @@ export async function shrinkToLimit(source, { maxBytes, takenAt, timeZone }) {
     bitmap.close();
   }
   return last;
+}
+
+async function encodePlain(canvas, bitmap, { width, height, quality }, maxBytes) {
+  render(canvas, bitmap, width, height, null);
+  for (const step of QUALITIES.filter((value) => value <= quality)) {
+    const blob = await encode(canvas, step);
+    if (blob.size <= maxBytes) {
+      return blob;
+    }
+  }
+  return null;
 }
 
 const REFERENCES = ["photo_sha256", "photo_bytes", "photo_taken_at"];
@@ -141,6 +166,12 @@ function setup(root) {
   }
 
   async function read(blob, mine) {
+    if (!blob) {
+      if (mine === generation) {
+        readNone.hidden = false;
+      }
+      return;
+    }
     const body = new FormData();
     body.append("photo", blob, "pm25.jpg");
     let value = null;
@@ -171,6 +202,7 @@ function setup(root) {
       maxBytes: Number(button.dataset.maxBytes),
       takenAt,
       timeZone,
+      plain: true,
     });
     if (mine !== generation) {
       return;
@@ -192,7 +224,8 @@ function setup(root) {
     attached.hidden = false;
     retake.hidden = false;
     remove.hidden = false;
-    await read(upload, mine);
+    // The reader gets the picture without the burnt-in time: its digits are not the sensor's.
+    await read(shrunk.plain, mine);
   }
 
   function run(source, takenAt) {
