@@ -41,8 +41,9 @@ sqlx 0.9 (SQLite + Postgres), tokio, `reqwest` (rustls, json), `sha2` (already u
 
 ## Review Focus
 
+0. **Bucket and database out of step.** Expected (spec §7, option 1): an entry never points to a missing or different photo; leftovers only under `pending/` (auto-deleted) or reported by `verify-audit`. Tests: `the_entry_is_written_only_after_the_photo_is_permanent`, `logging_again_after_a_failure_reuses_the_same_file` (Task 6), `promoting_a_tampered_pending_photo_fails` (Task 3), `verify_audit_reports_a_photo_without_entry` (Task 9).
 1. **A photo that doesn't survive the "which event?" question or an error re-render.** Expected: the photo stored at the first Log press is attached to the entry saved after the question / after fixing the error, never lost, never stored twice. Tests: `a_photo_survives_the_event_question`, `a_photo_survives_a_refused_form` (Task 6).
-2. **A forged photo reference** in the hidden fields (key of another file, wrong fingerprint, path tricks like `../`). Expected: refused (form back with `photo-invalid`), nothing saved. Tests: `a_forged_photo_reference_is_refused`, `photo_keys_reject_paths` (Tasks 3, 6).
+2. **A forged photo reference** in the hidden fields (key of another file, wrong fingerprint, path tricks like `../`). Expected: refused (form back with `photo-invalid`), nothing saved. Tests: `a_forged_photo_reference_is_refused`, `the_entry_is_written_only_after_the_photo_is_permanent`, `logging_again_after_a_failure_reuses_the_same_file`, `photo_keys_reject_paths` (Tasks 3, 6).
 3. **Old entries' hashes change** because the snapshot gained a field. Expected: `verify-audit` clean on a database migrated from 0005 with existing entries; snapshot JSON without photo equals the pre-feature JSON. Test: `a_snapshot_without_photo_is_unchanged` (Task 1), `verify_audit_is_clean_after_0006` (Task 2).
 4. **Oversized or non-JPEG upload, or anonymous upload.** Expected: 413 / `photo-invalid` / redirect to login, without buffering beyond the limit. Tests: `an_oversized_photo_is_refused`, `a_png_is_refused`, `anonymous_photo_posts_are_refused_before_the_body` (Task 6).
 5. **Vision down or slow.** Expected: `/log/pm25/read` answers "couldn't read" within 10 s; Log still works (photo store is independent). Test: `a_reader_failure_is_just_no_number` (Task 4).
@@ -84,7 +85,7 @@ tests/e2e/specs/pm25-photo.spec.js
 **Files:** Modify `crates/domain/src/records.rs`, `crates/domain/src/logbook.rs`, `crates/domain/src/error.rs`, every caller of `NewEntry::new`, `SmellEntry`, `ReadingEntry` (compiler-guided). Test: in-module tests of `records.rs`, `logbook.rs`.
 
 **Interfaces — Produces:**
-- `pub struct PhotoKey(String)` — `PhotoKey::parse(&str) -> Result<Self, DomainError>` accepts only `photos/YYYY/MM/<64 lowercase hex>.jpg`; `as_str()`. Serialises as a string.
+- `pub struct PhotoKey(String)` — `PhotoKey::parse(&str) -> Result<Self, DomainError>` accepts only `photos/YYYY/MM/<64 lowercase hex>.jpg`; `PhotoKey::for_photo(sha: &Sha256Hex, at: DateTime<Utc>) -> Self` = `photos/{at:%Y}/{at:%m}/{sha}.jpg` (UTC); `as_str()`. Serialises as a string.
 - `pub struct Sha256Hex(String)` — `parse` accepts exactly 64 lowercase hex; `as_str()`.
 - `pub struct Pm25Photo { pub key: PhotoKey, pub bytes: u32, pub sha256: Sha256Hex, pub taken_at: DateTime<Utc> }` (Serialize, Clone, PartialEq, Debug).
 - `Pm25Reading` gains `#[serde(skip_serializing_if = "Option::is_none")] pub photo: Option<Pm25Photo>`.
@@ -133,18 +134,21 @@ CREATE TABLE pm25_photos (
 **Files:** Create `crates/photos/{Cargo.toml,src/lib.rs,src/upload.rs,src/store.rs,src/google.rs}`; add to workspace members and `[workspace.dependencies]`; `deny.toml` only if a new licence must be allowed (stop and ask if so).
 
 **Interfaces — Produces:**
-- `pub struct ValidPhoto { pub bytes: Vec<u8>, pub sha256: Sha256Hex, pub key: PhotoKey }`
-- `pub fn validate(bytes: Vec<u8>, max: usize, at: DateTime<Utc>) -> Result<ValidPhoto, PhotoError>` — refuses empty, `> max`, not starting with `FF D8 FF`; key = `photos/{at:%Y}/{at:%m}/{sha256}.jpg`.
+- `pub struct ValidPhoto { pub bytes: Vec<u8>, pub sha256: Sha256Hex }`
+- `pub fn validate(bytes: Vec<u8>, max: usize) -> Result<ValidPhoto, PhotoError>` — refuses empty, `> max`, not starting with `FF D8 FF`.
+- `pub fn pending_name(sha: &Sha256Hex) -> String` = `pending/{sha}.jpg`; `PhotoKey::for_photo(sha, at)` (Task 1) = `photos/{at:%Y}/{at:%m}/{sha}.jpg` (from Task 1).
 - `pub enum PhotoStore { Local(LocalPhotoStore), Gcs(GcsPhotoStore) }` with
-  `async fn put(&self, photo: &ValidPhoto) -> Result<(), PhotoError>` (already-existing object with the same key = Ok; GCS uses `ifGenerationMatch=0`, never overwrites) and
-  `async fn get(&self, key: &PhotoKey) -> Result<Option<Vec<u8>>, PhotoError>`.
+  `async fn put_pending(&self, photo: &ValidPhoto) -> Result<(), PhotoError>` (same name already there = Ok; GCS `ifGenerationMatch=0`, never overwrites);
+  `async fn promote(&self, sha: &Sha256Hex, bytes: u32, at: DateTime<Utc>) -> Result<PhotoKey, PhotoError>` — server-side copy `pending/` → `photos/…` (destination already there = Ok), then re-reads the destination and checks length + sha256, else `PhotoError::Mismatch`; a missing pending file → `PhotoError::Missing`;
+  `async fn get(&self, key: &PhotoKey) -> Result<Option<Vec<u8>>, PhotoError>`;
+  `async fn list_photos(&self) -> Result<Vec<PhotoKey>, PhotoError>` (for `verify-audit`).
 - `LocalPhotoStore::new(root: PathBuf)`; `GcsPhotoStore::new(bucket: String, auth: GoogleAuth)`.
 - `google.rs`: `pub struct GoogleAuth` — `async fn token(&self) -> Result<String, PhotoError>` from `http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token` (`Metadata-Flavor: Google`), cached until 60 s before expiry; holds the one `reqwest::Client` (timeout 10 s). The token is never logged.
-- `pub enum PhotoError { TooLarge, NotJpeg, Empty, Unavailable(String) }` (thiserror).
+- `pub enum PhotoError { TooLarge, NotJpeg, Empty, Missing, Mismatch, Unavailable(String) }` (thiserror).
 
-- [ ] **Step 1: Failing tests:** `validate` (`an_oversized_photo_is_refused` at `max + 1`, `a_png_is_refused`, `the_key_is_the_month_and_fingerprint`, `the_fingerprint_is_sha256_of_the_bytes` against a known vector); `LocalPhotoStore` in a temp dir (`put_then_get_returns_the_bytes`, `putting_the_same_photo_twice_is_fine`, `a_missing_key_is_none`). GCS: unit-test only URL/header building (`gcs_upload_never_overwrites` asserts `ifGenerationMatch=0` in the built request) — no network in tests.
+- [ ] **Step 1: Failing tests:** `validate` (`an_oversized_photo_is_refused` at `max + 1`, `a_png_is_refused`, `the_fingerprint_is_sha256_of_the_bytes` against a known vector); `the_key_is_the_month_and_fingerprint`; `LocalPhotoStore` in a temp dir (`pending_then_promote_then_get_returns_the_bytes`, `promoting_twice_is_fine`, `promoting_a_missing_pending_photo_fails`, `promoting_a_tampered_pending_photo_fails` (edit the file between put and promote → `Mismatch`), `a_missing_key_is_none`, `list_photos_lists_only_permanent_photos`). GCS: unit-test only request building (`gcs_upload_never_overwrites` asserts `ifGenerationMatch=0`; `gcs_promote_copies_server_side` asserts the `rewriteTo` URL with `ifGenerationMatch=0`) — no network in tests.
 - [ ] **Step 2:** `cargo test -p smoke-photos` — FAIL.
-- [ ] **Step 3:** Implement. GCS JSON API: upload `POST https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o?uploadType=media&name={key}&ifGenerationMatch=0` (412 → Ok); download `GET .../storage/v1/b/{bucket}/o/{urlencoded key}?alt=media` (404 → None).
+- [ ] **Step 3:** Implement. GCS JSON API: upload `POST https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o?uploadType=media&name={name}&ifGenerationMatch=0` (412 → Ok); copy `POST .../storage/v1/b/{bucket}/o/{src}/rewriteTo/b/{bucket}/o/{dst}?ifGenerationMatch=0` (412 → Ok; loop on `rewriteToken`); download `GET .../o/{urlencoded}?alt=media` (404 → None); list `GET .../o?prefix=photos/` (paged).
 - [ ] **Step 4:** tests + `cargo deny check` — PASS.
 - [ ] **Step 5:** Commit `feat(photos): validated photos in a local folder or a GCS bucket (enum dispatch)`.
 
@@ -180,7 +184,7 @@ Env: `PHOTO_MAX_BYTES` (default 307200, must be 10 KB–5 MB), `PHOTO_BUCKET` (s
 
 **Interfaces:** Consumes Tasks 1, 3, 4, 5. Produces routes:
 - `POST /log/pm25/read` (multipart field `photo`) → JSON `{"value": 19.0}` or `{"value": null}`; stores nothing.
-- `POST /log` accepts `multipart/form-data` (text fields as today + optional file `photo` + optional `photo_taken_at` RFC 3339) **and** still urlencoded (existing tests). A file is validated and `put` immediately; from then on the photo travels as hidden fields `photo_key`, `photo_sha256`, `photo_bytes`, `photo_taken_at` through `ask` and `back_to_form`. When hidden fields come back, the server `get`s the object and recomputes sha256 + length; mismatch or missing → `back_to_form(.., "photo-invalid")`.
+- `POST /log` accepts `multipart/form-data` (text fields as today + optional file `photo` + optional `photo_taken_at` RFC 3339) **and** still urlencoded (existing tests). A file is validated and `put_pending` immediately; from then on the photo travels as hidden fields `photo_sha256`, `photo_bytes`, `photo_taken_at` through `ask` and `back_to_form`. Only right before the final `log_smell`/`log_reading` does the handler call `promote` (which re-checks length + fingerprint) and put the returned `PhotoKey` into `NewReading.photo`; `Missing`/`Mismatch` → `back_to_form(.., "photo-invalid")`, nothing written. The database transaction commits only after `promote` succeeded.
 - A photo with no PM2.5 value → `back_to_form(.., "photo-needs-pm25")`.
 - `GET /photos/{reading_id}` → JPEG, `Cache-Control: private, no-store`; 404 unless `can_see` on the entry's author (same as `/entries/{id}`).
 - `Pairs::from_multipart` (or a `LogForm` extractor) returning pairs + optional photo bytes; reads the body only after `CurrentUser` succeeded; route layer `DefaultBodyLimit::max(photo_max_bytes + 16 * 1024)` on these two routes only.
@@ -222,8 +226,8 @@ Behaviour (spec §4–§5):
 
 **Files:** Modify `crates/app/src/commands/verify_audit.rs`, `crates/app/tests/commands.rs`.
 
-- When a photo store is configured and reachable, for each entry with a photo: `get(key)` → missing or sha256/length mismatch is reported as `photo file changed or missing: entry {id}`. Without `PHOTO_BUCKET` in a prod run (or store unavailable) print `photo files not checked` and keep the exit code of the database check.
-- [ ] **Step 1: Failing tests:** `verify_audit_reports_a_changed_photo_file`, `verify_audit_reports_a_missing_photo_file`, `verify_audit_without_a_store_says_not_checked` (local store in a temp dir).
+- When a photo store is configured and reachable, for each entry with a photo: `get(key)` → missing or sha256/length mismatch is reported as `photo file changed or missing: entry {id}`; and every key from `list_photos()` that no entry references is reported as `photo file without entry: {key}`. Without `PHOTO_BUCKET` in a prod run (or store unavailable) print `photo files not checked` and keep the exit code of the database check.
+- [ ] **Step 1: Failing tests:** `verify_audit_reports_a_changed_photo_file`, `verify_audit_reports_a_missing_photo_file`, `verify_audit_reports_a_photo_without_entry`, `verify_audit_without_a_store_says_not_checked` (local store in a temp dir).
 - [ ] **Step 2–4:** implement; PASS.
 - [ ] **Step 5:** Commit `feat(app): verify-audit re-fingerprints photo files`.
 
@@ -231,9 +235,9 @@ Behaviour (spec §4–§5):
 
 **Files:** Create `infra/modules/cloud-run-app/photos.tf`; modify `variables.tf`, `outputs.tf`, `tests/cloud_run_app.tftest.hcl`, `infra/prod/main.tf` (env `PHOTO_BUCKET`, `PM25_READER = "vision"`). Create `docs/runbooks/pm25-photo.md`.
 
-- Bucket `${app}-photos-${project}` in `var.region`, `uniform_bucket_level_access = true`, `public_access_prevention = "enforced"`, no lifecycle delete, soft delete default. IAM members: runtime SA `roles/storage.objectCreator` and `roles/storage.objectViewer` on that bucket only.
+- Bucket `${app}-photos-${project}` in `var.region`, `uniform_bucket_level_access = true`, `public_access_prevention = "enforced"`, one lifecycle rule: `Delete` when `age = 1` and `matches_prefix = ["pending/"]` (nothing else is ever deleted), soft delete default. IAM members: runtime SA `roles/storage.objectCreator` and `roles/storage.objectViewer` on that bucket only.
 - Runbook (user, web console, work-PC rule): enable **Cloud Vision API** in the project; confirm the budget alert exists; deploy; test on Android + iPhone (torch detection, sideways); run `verify-audit`.
-- [ ] **Step 1: Failing tftest:** bucket location `EUROPE-WEST3`, public access prevention enforced, exactly the two roles for the runtime SA, no `storage.objectAdmin`.
+- [ ] **Step 1: Failing tftest:** bucket location `EUROPE-WEST3`, the only lifecycle rule deletes `pending/` after 1 day, public access prevention enforced, exactly the two roles for the runtime SA, no `storage.objectAdmin`.
 - [ ] **Step 2–4:** `terraform -chdir=infra/modules/cloud-run-app test` PASS; `terraform fmt -check -recursive infra` PASS.
 - [ ] **Step 5:** Commit `feat(infra): private photo bucket in Frankfurt`.
 

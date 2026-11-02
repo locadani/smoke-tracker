@@ -99,8 +99,7 @@ All new text in English, Italian and Turkish (the three locales).
     access.
   - Later: a pure-Rust dot-matrix reader replaces `CloudVisionReader` behind the same port.
 - A small endpoint (e.g. `POST /log/pm25/read`) takes the photo and returns the number or
-  nothing. It **stores nothing**; the photo is sent again with the form (300 KB, negligible), so
-  abandoned photos never reach the bucket.
+  nothing. It **stores nothing**; the photo is sent again with the form (300 KB, negligible).
 - Free tier: 1,000 Vision requests/month; expected ~120.
 
 ## 7. Storage
@@ -108,7 +107,10 @@ All new text in English, Italian and Turkish (the three locales).
 - **Bucket:** a new private bucket in **europe-west3** (the user chose Frankfurt over the free US
   tier: about a cent a year), uniform access, no public access, managed in Terraform next to the
   backups bucket. The Cloud Run service account gets create + read on it, **not** delete or
-  overwrite. Object names are random (e.g. `photos/2026/11/<uuid>.jpg`), never guessable.
+  overwrite. Object names are the photo's fingerprint (`pending/<sha256>.jpg`,
+  `photos/YYYY/MM/<sha256>.jpg`): never guessable without the photo, and the same photo always
+  gets the same name. A bucket **lifecycle rule deletes everything under `pending/` after
+  1 day**.
 - **Photo store port** (trait): `GcsPhotoStore` (JSON API, metadata-server auth) and
   `LocalPhotoStore` (a folder, for development and tests).
 - **Serving:** the app streams the photo from the bucket at an authenticated route that
@@ -117,10 +119,18 @@ All new text in English, Italian and Turkish (the three locales).
 - **Outbound HTTP:** one small client (`reqwest` with rustls, minimal features). Google auth
   and the Vision/Storage calls are hand-written (metadata-server token + JSON), no Google SDK
   crates: smaller binary, fewer dependencies, more Rust learned *(builder's call)*.
-- **Order on Log:** upload the photo first, then write the reading + photo row in one database
-  transaction. If the upload fails, nothing is written and the form comes back with the value
-  kept and an error. A database failure after the upload leaves an orphan file; that's
-  acceptable (rare, tiny).
+- **Consistency (user's choice, 2026-11-02: option 1, database is the truth).** No transaction
+  can span the bucket and the database, so the order guarantees that **an entry never points to
+  a missing or different photo**, and anything left over cleans itself up:
+  1. First press of Log: the photo is validated and stored at `pending/<sha256>.jpg`. The
+     "which event?" question and error re-renders carry only a reference (hidden fields).
+  2. Final save: the server copies it server-side to `photos/YYYY/MM/<sha256>.jpg`, re-reads
+     it and checks length + fingerprint, and only then commits the reading + photo row.
+  3. Walked away at step 1: the pending file is deleted by the lifecycle rule within a day.
+  4. Database failure after step 2: pressing Log again reuses the same file (same name), so no
+     duplicate. `verify-audit` reports any permanent photo that no entry points to.
+  If storing fails, nothing is written and the form comes back with the value kept and an
+  error.
 
 ## 8. Database (migration 0006, SQLite and Postgres, kept in step as today)
 
