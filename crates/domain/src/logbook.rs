@@ -13,11 +13,11 @@ use crate::events::{
 };
 use crate::permissions::{Action, Actor, can};
 use crate::records::{
-    Closure, Event, LogEntry, NewEntry, NewEvent, Note, ReportValues, SmellReport,
+    Closure, Event, LogEntry, NewEntry, NewEvent, NewReading, Note, ReportValues, SmellReport,
 };
 use crate::repos::{EntryWrites, EventWrites, StoreError, StoreResult};
 use crate::schedule::DailySchedule;
-use crate::types::{CloseReason, EventId, Pm25, ReportId, UserId};
+use crate::types::{CloseReason, EventId, ReportId, UserId};
 
 #[derive(Debug, Error)]
 pub enum LogError {
@@ -70,14 +70,14 @@ pub struct SmellEntry {
     pub values: ReportValues,
     pub note: Option<Note>,
     /// Logged together with the report, in the same event.
-    pub pm25: Option<Pm25>,
+    pub pm25: Option<NewReading>,
 }
 
 /// What the Log form says about a PM2.5 reading logged on its own.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReadingEntry {
     pub observed_at: DateTime<Utc>,
-    pub value: Pm25,
+    pub reading: NewReading,
     pub note: Option<Note>,
 }
 
@@ -241,12 +241,12 @@ where
     }
     let ReadingEntry {
         observed_at,
-        value,
+        reading,
         note,
     } = entry;
     classify_observed(observed_at, now)?;
     let event_id = tx.event_at(observed_at).await?.map(|event| event.id);
-    let new = NewEntry::new(actor.id, event_id, observed_at, note, None, Some(value))?;
+    let new = NewEntry::new(actor.id, event_id, observed_at, note, None, Some(reading))?;
     Ok(tx.create_entry(new).await?)
 }
 

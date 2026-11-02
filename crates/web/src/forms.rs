@@ -4,9 +4,13 @@
 use std::convert::Infallible;
 
 use axum::Form;
+use axum::body::{Body, to_bytes};
 use axum::extract::rejection::FormRejection;
-use axum::extract::{FromRequest, FromRequestParts, Query, Request};
+use axum::extract::{FromRequest, FromRequestParts, Multipart, Query, Request};
+use axum::http::StatusCode;
+use axum::http::header::CONTENT_TYPE;
 use axum::http::request::Parts;
+use axum::response::{IntoResponse, Response};
 
 /// A posted form as its `(name, value)` pairs, in order.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -57,6 +61,18 @@ impl Pairs {
             .filter_map(move |(key, _)| key.strip_prefix(prefix))
     }
 
+    /// Sets `name` to `value`, replacing any earlier values.
+    pub(crate) fn set(&mut self, name: &str, value: String) {
+        self.0.retain(|(key, _)| key != name);
+        self.0.push((name.to_owned(), value));
+    }
+
+    /// The pairs without any of the fields in `names`.
+    pub(crate) fn omitting(mut self, names: &[&str]) -> Self {
+        self.0.retain(|(key, _)| !names.contains(&key.as_str()));
+        self
+    }
+
     /// All pairs except those named in `skip`: what a follow-up form re-posts as hidden fields.
     pub(crate) fn without(&self, skip: &[&str]) -> Vec<(String, String)> {
         self.0
@@ -73,6 +89,59 @@ impl<S: Send + Sync> FromRequest<S> for Pairs {
     async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
         let Form(pairs) = Form::<Vec<(String, String)>>::from_request(request, state).await?;
         Ok(Self(pairs))
+    }
+}
+
+/// The Log form as posted: its fields and, when the browser sent one, the `photo` file. A
+/// `multipart/form-data` post carries both; a urlencoded post is read as before, capped at the
+/// ordinary form limit even on routes that accept a larger upload.
+#[derive(Debug, Default)]
+pub(crate) struct Upload {
+    pub(crate) pairs: Pairs,
+    /// The bytes of the `photo` part; `None` when absent or empty (a browser sends an empty
+    /// part when no file was chosen).
+    pub(crate) photo: Option<Vec<u8>>,
+}
+
+impl<S: Send + Sync> FromRequest<S> for Upload {
+    type Rejection = Response;
+
+    async fn from_request(request: Request, state: &S) -> Result<Self, Self::Rejection> {
+        let multipart = request
+            .headers()
+            .get(CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .is_some_and(|value| value.starts_with("multipart/form-data"));
+        if !multipart {
+            let (parts, body) = request.into_parts();
+            let bytes = to_bytes(body, crate::BODY_LIMIT_BYTES)
+                .await
+                .map_err(|_| StatusCode::PAYLOAD_TOO_LARGE.into_response())?;
+            let request = Request::from_parts(parts, Body::from(bytes));
+            let pairs = Pairs::from_request(request, state)
+                .await
+                .map_err(IntoResponse::into_response)?;
+            return Ok(Self { pairs, photo: None });
+        }
+        let mut parts = Multipart::from_request(request, state)
+            .await
+            .map_err(IntoResponse::into_response)?;
+        let mut upload = Self::default();
+        while let Some(field) = parts
+            .next_field()
+            .await
+            .map_err(IntoResponse::into_response)?
+        {
+            let name = field.name().unwrap_or_default().to_owned();
+            if name == "photo" {
+                let bytes = field.bytes().await.map_err(IntoResponse::into_response)?;
+                upload.photo = (!bytes.is_empty()).then(|| bytes.to_vec());
+            } else {
+                let text = field.text().await.map_err(IntoResponse::into_response)?;
+                upload.pairs.0.push((name, text));
+            }
+        }
+        Ok(upload)
     }
 }
 

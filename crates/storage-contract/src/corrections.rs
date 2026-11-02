@@ -9,7 +9,7 @@ use smoke_domain::logbook::{
     EventChoice, LogError, MoveTarget, ReportCorrection, close_event, correct_report, move_report,
     reopen_event,
 };
-use smoke_domain::records::{Closure, Event, LogEntry, ReportValues, User};
+use smoke_domain::records::{Closure, Event, LogEntry, NewReading, ReportValues, User};
 use smoke_domain::repos::{
     AuditRepo, Commit, EntryRepo, EntryWrites, EventRepo, ListRepo, Transactional, WriteTx,
 };
@@ -551,7 +551,7 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo,
 {
     let mut entry = smell(at, 4);
-    entry.pm25 = Some(Pm25::new(35.5).unwrap());
+    entry.pm25 = Some(NewReading::without_photo(Pm25::new(35.5).unwrap()));
     log(fx, who, entry, EventChoice::New { replacing: None })
         .await
         .unwrap()

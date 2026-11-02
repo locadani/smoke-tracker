@@ -65,6 +65,7 @@ async fn migrations_create_every_table_and_can_run_again() {
             "invites",
             "jobs",
             "log_entries",
+            "pm25_photos",
             "pm25_readings",
             "rooms",
             "sessions",
@@ -273,6 +274,8 @@ migration_0005_checks! {
     migration_0005_moves_each_report_note_to_its_entry =>
         migrations::moves_each_report_note_to_its_entry,
     migration_0005_keeps_report_and_reading_ids => migrations::keeps_report_and_reading_ids,
+    migration_0006_leaves_earlier_entries_verifying_clean =>
+        migrations::verify_audit_is_clean_after_0006,
     migration_0005_keeps_a_migrated_history_and_takes_a_correction =>
         migrations::migrated_history_reads_as_before_and_takes_a_correction,
 }

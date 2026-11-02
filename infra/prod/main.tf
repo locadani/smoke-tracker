@@ -3,6 +3,9 @@ locals {
 
   # Cloud Run's default address is https://<service>-<project number>.<region>.run.app.
   app_base_url = "https://smoke-tracker-${data.google_project.this.number}.${var.region}.run.app"
+
+  # The module's own naming rule; the module output cannot feed its own input.
+  photo_bucket = "smoke-tracker-photos-${var.project_id}"
 }
 
 module "app" {
@@ -17,6 +20,8 @@ module "app" {
   env = {
     APP_BASE_URL     = local.app_base_url
     CLIENT_IP_HEADER = "X-Forwarded-For"
+    PHOTO_BUCKET     = local.photo_bucket
+    PM25_READER      = "vision"
     RUST_LOG         = "info"
   }
 

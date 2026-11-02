@@ -5,15 +5,15 @@ use serde_json::json;
 use smoke_domain::DomainError;
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::clock::Clock;
-use smoke_domain::records::{Closure, NewEntry, NewEvent, Note};
+use smoke_domain::records::{Audited, Closure, NewEntry, NewEvent, NewReading, Note};
 use smoke_domain::repos::{Commit, Conflict, EntryWrites, EventWrites, Store, StoreError};
 use smoke_domain::types::{CloseReason, EventId, Pm25, RoomId, SymptomId};
 use smoke_domain::verify::verify_store;
 
 use crate::Fixture;
 use crate::fixture::{
-    EntryExt, FIRST_ROOM, add_entry, add_event, add_report, assert_no_childless_entries,
-    last_entry, report_values, scene, start,
+    EntryExt, FIRST_ROOM, add_entry, add_event, add_photo_reading, add_report,
+    assert_no_childless_entries, last_entry, photo, report_values, scene, start,
 };
 
 fn pm25(value: f64) -> Pm25 {
@@ -443,7 +443,7 @@ pub async fn an_unknown_room_rolls_back_the_entry<S: Store>(fx: &Fixture<S>) {
         start(),
         None,
         Some(report_values(5, &[RoomId(999)], &[])),
-        Some(pm25(10.0)),
+        Some(NewReading::without_photo(pm25(10.0))),
     )
     .unwrap();
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
@@ -618,7 +618,7 @@ pub async fn a_reading_can_stand_alone_or_join_an_event<S: Store>(fx: &Fixture<S
             observed_at,
             None,
             None,
-            Some(pm25(value)),
+            Some(NewReading::without_photo(pm25(value))),
         )
         .unwrap()
     };
@@ -653,7 +653,7 @@ pub async fn correcting_and_deleting_a_reading_entry_are_audited<S: Store>(fx: &
         start(),
         None,
         None,
-        Some(pm25(12.5)),
+        Some(NewReading::without_photo(pm25(12.5))),
     )
     .unwrap();
     let entry = tx.create_entry(new).await.unwrap();
@@ -723,7 +723,7 @@ pub async fn a_reading_for_an_unknown_event_is_rejected<S: Store>(fx: &Fixture<S
         start(),
         None,
         None,
-        Some(pm25(10.0)),
+        Some(NewReading::without_photo(pm25(10.0))),
     )
     .unwrap();
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
@@ -790,7 +790,7 @@ pub async fn one_write_transaction_uses_one_instant<S: Store>(fx: &Fixture<S>) {
         start() - TimeDelta::days(1),
         None,
         Some(report_values(5, &[FIRST_ROOM], &[])),
-        Some(pm25(15.0)),
+        Some(NewReading::without_photo(pm25(15.0))),
     )
     .unwrap();
     let entry = tx.create_entry(new).await.unwrap();
@@ -814,5 +814,39 @@ pub async fn one_write_transaction_uses_one_instant<S: Store>(fx: &Fixture<S>) {
             .iter()
             .all(|row| row.record.at_micros == instant.timestamp_micros()),
         "every row and audit entry of one transaction shares its instant"
+    );
+}
+
+pub async fn an_entry_keeps_its_photo<S: Store>(fx: &Fixture<S>) {
+    let scene = scene(fx).await;
+    let photo = photo(&"ab".repeat(32), start() - TimeDelta::minutes(3));
+    let entry = add_photo_reading(fx, &scene, start(), pm25(31.0), photo.clone()).await;
+
+    let reading = entry.reading.clone().unwrap();
+    assert_eq!(reading.photo, Some(photo.clone()));
+    assert_eq!(fx.store.entry(entry.id).await.unwrap(), Some(entry.clone()));
+    assert_eq!(
+        fx.store.entry_of_reading(reading.id).await.unwrap(),
+        Some(entry.clone())
+    );
+    assert_eq!(
+        fx.store.entries_for_event(scene.event.id).await.unwrap(),
+        std::slice::from_ref(&entry)
+    );
+    let day = fx
+        .store
+        .entries_between(start() - TimeDelta::days(1), start() + TimeDelta::days(1))
+        .await
+        .unwrap();
+    assert_eq!(day, std::slice::from_ref(&entry));
+    let log = fx.store.audit_log().await.unwrap();
+    assert_eq!(
+        log.last().unwrap().record.after,
+        Some(entry.snapshot()),
+        "the entry's audit snapshot includes the photo"
+    );
+    assert_eq!(
+        entry.snapshot()["reading"]["photo"]["object_key"],
+        photo.key.as_str()
     );
 }

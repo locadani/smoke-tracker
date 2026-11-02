@@ -73,6 +73,12 @@ struct SmellFacts {
     symptoms: String,
 }
 
+/// The photo a reading was taken from: where to fetch it and when it was taken and logged.
+struct PhotoFacts {
+    src: String,
+    caption: String,
+}
+
 #[derive(Template)]
 #[template(path = "entry.html")]
 struct EntryPage {
@@ -84,6 +90,7 @@ struct EntryPage {
     observed: String,
     recorded: String,
     pm25: Option<String>,
+    photo: Option<PhotoFacts>,
     smell: Option<SmellFacts>,
     note: Option<String>,
     by: Option<String>,
@@ -325,6 +332,16 @@ async fn entry_page<S: Store>(
                 "value",
                 &reading.value.ugm3().to_string(),
             )
+        }),
+        photo: entry.reading.as_ref().and_then(|reading| {
+            reading.photo.as_ref().map(|photo| PhotoFacts {
+                src: format!("/photos/{}", reading.id),
+                caption: tr.t2(
+                    "photo-taken-logged",
+                    ("taken", &time::date_time(tr.0, photo.taken_at, tz)),
+                    ("logged", &time::date_time(tr.0, entry.recorded_at, tz)),
+                ),
+            })
         }),
         smell,
         note: entry.note.as_ref().map(|n| n.as_str().to_owned()),

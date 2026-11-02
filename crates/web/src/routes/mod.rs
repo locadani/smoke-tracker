@@ -13,6 +13,7 @@ pub(crate) mod log;
 pub(crate) mod login;
 pub(crate) mod notices;
 pub(crate) mod people;
+pub(crate) mod photos;
 pub(crate) mod reports;
 pub(crate) mod settings;
 

@@ -21,6 +21,7 @@ chrono-tz.workspace = true
 clap.workspace = true
 rpassword.workspace = true
 smoke-domain.workspace = true
+smoke-photos.workspace = true
 smoke-storage-postgres.workspace = true
 smoke-storage-sqlite.workspace = true
 smoke-web.workspace = true

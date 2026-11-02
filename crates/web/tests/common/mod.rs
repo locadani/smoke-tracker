@@ -16,7 +16,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
 use smoke_domain::logbook::{EventChoice, ReadingEntry, SmellEntry, log_reading, log_smell};
-use smoke_domain::records::{NewUser, RoomLevel, User};
+use smoke_domain::records::{NewReading, NewUser, RoomLevel, User};
 use smoke_domain::records::{ReadingView, ReportValues, ReportView, reading_views, report_views};
 use smoke_domain::repos::{Commit, EntryRepo, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
@@ -24,6 +24,7 @@ use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, Level, Pm25, ReportId, RoomId, SymptomId};
 use smoke_domain::types::{Locale, NewPassword, Role, Username};
+use smoke_photos::{LocalPhotoStore, PhotoStore, Pm25Reader};
 use smoke_storage_sqlite::SqliteStore;
 use smoke_web::config::{BaseUrl, WebConfig};
 use smoke_web::{AppState, password};
@@ -66,8 +67,16 @@ impl TestApp {
             base_url: BaseUrl::parse(base_url).unwrap(),
             client_ip_header: client_ip_header.map(HeaderName::from_static),
             schedule: schedule(),
+            photo_max_bytes: 409_600,
         };
-        let router = smoke_web::router(AppState::new(store.clone(), clock.clone(), config));
+        let photos = PhotoStore::Local(LocalPhotoStore::new(dir.path().join("photos")));
+        let router = smoke_web::router(AppState::new(
+            store.clone(),
+            clock.clone(),
+            config,
+            photos,
+            Pm25Reader::None,
+        ));
         Self {
             router,
             store,
@@ -187,7 +196,7 @@ impl TestApp {
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();
         let entry = ReadingEntry {
             observed_at: t(at),
-            value: Pm25::new(value).unwrap(),
+            reading: NewReading::without_photo(Pm25::new(value).unwrap()),
             note: None,
         };
         let reading = log_reading(&mut tx, &user.actor(), entry, self.clock.now())
@@ -268,6 +277,52 @@ pub fn post_form(path: &str, body: &str, cookie: Option<&str>) -> Request<Body> 
     let mut request = builder.body(Body::from(body.to_owned())).unwrap();
     from(&mut request, CLIENT);
     request
+}
+
+/// A `multipart/form-data` post as the Log page's script sends it: text `fields` and, when
+/// given, the file part `photo`.
+pub fn post_multipart(
+    path: &str,
+    fields: &[(&str, &str)],
+    photo: Option<&[u8]>,
+    cookie: Option<&str>,
+) -> Request<Body> {
+    const BOUNDARY: &str = "----smoke-test-boundary";
+    let mut body: Vec<u8> = Vec::new();
+    for (name, value) in fields {
+        body.extend(
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .bytes(),
+        );
+    }
+    if let Some(bytes) = photo {
+        body.extend(format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"pm25.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").bytes());
+        body.extend(bytes);
+        body.extend(b"\r\n");
+    }
+    body.extend(format!("--{BOUNDARY}--\r\n").bytes());
+    let mut builder = Request::post(path)
+        .header(
+            CONTENT_TYPE,
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .header("origin", BASE)
+        .header("sec-fetch-site", "same-origin");
+    if let Some(cookie) = cookie {
+        builder = builder.header(COOKIE, cookie);
+    }
+    let mut request = builder.body(Body::from(body)).unwrap();
+    from(&mut request, CLIENT);
+    request
+}
+
+/// Bytes that pass the upload check: the JPEG magic number, then `len` in all.
+pub fn jpeg(len: usize, fill: u8) -> Vec<u8> {
+    let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    bytes.resize(len, fill);
+    bytes
 }
 
 pub fn login_request(username: &str, password: &str) -> Request<Body> {

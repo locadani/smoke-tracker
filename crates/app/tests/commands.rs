@@ -169,3 +169,209 @@ async fn verify_audit_reports_a_direct_database_edit() {
         "{text}"
     );
 }
+
+mod photo_files {
+    use std::path::Path;
+
+    use chrono::{DateTime, Utc};
+    use smoke_app::backend::BackendKind;
+    use smoke_app::commands::verify_audit::{PhotoCheck, PhotoProblem, check_photos, photo_store};
+    use smoke_app::config::{PhotoConfig, PhotoLocation};
+    use smoke_domain::records::{NewEntry, NewReading, Pm25Photo};
+    use smoke_domain::repos::{Commit, EntryWrites, Transactional};
+    use smoke_domain::types::Pm25;
+    use smoke_photos::{LocalPhotoStore, PhotoStore, validate};
+
+    use super::*;
+
+    fn at() -> DateTime<Utc> {
+        "2026-11-02T13:35:00Z".parse().unwrap()
+    }
+
+    async fn stored_photo(photos: &PhotoStore, body: u8) -> Pm25Photo {
+        let mut bytes = vec![0xFF, 0xD8, 0xFF, body];
+        bytes.extend_from_slice(&[body; 40]);
+        let valid = validate(bytes, 10_000).unwrap();
+        let len = u32::try_from(valid.bytes.len()).unwrap();
+        photos.put_pending(&valid).await.unwrap();
+        let key = photos.promote(&valid.sha256, len, at()).await.unwrap();
+        Pm25Photo {
+            key,
+            bytes: len,
+            sha256: valid.sha256,
+            taken_at: at(),
+        }
+    }
+
+    async fn entry_with(store: &SqliteStore, photo: Pm25Photo) -> i64 {
+        let user = create_resident::create(store, username("daniele"), password(), Locale::En)
+            .await
+            .unwrap();
+        let new = NewEntry::new(
+            user.id,
+            None,
+            at(),
+            None,
+            None,
+            Some(NewReading {
+                value: Pm25::new(12.0).unwrap(),
+                photo: Some(photo),
+            }),
+        )
+        .unwrap();
+        let mut tx = store.begin(Some(user.id)).await.unwrap();
+        let entry = tx.create_entry(new).await.unwrap();
+        tx.commit().await.unwrap();
+        entry.id.0
+    }
+
+    fn local(dir: &Path) -> PhotoStore {
+        PhotoStore::Local(LocalPhotoStore::new(dir.to_path_buf()))
+    }
+
+    #[tokio::test]
+    async fn verify_audit_passes_with_intact_photo_files() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let photo = stored_photo(&photos, 1).await;
+        entry_with(&store, photo).await;
+        let check = check_photos(&store, &photos).await.unwrap();
+        assert_eq!(check, PhotoCheck::Checked(vec![]));
+        assert_eq!(check.describe(), "photo files:   ok\n");
+    }
+
+    #[tokio::test]
+    async fn verify_audit_reports_a_changed_photo_file() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let photo = stored_photo(&photos, 1).await;
+        std::fs::write(root.path().join(photo.key.as_str()), b"\xFF\xD8\xFFedited").unwrap();
+        let id = entry_with(&store, photo).await;
+        let check = check_photos(&store, &photos).await.unwrap();
+        assert!(!check.is_ok());
+        assert!(
+            check
+                .describe()
+                .contains(&format!("photo file changed or missing: entry {id}")),
+            "{}",
+            check.describe()
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_audit_reports_a_missing_photo_file() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let photo = stored_photo(&photos, 1).await;
+        std::fs::remove_file(root.path().join(photo.key.as_str())).unwrap();
+        let id = entry_with(&store, photo).await;
+        let check = check_photos(&store, &photos).await.unwrap();
+        assert_eq!(
+            check,
+            PhotoCheck::Checked(vec![PhotoProblem::ChangedOrMissing { entry_id: id }])
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_audit_reports_a_photo_without_entry() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let kept = stored_photo(&photos, 1).await;
+        let stray = stored_photo(&photos, 2).await;
+        entry_with(&store, kept).await;
+        let check = check_photos(&store, &photos).await.unwrap();
+        assert!(
+            check
+                .describe()
+                .contains(&format!("photo file without entry: {}", stray.key.as_str())),
+            "{}",
+            check.describe()
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_audit_counts_a_deleted_entry_as_referencing_its_photo() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let photo = stored_photo(&photos, 1).await;
+        let id = entry_with(&store, photo).await;
+        let user = store
+            .user_by_username(&username("daniele"))
+            .await
+            .unwrap()
+            .unwrap();
+        let mut tx = store.begin(Some(user.id)).await.unwrap();
+        tx.delete_entry(smoke_domain::types::LogEntryId(id))
+            .await
+            .unwrap();
+        tx.commit().await.unwrap();
+        assert_eq!(
+            check_photos(&store, &photos).await.unwrap(),
+            PhotoCheck::Checked(vec![])
+        );
+    }
+
+    #[tokio::test]
+    async fn verify_audit_without_a_store_says_not_checked() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let file = root.path().join("not-a-folder");
+        std::fs::write(&file, b"x").unwrap();
+        let check = check_photos(&store, &local(&file)).await.unwrap();
+        assert!(check.is_ok());
+        assert!(
+            check.describe().starts_with("photo files not checked"),
+            "{}",
+            check.describe()
+        );
+    }
+
+    fn lookup(pairs: &'static [(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        move |name| {
+            pairs
+                .iter()
+                .find(|(k, _)| *k == name)
+                .map(|(_, v)| (*v).to_owned())
+        }
+    }
+
+    #[test]
+    fn the_production_database_without_a_bucket_is_not_checked() {
+        let none = PhotoLocation::from_lookup(lookup(&[]));
+        let reason = photo_store(BackendKind::Postgres, &none).unwrap_err();
+        assert_eq!(reason, "PHOTO_BUCKET is not set");
+        assert!(photo_store(BackendKind::Sqlite, &none).is_ok());
+    }
+
+    #[test]
+    fn a_bad_reader_setting_does_not_mask_the_photo_check() {
+        let env = &[("PM25_READER", "bogus"), ("PHOTO_DIR", "pics")];
+        assert!(PhotoConfig::from_lookup(lookup(env)).is_err());
+        let location = PhotoLocation::from_lookup(lookup(env));
+        assert!(photo_store(BackendKind::Sqlite, &location).is_ok());
+    }
+
+    #[tokio::test]
+    async fn verify_audit_reports_an_unreadable_photo_file_apart_from_a_changed_one() {
+        let (_dir, _url, store) = prepared().await;
+        let root = tempfile::tempdir().unwrap();
+        let photos = local(root.path());
+        let photo = stored_photo(&photos, 1).await;
+        let path = root.path().join(photo.key.as_str());
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        let id = entry_with(&store, photo).await;
+        let check = check_photos(&store, &photos).await.unwrap();
+        let text = check.describe();
+        assert!(
+            text.contains(&format!("photo file unreadable: entry {id} (")),
+            "{text}"
+        );
+        assert!(!text.contains("changed or missing"), "{text}");
+    }
+}

@@ -14,7 +14,7 @@ anyhow = "1.0.104"
 argon2 = "0.6.0"
 askama = { version = "0.16.1", default-features = false, features = ["derive", "std"] }
 async-trait = "0.1.92"
-axum = { version = "0.8.9", default-features = false, features = ["form", "http1", "query", "tokio", "tracing"] }
+axum = { version = "0.8.9", default-features = false, features = ["form", "http1", "multipart", "query", "tokio", "tracing"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
 chrono-tz = "0.10"
 clap = { version = "4.6.7", features = ["derive"] }
@@ -25,12 +25,15 @@ hex = "0.4"
 http-body-util = "0.1.5"
 proptest = "1"
 qrcodegen = "1.8.0"
+base64 = "0.22"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
 rpassword = "7.5.4"
 scraper = { version = "0.27.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
 sha2 = "0.11"
 smoke-domain = { path = "crates/domain" }
+smoke-photos = { path = "crates/photos" }
 smoke-storage-contract = { path = "crates/storage-contract" }
 smoke-storage-postgres = { path = "crates/storage-postgres" }
 smoke-storage-sqlite = { path = "crates/storage-sqlite" }

@@ -89,6 +89,8 @@ pub struct WebConfig {
     /// The local time zone pages show and read times in, and the daily auto-close hour
     /// (`APP_TIMEZONE`, `AUTO_CLOSE_HOUR`).
     pub schedule: DailySchedule,
+    /// The largest photo a person may upload (`PHOTO_MAX_BYTES`).
+    pub photo_max_bytes: usize,
 }
 
 #[cfg(test)]

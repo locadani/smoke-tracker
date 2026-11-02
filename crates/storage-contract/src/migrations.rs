@@ -972,3 +972,18 @@ where
         "other reports' History is untouched"
     );
 }
+
+/// Entries that predate `pm25_photos` verify clean against their stored snapshots and load
+/// without a photo.
+pub async fn verify_audit_is_clean_after_0006<S: EntryRepo + SnapshotRepo>(store: &S) {
+    let entries = all_entries(store).await;
+    assert!(entries.iter().any(|e| e.reading.is_some()));
+    for entry in &entries {
+        if let Some(reading) = &entry.reading {
+            assert_eq!(reading.photo, None);
+            assert!(entry.snapshot()["reading"].get("photo").is_none());
+        }
+    }
+    let report = verify_store(store).await.unwrap();
+    assert!(report.is_ok(), "{report:?}");
+}

@@ -9,8 +9,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::FakeClock;
 use smoke_domain::records::{
-    Closure, Event, LogEntry, NewEntry, NewEvent, NewUser, Note, PasswordHash, ReportValues, Room,
-    RoomLevel, Symptom, User,
+    Closure, Event, LogEntry, NewEntry, NewEvent, NewReading, NewUser, Note, PasswordHash,
+    PhotoKey, Pm25Photo, ReportValues, Room, RoomLevel, Sha256Hex, Symptom, User,
 };
 use smoke_domain::repos::{
     AuditRepo, Commit, EntryRepo, EntryWrites, EventWrites, ListRepo, ListWrites, Transactional,
@@ -207,7 +207,47 @@ where
         observed_at,
         Note::parse(note).expect("valid note"),
         report,
-        reading,
+        reading.map(NewReading::without_photo),
+    )
+    .expect("an entry with a child");
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.expect("begin");
+    let entry = tx.create_entry(new).await.expect("create entry");
+    tx.commit().await.expect("commit");
+    entry
+}
+
+/// A photo as the web layer would describe one taken at `taken_at`.
+pub fn photo(sha: &str, taken_at: DateTime<Utc>) -> Pm25Photo {
+    let sha256 = Sha256Hex::parse(sha).expect("a lowercase SHA-256");
+    Pm25Photo {
+        key: PhotoKey::for_photo(&sha256, taken_at),
+        bytes: 250_000,
+        sha256,
+        taken_at,
+    }
+}
+
+/// An entry holding only a PM2.5 reading and the photo it was read from.
+pub async fn add_photo_reading<S>(
+    fx: &Fixture<S>,
+    scene: &Scene,
+    observed_at: DateTime<Utc>,
+    value: Pm25,
+    photo: Pm25Photo,
+) -> LogEntry
+where
+    S: Transactional<Tx: EntryWrites>,
+{
+    let new = NewEntry::new(
+        scene.user.id,
+        Some(scene.event.id),
+        observed_at,
+        None,
+        None,
+        Some(NewReading {
+            value,
+            photo: Some(photo),
+        }),
     )
     .expect("an entry with a child");
     let mut tx = fx.store.begin(Some(scene.user.id)).await.expect("begin");

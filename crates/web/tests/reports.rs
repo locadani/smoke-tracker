@@ -545,7 +545,7 @@ async fn guests_cannot_see_or_change_other_peoples_checks() {
 async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
     use smoke_domain::clock::Clock;
     use smoke_domain::logbook::{SmellEntry, log_smell};
-    use smoke_domain::records::ReportValues;
+    use smoke_domain::records::{NewReading, ReportValues};
     use smoke_domain::repos::{Commit, EntryRepo, Transactional};
     use smoke_domain::types::{Level, Pm25};
 
@@ -580,7 +580,7 @@ async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
             observed_at: t("2026-01-15T18:30:00Z"),
             values,
             note: None,
-            pm25: Some(Pm25::new(12.0).unwrap()),
+            pm25: Some(NewReading::without_photo(Pm25::new(12.0).unwrap())),
         },
         EventChoice::New {
             replacing: earlier.report.event_id,

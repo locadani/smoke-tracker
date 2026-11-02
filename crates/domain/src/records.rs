@@ -321,6 +321,83 @@ impl SmellReport {
     }
 }
 
+/// A SHA-256 digest as exactly 64 lowercase hex characters.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Sha256Hex(String);
+
+impl Sha256Hex {
+    pub fn parse(raw: &str) -> Result<Self, DomainError> {
+        if is_lower_hex_64(raw) {
+            Ok(Self(raw.to_owned()))
+        } else {
+            Err(DomainError::InvalidPhotoRef)
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+fn is_lower_hex_64(raw: &str) -> bool {
+    raw.len() == 64 && raw.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Where a photo lives in the bucket: `photos/YYYY/MM/<sha256>.jpg`. Only that shape is ever
+/// accepted, so a key can never walk out of the `photos/` prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct PhotoKey(String);
+
+impl PhotoKey {
+    pub fn parse(raw: &str) -> Result<Self, DomainError> {
+        let invalid = || DomainError::InvalidPhotoRef;
+        let mut parts = raw.split('/');
+        let (Some("photos"), Some(year), Some(month), Some(file), None) = (
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+            parts.next(),
+        ) else {
+            return Err(invalid());
+        };
+        let digits =
+            |text: &str, len: usize| text.len() == len && text.bytes().all(|b| b.is_ascii_digit());
+        let month_ok = digits(month, 2) && matches!(month.parse::<u8>(), Ok(1..=12));
+        let sha = file.strip_suffix(".jpg").ok_or_else(invalid)?;
+        if digits(year, 4) && month_ok && is_lower_hex_64(sha) {
+            Ok(Self(raw.to_owned()))
+        } else {
+            Err(invalid())
+        }
+    }
+
+    /// The key a photo with this digest gets, by the UTC month it was taken.
+    pub fn for_photo(sha: &Sha256Hex, at: DateTime<Utc>) -> Self {
+        Self(format!(
+            "photos/{}/{}.jpg",
+            at.format("%Y/%m"),
+            sha.as_str()
+        ))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// The sensor photo a PM2.5 reading was read from. Audited as part of its reading.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Pm25Photo {
+    #[serde(rename = "object_key")]
+    pub key: PhotoKey,
+    pub bytes: u32,
+    pub sha256: Sha256Hex,
+    pub taken_at: DateTime<Utc>,
+}
+
 /// The PM2.5 half of a log entry; audited as part of its [`LogEntry`].
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Pm25Reading {
@@ -328,6 +405,21 @@ pub struct Pm25Reading {
     #[serde(skip)]
     pub log_entry_id: LogEntryId,
     pub value: Pm25,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub photo: Option<Pm25Photo>,
+}
+
+/// A reading to store: its value and, optionally, the photo it was read from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NewReading {
+    pub value: Pm25,
+    pub photo: Option<Pm25Photo>,
+}
+
+impl NewReading {
+    pub fn without_photo(value: Pm25) -> Self {
+        Self { value, photo: None }
+    }
 }
 
 /// One press of Log: who, when, which event and the note, owning a smell report, a PM2.5
@@ -473,7 +565,7 @@ pub struct NewEntry {
     pub observed_at: DateTime<Utc>,
     pub note: Option<Note>,
     pub report: Option<ReportValues>,
-    pub reading: Option<Pm25>,
+    pub reading: Option<NewReading>,
 }
 
 impl NewEntry {
@@ -483,7 +575,7 @@ impl NewEntry {
         observed_at: DateTime<Utc>,
         note: Option<Note>,
         report: Option<ReportValues>,
-        reading: Option<Pm25>,
+        reading: Option<NewReading>,
     ) -> Result<Self, DomainError> {
         if report.is_none() && reading.is_none() {
             return Err(DomainError::EntryWithoutChildren);
@@ -656,6 +748,20 @@ mod tests {
             id: ReadingId(7),
             log_entry_id: LogEntryId(3),
             value: Pm25::new(12.5).unwrap(),
+            photo: None,
+        }
+    }
+
+    const SHA: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    fn photo() -> Pm25Photo {
+        let sha = Sha256Hex::parse(SHA).unwrap();
+        let taken_at = t("2026-11-02T13:35:00Z");
+        Pm25Photo {
+            key: PhotoKey::for_photo(&sha, taken_at),
+            bytes: 250_000,
+            sha256: sha,
+            taken_at,
         }
     }
 
@@ -694,6 +800,71 @@ mod tests {
         assert_eq!(check.snapshot()["event_id"], json!(null));
         assert_eq!(check.snapshot()["report"]["rooms"], json!([]));
         assert_eq!(check.snapshot()["reading"], json!(null));
+    }
+
+    #[test]
+    fn a_snapshot_without_photo_is_unchanged() {
+        let plain = entry(Some(report(&[(2, 6)])), Some(reading()));
+        assert_eq!(
+            plain.snapshot(),
+            json!({
+                "id": 3,
+                "user_id": 1,
+                "event_id": 4,
+                "observed_at": "2026-01-15T19:00:00Z",
+                "recorded_at": "2026-01-15T19:00:00.123456Z",
+                "note": "from the balcony",
+                "deleted_at": null,
+                "report": {
+                    "id": 9,
+                    "rooms": [{ "room": 2, "level": 6 }],
+                    "symptoms": [1, 2],
+                },
+                "reading": { "id": 7, "value": 12.5 },
+            })
+        );
+    }
+
+    #[test]
+    fn a_snapshot_with_photo_includes_it() {
+        let with_photo = entry(
+            None,
+            Some(Pm25Reading {
+                photo: Some(photo()),
+                ..reading()
+            }),
+        );
+        assert_eq!(
+            with_photo.snapshot()["reading"]["photo"],
+            json!({
+                "object_key": format!("photos/2026/11/{SHA}.jpg"),
+                "bytes": 250_000,
+                "sha256": SHA,
+                "taken_at": "2026-11-02T13:35:00Z",
+            })
+        );
+    }
+
+    #[test]
+    fn photo_keys_reject_paths() {
+        let valid = format!("photos/2026/11/{SHA}.jpg");
+        assert_eq!(PhotoKey::parse(&valid).unwrap().as_str(), valid);
+        for bad in [
+            "../x".to_owned(),
+            "photos/2026/11/abc.jpg".to_owned(),
+            format!("photos/2026/11/{}.jpg", SHA.to_uppercase()),
+            format!("photos/2026/13/{SHA}.jpg"),
+            format!("photos/2026/00/{SHA}.jpg"),
+            format!("photos/../11/{SHA}.jpg"),
+            format!("photos/2026/11/{SHA}.png"),
+            format!("photos/2026/11/x/{SHA}.jpg"),
+        ] {
+            assert_eq!(
+                PhotoKey::parse(&bad),
+                Err(DomainError::InvalidPhotoRef),
+                "{bad}"
+            );
+        }
     }
 
     #[test]
@@ -737,7 +908,8 @@ mod tests {
         };
         assert_eq!(new(None, None), Err(DomainError::EntryWithoutChildren));
         assert!(new(Some(values(&[(1, 1)])), None).is_ok());
-        assert!(new(None, Some(Pm25::new(3.0).unwrap())).is_ok());
+        let value = Pm25::new(3.0).unwrap();
+        assert!(new(None, Some(NewReading { value, photo: None })).is_ok());
     }
 
     #[test]

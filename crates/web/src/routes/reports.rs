@@ -134,6 +134,7 @@ pub(crate) async fn correct_form<S: Store + Clone + 'static>(
             .as_ref()
             .map(|n| n.as_str().to_owned())
             .unwrap_or_default(),
+        photo_fields: Vec::new(),
     };
     let correct_page = correct_page(&state, &user, tr, &report, draft, None).await?;
     page(StatusCode::OK, &correct_page)

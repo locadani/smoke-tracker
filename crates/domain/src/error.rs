@@ -50,4 +50,7 @@ pub enum DomainError {
 
     #[error("a password needs 10–128 characters, got {0}")]
     InvalidPasswordLength(usize),
+
+    #[error("not a valid photo reference")]
+    InvalidPhotoRef,
 }

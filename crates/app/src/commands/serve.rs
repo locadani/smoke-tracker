@@ -50,7 +50,15 @@ pub async fn run<S: Store + Clone + 'static>(
         config.web.schedule,
     ));
     let invites = tokio::spawn(sweep_invites(store.clone(), clock.clone()));
-    let app = smoke_web::router(AppState::new(store, clock, config.web));
+    let photos = config
+        .photos
+        .build_store()
+        .context("could not set up photo storage")?;
+    let reader = config
+        .photos
+        .build_reader()
+        .context("could not set up the PM2.5 reader")?;
+    let app = smoke_web::router(AppState::new(store, clock, config.web, photos, reader));
     let served = smoke_web::serve(listener, app, shutdown_signal()).await;
     sweeper.abort();
     closer.abort();

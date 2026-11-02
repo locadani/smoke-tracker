@@ -1,0 +1,1 @@
+{"responses":[{"textAnnotations":[{"description":"full text","boundingPoly":{"vertices":[{"x":0,"y":0},{"x":600,"y":0},{"x":600,"y":400},{"x":0,"y":400}]}},{"description":"20:59","boundingPoly":{"vertices":[{"x":10,"y":10},{"x":90,"y":10},{"x":90,"y":30},{"x":10,"y":30}]}}]}]}

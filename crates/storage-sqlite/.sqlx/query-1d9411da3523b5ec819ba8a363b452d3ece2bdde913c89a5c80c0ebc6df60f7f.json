@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO pm25_photos (pm25_reading_id, object_key, bytes, sha256, taken_at) VALUES ($1, $2, $3, $4, $5)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "1d9411da3523b5ec819ba8a363b452d3ece2bdde913c89a5c80c0ebc6df60f7f"
+}

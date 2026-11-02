@@ -14,7 +14,7 @@ use smoke_domain::clock::{Clock, SystemClock};
 use smoke_domain::types::Username;
 use tracing_subscriber::EnvFilter;
 
-use crate::backend::{Backend, with_store};
+use crate::backend::{Backend, BackendKind, with_store};
 use crate::cli::{Cli, Command};
 use crate::commands::{create_resident, rename_user, serve, verify_audit};
 use crate::config::{ServeConfig, env};
@@ -42,6 +42,13 @@ pub async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             let config = ServeConfig::from_lookup(env)?;
             let backend = Backend::connect(&database_url, clock.clone()).await?;
             backend.prepare().await?;
+            if BackendKind::of(&database_url)
+                .is_ok_and(|kind| config::PhotoLocation::from_lookup(env).is_ephemeral_for(kind))
+            {
+                tracing::warn!(
+                    "PHOTO_BUCKET is not set: photos are written to the container disk and are lost on restart"
+                );
+            }
             with_store!(backend, |store| serve::run(store, clock, config).await)?;
         }
         Command::Migrate => {
@@ -75,7 +82,20 @@ pub async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             let backend = Backend::connect(&database_url, clock).await?;
             let report = with_store!(&backend, |store| verify_audit::run(store).await)?;
             print!("{}", verify_audit::describe(&report));
-            if !report.is_ok() {
+            let store_or_reason = BackendKind::of(&database_url)
+                .map_err(|e| e.to_string())
+                .and_then(|kind| {
+                    verify_audit::photo_store(kind, &config::PhotoLocation::from_lookup(env))
+                });
+            let photos = match store_or_reason {
+                Ok(photos) => {
+                    with_store!(&backend, |store| verify_audit::check_photos(store, &photos)
+                        .await)?
+                }
+                Err(reason) => verify_audit::PhotoCheck::NotChecked(reason),
+            };
+            print!("{}", photos.describe());
+            if !report.is_ok() || !photos.is_ok() {
                 return Ok(ExitCode::from(1));
             }
         }

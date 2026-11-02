@@ -2,6 +2,9 @@
 {% import "components.html" as c %}
 {% import "report_fields.html" as f %}
 {% block title %}{{ tr.t("log-title") }}{% endblock %}
+{% block scripts %}
+  <script src="/static/js/pm25-photo.js" type="module"></script>
+{% endblock %}
 {% block content %}
 <h1>{{ tr.t("log-title") }}</h1>
 {% if let Some(saved) = saved %}{% call c::notice(tr.t(saved), false) %}{% endcall %}{% endif %}
@@ -31,7 +34,10 @@
 <p class="stats-caption">{{ tr.t("summary-caption") }}</p>
 {% if let Some(form) = form %}
 {% if let Some(error) = form.error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
-<form method="post" action="/log" class="stack">
+<form method="post" action="/log" class="stack" enctype="multipart/form-data">
+  {% for (name, value) in form.photo_fields %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
   {% call c::collapsible(tr.t("log-time"), form.time_hint(tr), tr.t("action-change"), !form.observed_at.is_empty()) %}
   <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" aria-label="{{ tr.t("log-time") }}">
   {% endcall %}
@@ -41,6 +47,21 @@
     <span><strong>PM2.5</strong> <span class="muted">· {{ tr.t("optional") }}</span></span>
     <span class="unit"><input type="number" name="pm25" min="0" max="1000" step="0.1" inputmode="decimal" value="{{ form.pm25 }}"> µg/m³</span>
   </label>
+  <div class="photo" data-photo>
+    <button type="button" class="button" data-variant="secondary" data-pm25-photo hidden data-max-bytes="{{ form.photo_max_bytes }}" data-tz="{{ form.tz }}" data-label-close="{{ tr.t("close") }}" data-label-shutter="{{ tr.t("photo-shutter") }}" data-label-torch="{{ tr.t("photo-torch") }}">{{ tr.t("photo-take") }}</button>
+    <input type="file" accept="image/*" capture="environment" name="photo" hidden>
+    <button type="button" class="button" data-variant="secondary" data-photo-use-phone-camera hidden>{{ tr.t("photo-use-phone-camera") }}</button>
+    <p class="muted" data-photo-camera-hint hidden>{{ tr.t("photo-camera-hint") }}</p>
+    <div data-photo-preview hidden><img alt="" data-photo-preview-image></div>
+    <p class="photo-status" data-photo-read-ok hidden>{{ tr.t("photo-read-ok") }}</p>
+    <p class="photo-status" data-photo-invalid role="alert" hidden>{{ tr.t("photo-invalid") }}</p>
+    <p class="photo-status" data-photo-read-none hidden>{{ tr.t("photo-read-none") }}</p>
+    <p class="photo-status" data-photo-attached{% if form.photo_fields.is_empty() %} hidden{% endif %}>{{ tr.t("photo-attached") }}</p>
+    <div class="actions">
+      <button type="button" class="button" data-variant="secondary" data-photo-retake hidden>{{ tr.t("photo-retake") }}</button>
+      <button type="button" class="button" data-variant="secondary" data-photo-remove{% if form.photo_fields.is_empty() %} hidden{% endif %}>{{ tr.t("photo-remove") }}</button>
+    </div>
+  </div>
   {% endcall %}
   {% endcall %}
   <div class="actions">

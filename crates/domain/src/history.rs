@@ -412,6 +412,7 @@ mod tests {
             id: crate::types::ReadingId(2),
             log_entry_id: LogEntryId(3),
             value: crate::types::Pm25::new(12.0).unwrap(),
+            photo: None,
         });
         let mut after = before.clone();
         after.note = Note::parse(Some("windy")).unwrap();

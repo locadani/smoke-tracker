@@ -47,3 +47,8 @@ output "backup_job_name" {
   description = "Cloud Run job that runs the backup; null until attach_database_url is true."
   value       = try(google_cloud_run_v2_job.backup[0].name, null)
 }
+
+output "photos_bucket" {
+  description = "Private bucket that holds PM2.5 photos."
+  value       = google_storage_bucket.photos.name
+}

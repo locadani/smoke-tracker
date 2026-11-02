@@ -16,11 +16,11 @@ use crate::error::AppError;
 
 /// Same-origin resources only: no inline scripts or styles, no CDNs, no framing.
 pub(crate) const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; \
-    img-src 'self'; connect-src 'self'; font-src 'self'; manifest-src 'self'; \
+    img-src 'self' blob:; connect-src 'self'; font-src 'self'; manifest-src 'self'; \
     worker-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; \
     frame-ancestors 'none'";
 
-const PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=(), payment=()";
+const PERMISSIONS_POLICY: &str = "camera=(self), microphone=(), geolocation=(), payment=()";
 const HSTS: &str = "max-age=63072000";
 
 /// Adds the security headers. Setup links send no `Referer` at all (their path is a password

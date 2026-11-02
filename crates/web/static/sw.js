@@ -1,8 +1,9 @@
 // The service worker (spec §9.1), served at /sw.js so its scope is the whole app. It keeps the
 // static assets and an offline page. Pages and form posts always go to the network: there is
 // no offline logging. Assets are fetched first and the cached copy is the fallback, so a new
-// deploy is never hidden behind an old cache.
-const CACHE = "smoke-tracker-v2";
+// deploy is never hidden behind an old cache. Photos (/photos/, /log/pm25/read) are private and
+// never touch the cache.
+const CACHE = "smoke-tracker-v3";
 const PRECACHE = [
   "/offline",
   "/static/app.css",
@@ -43,6 +44,9 @@ self.addEventListener("fetch", (event) => {
   const request = event.request;
   const url = new URL(request.url);
   if (request.method !== "GET" || url.origin !== self.location.origin) {
+    return;
+  }
+  if (url.pathname.startsWith("/photos/") || url.pathname === "/log/pm25/read") {
     return;
   }
   if (request.mode === "navigate") {

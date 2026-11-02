@@ -16,24 +16,26 @@ use smoke_domain::logbook::{
     EventChoice, LogError, ReadingEntry, SmellEntry, log_reading, log_smell,
 };
 use smoke_domain::permissions::{Action, can};
-use smoke_domain::records::{Event, Note, ReportValues, Room, RoomLevel, Symptom, User};
+use smoke_domain::records::{
+    Event, NewReading, Note, ReportValues, Room, RoomLevel, Symptom, User,
+};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, Level, Pm25, Role, RoomId, SymptomId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
-use crate::forms::Pairs;
+use crate::forms::{Pairs, Upload};
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::log::{Draft, log_page, offered};
-use crate::routes::{notices, refusal};
+use crate::routes::{notices, photos, refusal};
 use crate::state::AppState;
 use crate::time::{self, TimeInputError};
 
 /// The translation keys [`read`] can return, for the translation tests.
 #[cfg(test)]
-pub(crate) const FORM_ERRORS: [&str; 9] = [
+pub(crate) const FORM_ERRORS: [&str; 12] = [
     "log-error-time",
     "log-error-time-skipped",
     "log-error-pm25",
@@ -43,6 +45,9 @@ pub(crate) const FORM_ERRORS: [&str; 9] = [
     "log-error-no-smell-level",
     "log-error-form",
     "log-error-note",
+    "photo-invalid",
+    "photo-needs-pm25",
+    "photo-store-unavailable",
 ];
 
 /// What the form asks to log.
@@ -53,6 +58,15 @@ enum Entry {
         value: Pm25,
         note: Option<Note>,
     },
+}
+
+impl Entry {
+    fn has_pm25(&self) -> bool {
+        match self {
+            Self::Smell(entry) => entry.pm25.is_some(),
+            Self::Pm25Only { .. } => true,
+        }
+    }
 }
 
 /// Reads an optional `datetime-local` field; `None` when left blank.
@@ -200,7 +214,7 @@ fn read(
         observed_at,
         values,
         note,
-        pm25,
+        pm25: pm25.map(NewReading::without_photo),
     }))
 }
 
@@ -256,7 +270,10 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     State(state): State<AppState<S>>,
     CurrentUser(user): CurrentUser,
     tr: Tr,
-    form: Pairs,
+    Upload {
+        pairs: mut form,
+        photo,
+    }: Upload,
 ) -> Result<Response, AppError> {
     let now = state.clock.now();
     let schedule = state.config.schedule;
@@ -265,22 +282,42 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
         return Err(AppError::NotAllowed);
     }
     auto_close(&state.store, &schedule, now).await?;
+    let photo = match photos::intake(
+        &state.photos,
+        state.config.photo_max_bytes,
+        &mut form,
+        photo,
+    )
+    .await
+    {
+        Ok(photo) => photo,
+        Err(problem) => return photos::refuse(&state, &user, tr, now, &form, problem).await,
+    };
     let rooms = state.store.rooms().await?;
     let symptoms = state.store.symptoms().await?;
     let entry = match read(&form, &rooms, &symptoms, schedule.tz(), now) {
         Ok(entry) => entry,
         Err(key) => return back_to_form(&state, &user, tr, now, &form, key).await,
     };
+    if photo.is_some() && !entry.has_pm25() {
+        return back_to_form(&state, &user, tr, now, &form, "photo-needs-pm25").await;
+    }
     let entry = match entry {
         Entry::Pm25Only {
             observed_at,
             value,
             note,
         } => {
+            let reading = match photos::finalise(&state, photo.as_ref(), value, now).await {
+                Ok(reading) => reading,
+                Err(problem) => {
+                    return photos::refuse(&state, &user, tr, now, &form, problem).await;
+                }
+            };
             let mut tx = state.store.begin(Some(user.id)).await?;
             let reading = ReadingEntry {
                 observed_at,
-                value,
+                reading,
                 note,
             };
             if let Err(error) = log_reading(&mut tx, &actor, reading, now).await {
@@ -311,6 +348,13 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
     } else {
         "/?saved=report"
     };
+    let mut entry = entry;
+    if let Some(value) = entry.pm25.as_ref().map(|reading| reading.value) {
+        match photos::finalise(&state, photo.as_ref(), value, now).await {
+            Ok(reading) => entry.pm25 = Some(reading),
+            Err(problem) => return photos::refuse(&state, &user, tr, now, &form, problem).await,
+        }
+    }
     let mut tx = state.store.begin(Some(user.id)).await?;
     match log_smell(&mut tx, &actor, entry.clone(), choice, &schedule, now).await {
         Ok(_) => {}
@@ -335,7 +379,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
 }
 
 /// The Log screen again, with what was typed and what to fix.
-async fn back_to_form<S: Store>(
+pub(crate) async fn back_to_form<S: Store>(
     state: &AppState<S>,
     user: &User,
     tr: Tr,
@@ -591,7 +635,11 @@ mod tests {
             panic!("rooms with a level above 0: a smell report");
         };
         assert_eq!(smell.values.intensity().get(), 6);
-        assert_eq!(smell.pm25.map(Pm25::ugm3), Some(40.0), "PM2.5 alongside");
+        assert_eq!(
+            smell.pm25.map(|reading| reading.value.ugm3()),
+            Some(40.0),
+            "PM2.5 alongside"
+        );
 
         let Ok(Entry::Smell(check)) =
             read_form(&[("action", "log"), ("room", "1"), ("level-1", "0")])
