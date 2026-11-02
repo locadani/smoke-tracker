@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT p.id, p.log_entry_id, p.value_ugm3, ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" FROM pm25_readings p LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id JOIN log_entries e ON e.id = p.log_entry_id WHERE e.deleted_at IS NULL AND e.observed_at >= $1 AND e.observed_at < $2",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "log_entry_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "log_entry_id"
+          }
+        }
+      },
+      {
+        "name": "value_ugm3",
+        "ordinal": 2,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "value_ugm3"
+          }
+        }
+      },
+      {
+        "name": "object_key?",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "object_key"
+          }
+        }
+      },
+      {
+        "name": "bytes?",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "bytes"
+          }
+        }
+      },
+      {
+        "name": "sha256?",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "sha256"
+          }
+        }
+      },
+      {
+        "name": "taken_at?",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "taken_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f2de8fa9127001a880ac54c45d603c816463d1ae6911105b8a97e3b5dce3f583"
+}

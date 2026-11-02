@@ -8,7 +8,9 @@ use smoke_domain::types::{CloseReason, ListName, Pm25, RoomArea};
 use smoke_domain::verify::{SnapshotProblem, verify_store};
 
 use crate::Fixture;
-use crate::fixture::{add_entry, add_event, add_report, report_values, scene, start};
+use crate::fixture::{
+    add_entry, add_event, add_photo_reading, add_report, photo, report_values, scene, start,
+};
 
 struct Populated {
     report: LogEntry,
@@ -401,4 +403,56 @@ pub async fn deleting_only_the_reading_of_a_combined_entry_is_detected<S: Store>
     .await
     .unwrap();
     assert_differs(fx, &[&combined]).await;
+}
+
+/// An entry whose reading has a photo, and an entry whose reading has none.
+async fn photographed_and_plain<S: Store>(fx: &Fixture<S>) -> (LogEntry, LogEntry) {
+    let scene = scene(fx).await;
+    let photographed = add_photo_reading(
+        fx,
+        &scene,
+        start() - TimeDelta::minutes(2),
+        Pm25::new(20.0).unwrap(),
+        photo(&"ab".repeat(32), start() - TimeDelta::minutes(3)),
+    )
+    .await;
+    let plain = add_entry(
+        fx,
+        &scene,
+        start() - TimeDelta::minutes(1),
+        None,
+        None,
+        Some(Pm25::new(8.0).unwrap()),
+    )
+    .await;
+    assert!(verify_store(&fx.store).await.unwrap().is_ok());
+    (photographed, plain)
+}
+
+pub async fn a_changed_photo_fingerprint_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (photographed, _) = photographed_and_plain(fx).await;
+    fx.raw(
+        "UPDATE pm25_photos SET sha256 = \
+         'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'",
+    )
+    .await
+    .unwrap();
+    assert_differs(fx, &[&photographed]).await;
+}
+
+pub async fn a_relinked_photo_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (photographed, plain) = photographed_and_plain(fx).await;
+    fx.raw(
+        "UPDATE pm25_photos SET pm25_reading_id = \
+         (SELECT id FROM pm25_readings WHERE id NOT IN (SELECT pm25_reading_id FROM pm25_photos))",
+    )
+    .await
+    .unwrap();
+    assert_differs(fx, &[&photographed, &plain]).await;
+}
+
+pub async fn a_deleted_photo_row_is_detected<S: Store>(fx: &Fixture<S>) {
+    let (photographed, _) = photographed_and_plain(fx).await;
+    fx.raw("DELETE FROM pm25_photos").await.unwrap();
+    assert_differs(fx, &[&photographed]).await;
 }

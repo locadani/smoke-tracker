@@ -1,0 +1,101 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "SELECT p.id, p.log_entry_id, p.value_ugm3, ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" FROM pm25_readings p LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id JOIN log_entries e ON e.id = p.log_entry_id WHERE e.deleted_at IS NULL AND e.observed_at >= $1 AND e.observed_at < $2",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "ordinal": 1,
+        "name": "log_entry_id",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "log_entry_id"
+          }
+        }
+      },
+      {
+        "ordinal": 2,
+        "name": "value_ugm3",
+        "type_info": "Float8",
+        "origin": {
+          "Table": {
+            "table": "pm25_readings",
+            "name": "value_ugm3"
+          }
+        }
+      },
+      {
+        "ordinal": 3,
+        "name": "object_key?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "object_key"
+          }
+        }
+      },
+      {
+        "ordinal": 4,
+        "name": "bytes?",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "bytes"
+          }
+        }
+      },
+      {
+        "ordinal": 5,
+        "name": "sha256?",
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "sha256"
+          }
+        }
+      },
+      {
+        "ordinal": 6,
+        "name": "taken_at?",
+        "type_info": "Int8",
+        "origin": {
+          "Table": {
+            "table": "pm25_photos",
+            "name": "taken_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Int8",
+        "Int8"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "f2de8fa9127001a880ac54c45d603c816463d1ae6911105b8a97e3b5dce3f583"
+}

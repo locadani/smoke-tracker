@@ -7,7 +7,8 @@ use chrono::{DateTime, Utc};
 use smoke_domain::DomainError;
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::records::{
-    LogEntry, NewEntry, Note, Pm25Reading, ReportValues, RoomLevel, SmellReport,
+    LogEntry, NewEntry, Note, PhotoKey, Pm25Photo, Pm25Reading, ReportValues, RoomLevel, Sha256Hex,
+    SmellReport,
 };
 use smoke_domain::repos::{
     Commit, Conflict, EntryRepo, EntryWrites, StoreError, StoreResult, Transactional,
@@ -38,10 +39,44 @@ struct ReportParts {
     symptoms: Vec<i64>,
 }
 
-/// A reading's id and value.
+/// A reading's id and value, and its photo's columns if it has one.
 struct ReadingParts {
     id: i64,
     value_ugm3: f64,
+    photo: Option<PhotoParts>,
+}
+
+struct PhotoParts {
+    object_key: String,
+    bytes: i64,
+    sha256: String,
+    taken_at: i64,
+}
+
+impl PhotoParts {
+    /// The photo columns of a reading `LEFT JOIN`ed with its photo: all there, or none.
+    fn of(
+        object_key: Option<String>,
+        bytes: Option<i64>,
+        sha256: Option<String>,
+        taken_at: Option<i64>,
+    ) -> Option<Self> {
+        Some(Self {
+            object_key: object_key?,
+            bytes: bytes?,
+            sha256: sha256?,
+            taken_at: taken_at?,
+        })
+    }
+
+    fn into_photo(self) -> StoreResult<Pm25Photo> {
+        Ok(Pm25Photo {
+            key: PhotoKey::parse(&self.object_key).map_err(corrupt)?,
+            bytes: u32::try_from(self.bytes).map_err(corrupt)?,
+            sha256: Sha256Hex::parse(&self.sha256).map_err(corrupt)?,
+            taken_at: instant(self.taken_at)?,
+        })
+    }
 }
 
 async fn load(conn: &mut SqliteConnection, row: EntryRow) -> StoreResult<LogEntry> {
@@ -82,7 +117,11 @@ async fn load(conn: &mut SqliteConnection, row: EntryRow) -> StoreResult<LogEntr
         None => None,
     };
     let reading = sqlx::query!(
-        "SELECT id, value_ugm3 FROM pm25_readings WHERE log_entry_id = $1",
+        "SELECT p.id, p.value_ugm3, \
+                ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", \
+                ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" \
+         FROM pm25_readings p LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id \
+         WHERE p.log_entry_id = $1",
         row.id
     )
     .fetch_optional(&mut *conn)
@@ -91,6 +130,7 @@ async fn load(conn: &mut SqliteConnection, row: EntryRow) -> StoreResult<LogEntr
     .map(|r| ReadingParts {
         id: r.id,
         value_ugm3: r.value_ugm3,
+        photo: PhotoParts::of(r.object_key, r.bytes, r.sha256, r.taken_at),
     });
     assemble(row, report, reading)
 }
@@ -135,7 +175,7 @@ fn assemble(
                 id: ReadingId(parts.id),
                 log_entry_id: entry_id,
                 value: Pm25::new(parts.value_ugm3).map_err(corrupt)?,
-                photo: None,
+                photo: parts.photo.map(PhotoParts::into_photo).transpose()?,
             })
         })
         .transpose()?;
@@ -388,7 +428,11 @@ impl EntryRepo for SqliteStore {
         .await
         .db()?;
         let readings = sqlx::query!(
-            "SELECT p.id, p.log_entry_id, p.value_ugm3 FROM pm25_readings p \
+            "SELECT p.id, p.log_entry_id, p.value_ugm3, \
+                    ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", \
+                    ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" \
+             FROM pm25_readings p \
+             LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id \
              JOIN log_entries e ON e.id = p.log_entry_id \
              WHERE e.deleted_at IS NULL AND e.event_id = $1",
             event.0,
@@ -411,6 +455,7 @@ impl EntryRepo for SqliteStore {
                     ReadingParts {
                         id: r.id,
                         value_ugm3: r.value_ugm3,
+                        photo: PhotoParts::of(r.object_key, r.bytes, r.sha256, r.taken_at),
                     },
                 )
             }),
@@ -472,7 +517,11 @@ impl EntryRepo for SqliteStore {
         .await
         .db()?;
         let readings = sqlx::query!(
-            "SELECT p.id, p.log_entry_id, p.value_ugm3 FROM pm25_readings p \
+            "SELECT p.id, p.log_entry_id, p.value_ugm3, \
+                    ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", \
+                    ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" \
+             FROM pm25_readings p \
+             LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id \
              JOIN log_entries e ON e.id = p.log_entry_id \
              WHERE e.deleted_at IS NULL AND e.observed_at >= $1 AND e.observed_at < $2",
             from,
@@ -496,6 +545,7 @@ impl EntryRepo for SqliteStore {
                     ReadingParts {
                         id: r.id,
                         value_ugm3: r.value_ugm3,
+                        photo: PhotoParts::of(r.object_key, r.bytes, r.sha256, r.taken_at),
                     },
                 )
             }),
@@ -540,14 +590,29 @@ impl EntryWrites for SqliteTx {
             insert_links(self.conn(), report_id, values).await?;
         }
         if let Some(reading) = new.reading {
-            sqlx::query!(
-                "INSERT INTO pm25_readings (log_entry_id, value_ugm3) VALUES ($1, $2)",
+            let reading_id = sqlx::query_scalar!(
+                "INSERT INTO pm25_readings (log_entry_id, value_ugm3) VALUES ($1, $2) \
+                 RETURNING id AS \"id!\"",
                 id,
                 reading.value.ugm3(),
             )
-            .execute(self.conn())
+            .fetch_one(self.conn())
             .await
             .db()?;
+            if let Some(photo) = &reading.photo {
+                sqlx::query!(
+                    "INSERT INTO pm25_photos (pm25_reading_id, object_key, bytes, sha256, taken_at) \
+                     VALUES ($1, $2, $3, $4, $5)",
+                    reading_id,
+                    photo.key.as_str(),
+                    i64::from(photo.bytes),
+                    photo.sha256.as_str(),
+                    micros(photo.taken_at),
+                )
+                .execute(self.conn())
+                .await
+                .db()?;
+            }
         }
         let entry = require(self.conn(), LogEntryId(id)).await?;
         self.record(AuditAction::Create, None, &entry).await?;

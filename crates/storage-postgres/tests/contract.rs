@@ -169,6 +169,8 @@ macro_rules! migration_0005_checks {
 migration_0005_checks! {
     migration_0005_creates_one_entry_per_report_and_per_unpaired_reading =>
         migrations::migration_0005_creates_one_entry_per_report_and_per_unpaired_reading,
+    migration_0006_leaves_earlier_entries_verifying_clean =>
+        migrations::verify_audit_is_clean_after_0006,
     migration_0005_pairs_by_adjacent_create_entries => migrations::pairs_by_adjacent_create_entries,
     migration_0005_never_pairs_across_people => migrations::never_pairs_across_people,
     migration_0005_keeps_a_reading_after_a_reading_alone =>
