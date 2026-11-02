@@ -92,6 +92,7 @@ const ASSETS: &[Asset] = &[
     asset!("js/menu.js", "text/javascript; charset=utf-8"),
     asset!("js/person-filter.js", "text/javascript; charset=utf-8"),
     asset!("js/pm25-camera.js", "text/javascript; charset=utf-8"),
+    asset!("js/pm25-camera-zoom.js", "text/javascript; charset=utf-8"),
     asset!("js/pm25-photo.js", "text/javascript; charset=utf-8"),
     asset!("js/range-output.js", "text/javascript; charset=utf-8"),
     asset!("js/series-switch.js", "text/javascript; charset=utf-8"),
