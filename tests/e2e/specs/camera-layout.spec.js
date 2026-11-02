@@ -50,6 +50,28 @@ async function colourAt(page, x, y) {
 
 const isGreen = ([r, g, b]) => g > 150 && r < 80 && b < 80;
 
+// WebKit on Linux never reports the frame size of the first camera stream a browser opens (later
+// ones are fine; real iPhones are not affected), so each WebKit browser opens a throwaway one first.
+test.beforeAll(async ({ browser, browserName }, info) => {
+  if (browserName !== "webkit") {
+    return;
+  }
+  const context = await browser.newContext({ baseURL: info.project.use.baseURL });
+  const page = await context.newPage();
+  await fakeCamera(page, 640, 480);
+  await page.goto("/login");
+  await page.evaluate(async () => {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
+    document.body.append(video);
+    // Not awaited: on that first stream play() never settles either.
+    video.play();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  });
+  await context.close();
+});
+
 async function box(page, selector) {
   return page.locator(selector).boundingBox();
 }
