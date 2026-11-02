@@ -158,6 +158,55 @@ test.describe("photo on the log form", () => {
     await expect.poll(() => posts).toBe(1);
   });
 
+  test("a_log_tap_during_a_retake_read_never_saves_the_unseen_new_number", async ({ page }) => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    let reads = 0;
+    let secondInFlight;
+    const secondStarted = new Promise((resolve) => {
+      secondInFlight = resolve;
+    });
+    await page.route("**/log/pm25/read", async (route) => {
+      reads += 1;
+      if (reads === 2) {
+        secondInFlight();
+        await gate;
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: reads === 1 ? '{"value":10}' : '{"value":23}',
+      });
+    });
+    const posted = [];
+    await page.route("**/log", (route) => {
+      if (route.request().method() === "POST") {
+        posted.push(route.request().postData() ?? "");
+      }
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<p>ok</p>" });
+    });
+    const field = page.locator("input[name=pm25]");
+    const bytes = await syntheticPhoto(page);
+    await choose(page, bytes);
+    await expect(field).toHaveValue("10");
+    await choose(page, bytes);
+    await secondStarted;
+    await page.click("button[value=log]", { noWaitAfter: true });
+    release();
+    await expect(field).toHaveValue("23");
+    await expect(page.locator("[data-photo-read-ok]")).toBeVisible();
+    await expect(field).toBeFocused();
+    await page.waitForTimeout(300);
+    expect(posted.length).toBe(0);
+
+    await page.click("button[value=log]");
+    await expect.poll(() => posted.length).toBe(1);
+    expect(posted[0]).toContain("23");
+    expect(posted[0]).not.toMatch(/name="pm25"\r\n\r\n10\r\n/);
+  });
+
   test("the_ladder_alone_returns_a_jpeg_within_the_limit", async ({ page }) => {
     const result = await page.evaluate(async (limit) => {
       const { shrinkToLimit } = await import("/static/js/pm25-photo.js");

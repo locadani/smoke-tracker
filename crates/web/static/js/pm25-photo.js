@@ -279,9 +279,9 @@ function setup(root) {
     if (busy) {
       event.preventDefault();
       const submitter = event.submitter;
-      const wasEmpty = field.value === "";
+      const seen = field.value;
       working.then(() => {
-        if (wasEmpty && "fromPhoto" in field.dataset) {
+        if (field.value !== seen) {
           field.focus();
           return;
         }
