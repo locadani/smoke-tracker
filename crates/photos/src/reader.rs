@@ -170,7 +170,12 @@ fn is_label(text: &str) -> bool {
     ["PM2.5", "PM2,5", "PM25"].iter().any(|l| text.contains(l))
 }
 
+/// Dashes and bullets the sensor display shows beside the digits, which Vision can glue onto
+/// the number ("20-").
+const DISPLAY_MARKS: [char; 8] = ['-', '‐', '–', '—', '−', '_', '·', '•'];
+
 fn parse_number(text: &str) -> Option<f64> {
+    let text = text.trim_matches(DISPLAY_MARKS);
     let (whole, fraction) = match text.split_once('.') {
         Some((whole, fraction)) => (whole, Some(fraction)),
         None => (text, None),
@@ -282,6 +287,28 @@ mod tests {
     #[test]
     fn a_time_is_not_a_number() {
         assert_eq!(pick("vision-a_time.json"), None);
+    }
+
+    #[test]
+    fn a_real_sensor_photo_with_the_time_burnt_in() {
+        assert_eq!(pick("vision-alpstuga_number.json"), Some(18.0));
+    }
+
+    #[test]
+    fn a_display_mark_stuck_to_the_number_is_dropped() {
+        assert_eq!(pick("vision-alpstuga_number_with_mark.json"), Some(20.0));
+    }
+
+    #[test]
+    fn only_display_marks_around_a_number_are_dropped() {
+        assert_eq!(parse_number("20-"), Some(20.0));
+        assert_eq!(parse_number("-20"), Some(20.0));
+        assert_eq!(parse_number("•12.5–"), Some(12.5));
+        assert_eq!(parse_number("-"), None);
+        assert_eq!(parse_number("20a"), None);
+        assert_eq!(parse_number("2-0"), None);
+        assert_eq!(parse_number("23:45"), None);
+        assert_eq!(parse_number("02.11.2026"), None);
     }
 
     #[tokio::test]
