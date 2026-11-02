@@ -153,6 +153,21 @@ test.describe("photo on the log form", () => {
     expect(result.width).toBeLessThanOrEqual(2400);
   });
 
+  test("a_photo_that_cannot_fit_is_refused_with_the_page_message", async ({ page }) => {
+    await page.route("**/log/pm25/read", (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: '{"value":null}' }),
+    );
+    await page.locator("[data-pm25-photo]").evaluate((button) => {
+      button.dataset.maxBytes = "500";
+    });
+    await choose(page, await syntheticPhoto(page));
+    await expect(page.locator("[data-photo-invalid]")).toBeVisible();
+    await expect(page.locator("[data-photo-preview]")).toBeHidden();
+    expect(
+      await page.evaluate(() => document.querySelector("input[name=photo]").files.length),
+    ).toBe(0);
+  });
+
   test("remove_clears_the_photo", async ({ page }) => {
     await page.route("**/log/pm25/read", (route) =>
       route.fulfill({ status: 200, contentType: "application/json", body: '{"value":null}' }),

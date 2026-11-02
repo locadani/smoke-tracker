@@ -54,6 +54,7 @@
     <p class="muted" data-photo-camera-hint hidden>{{ tr.t("photo-camera-hint") }}</p>
     <div data-photo-preview hidden><img alt="" data-photo-preview-image></div>
     <p class="photo-status" data-photo-read-ok hidden>{{ tr.t("photo-read-ok") }}</p>
+    <p class="photo-status" data-photo-invalid role="alert" hidden>{{ tr.t("photo-invalid") }}</p>
     <p class="photo-status" data-photo-read-none hidden>{{ tr.t("photo-read-none") }}</p>
     <p class="photo-status" data-photo-attached{% if form.photo_fields.is_empty() %} hidden{% endif %}>{{ tr.t("photo-attached") }}</p>
     <div class="actions">

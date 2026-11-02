@@ -19,7 +19,11 @@ function element(tag, className, attributes = {}) {
  */
 export async function capture({ timeZone, labels, hint }) {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: "environment" },
+    video: {
+      facingMode: "environment",
+      width: { ideal: 4096 },
+      height: { ideal: 2160 },
+    },
     audio: false,
   });
   const track = stream.getVideoTracks()[0];

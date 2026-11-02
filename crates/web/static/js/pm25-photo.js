@@ -93,11 +93,11 @@ function setup(root) {
   const preview = root.querySelector("[data-photo-preview]");
   const image = root.querySelector("[data-photo-preview-image]");
   const readOk = root.querySelector("[data-photo-read-ok]");
+  const invalid = root.querySelector("[data-photo-invalid]");
   const readNone = root.querySelector("[data-photo-read-none]");
   const attached = root.querySelector("[data-photo-attached]");
   const retake = root.querySelector("[data-photo-retake]");
   const remove = root.querySelector("[data-photo-remove]");
-  const maxBytes = Number(button.dataset.maxBytes);
   const timeZone = button.dataset.tz;
   let working = Promise.resolve();
   let busy = false;
@@ -123,6 +123,7 @@ function setup(root) {
   function clearRead() {
     readOk.hidden = true;
     readNone.hidden = true;
+    invalid.hidden = true;
   }
 
   function dropPreview() {
@@ -165,9 +166,16 @@ function setup(root) {
   async function attach(source, takenAt) {
     const mine = ++generation;
     clearRead();
-    const shrunk = await shrinkToLimit(source, { maxBytes, takenAt, timeZone });
+    const shrunk = await shrinkToLimit(source, {
+      maxBytes: Number(button.dataset.maxBytes),
+      takenAt,
+      timeZone,
+    });
     if (mine !== generation) {
       return;
+    }
+    if (!shrunk.fits) {
+      throw new Error("photo too large");
     }
     const upload = new File([shrunk.blob], "pm25.jpg", { type: "image/jpeg" });
     const transfer = new DataTransfer();
@@ -193,7 +201,7 @@ function setup(root) {
         generation += 1;
         file.value = "";
         clearRead();
-        readNone.hidden = false;
+        invalid.hidden = false;
       })
       .finally(() => {
         busy = false;
