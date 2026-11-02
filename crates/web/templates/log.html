@@ -58,7 +58,6 @@
     <p class="photo-status" data-photo-read-none hidden>{{ tr.t("photo-read-none") }}</p>
     <p class="photo-status" data-photo-attached{% if form.photo_fields.is_empty() %} hidden{% endif %}>{{ tr.t("photo-attached") }}</p>
     <div class="actions">
-      <button type="button" class="button" data-variant="secondary" data-photo-retake hidden>{{ tr.t("photo-retake") }}</button>
       <button type="button" class="button" data-variant="secondary" data-photo-remove{% if form.photo_fields.is_empty() %} hidden{% endif %}>{{ tr.t("photo-remove") }}</button>
     </div>
   </div>

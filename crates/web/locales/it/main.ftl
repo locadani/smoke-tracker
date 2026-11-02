@@ -50,7 +50,6 @@ photo-store-unavailable = Al momento non è stato possibile salvare la foto. Non
 photo-take = 📷 Fotografa il sensore
 photo-read-ok = Letto dalla foto, controllalo
 photo-read-none = Non sono riuscito a leggere il numero, scrivilo
-photo-retake = Rifai la foto
 photo-remove = Rimuovi la foto
 photo-attached = Foto allegata ✓
 photo-card-title = Foto del sensore

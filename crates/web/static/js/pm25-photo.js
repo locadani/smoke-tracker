@@ -121,10 +121,10 @@ function setup(root) {
   const invalid = root.querySelector("[data-photo-invalid]");
   const readNone = root.querySelector("[data-photo-read-none]");
   const attached = root.querySelector("[data-photo-attached]");
-  const retake = root.querySelector("[data-photo-retake]");
   const remove = root.querySelector("[data-photo-remove]");
   const timeZone = button.dataset.tz;
-  button.hidden = false;
+  // One photo per log: the take button shows only while none is attached.
+  button.hidden = !attached.hidden;
   let working = Promise.resolve();
   let busy = false;
   let generation = 0;
@@ -222,20 +222,23 @@ function setup(root) {
     image.src = previewUrl;
     preview.hidden = false;
     attached.hidden = false;
-    retake.hidden = false;
     remove.hidden = false;
+    button.hidden = true;
+    phone.hidden = true;
     // The reader gets the picture without the burnt-in time: its digits are not the sensor's.
     await read(shrunk.plain, mine);
   }
 
   function run(source, takenAt) {
     busy = true;
+    button.hidden = true;
     working = attach(source, takenAt)
       .catch(() => {
         generation += 1;
         file.value = "";
         clearRead();
         invalid.hidden = false;
+        button.hidden = !attached.hidden;
       })
       .finally(() => {
         busy = false;
@@ -251,10 +254,14 @@ function setup(root) {
     file.value = "";
     dropPreview();
     clearRead();
+    // A number read from the photo goes with it, so the next photo can fill the field again.
+    if ("fromPhoto" in field.dataset) {
+      field.value = "";
+    }
     clearFromPhoto();
     attached.hidden = true;
-    retake.hidden = true;
     remove.hidden = true;
+    button.hidden = false;
   }
 
   async function take() {
@@ -283,7 +290,6 @@ function setup(root) {
   }
 
   button.addEventListener("click", take);
-  retake.addEventListener("click", take);
   phone.addEventListener("click", () => {
     phone.hidden = true;
     file.click();
