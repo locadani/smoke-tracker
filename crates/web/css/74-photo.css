@@ -35,4 +35,107 @@
     margin-block-start: var(--space-2);
     font-size: var(--text-label);
   }
+
+  input[data-from-photo] {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    background: var(--accent-soft);
+  }
+
+  body.camera-open {
+    overflow: hidden;
+  }
+
+  .camera {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: grid;
+    grid-template: "view bar" 1fr / 1fr auto;
+    background: var(--camera-bg);
+    color: var(--camera-fg);
+  }
+
+  .camera-video {
+    grid-area: view;
+    inline-size: 100%;
+    block-size: 100%;
+    min-block-size: 0;
+    object-fit: contain;
+  }
+
+  .camera-guide {
+    grid-area: view;
+    place-self: center;
+    inline-size: 70%;
+    block-size: 30%;
+    border: 2px solid var(--camera-line);
+    border-radius: var(--radius-box);
+    pointer-events: none;
+  }
+
+  .camera-clock {
+    grid-area: view;
+    place-self: start;
+    padding: var(--space-1) var(--space-2);
+    background: var(--camera-scrim);
+    font-size: var(--text-label);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .camera-hint {
+    grid-area: view;
+    place-self: end center;
+    margin: var(--space-3);
+    padding: var(--space-1) var(--space-2);
+    background: var(--camera-scrim);
+    border-radius: var(--radius-box);
+    font-size: var(--text-label);
+    text-align: center;
+  }
+
+  .camera-bar {
+    grid-area: bar;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-around;
+    padding: var(--space-4);
+  }
+
+  .camera-button,
+  .camera-shutter {
+    border: 2px solid var(--camera-fg);
+    border-radius: var(--radius-pill);
+    background: var(--camera-fill);
+    color: var(--camera-fg);
+    font-size: var(--text-card);
+    cursor: pointer;
+  }
+
+  .camera-button {
+    inline-size: 3rem;
+    block-size: 3rem;
+  }
+
+  .camera-button[aria-pressed="true"] {
+    background: var(--camera-fg);
+    color: var(--camera-bg);
+  }
+
+  .camera-shutter {
+    inline-size: 4.5rem;
+    block-size: 4.5rem;
+    background: var(--camera-fg);
+  }
+
+  @media (orientation: portrait) {
+    .camera {
+      grid-template: "view" 1fr "bar" auto / 1fr;
+    }
+
+    .camera-bar {
+      flex-direction: row;
+    }
+  }
 }

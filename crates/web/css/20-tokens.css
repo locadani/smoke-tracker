@@ -20,6 +20,12 @@
     --control-border: #7f8984;
     --shadow: 0 8px 24px rgb(0 0 0 / 12%);
     --backdrop: rgb(0 0 0 / 45%);
+    /* The camera screen is dark in both themes. */
+    --camera-bg: #000;
+    --camera-fg: #fff;
+    --camera-scrim: rgb(0 0 0 / 70%);
+    --camera-line: rgb(255 255 255 / 80%);
+    --camera-fill: rgb(255 255 255 / 15%);
 
     /* Chart lines after the first person's (which uses --accent). */
     --series-2: #3a5ba0;

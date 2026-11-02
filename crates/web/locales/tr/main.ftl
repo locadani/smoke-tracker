@@ -57,6 +57,8 @@ photo-card-title = Sensör fotoğrafı
 photo-taken-logged = Çekildi { $taken } · kaydedildi { $logged }
 photo-use-phone-camera = Telefon kamerasını kullan
 photo-camera-hint = Kamerayı ekrana doğrultun, sonra fotoğrafı çekin.
+photo-shutter = Fotoğrafı çek
+photo-torch = Fener
 photo-alt = PM2.5 sensörü ekranının fotoğrafı
 notice-dismiss = Kapat
 

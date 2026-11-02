@@ -57,6 +57,8 @@ photo-card-title = Foto del sensore
 photo-taken-logged = Scattata { $taken } · registrata { $logged }
 photo-use-phone-camera = Usa la fotocamera del telefono
 photo-camera-hint = Inquadra il display, poi scatta la foto.
+photo-shutter = Scatta la foto
+photo-torch = Torcia
 photo-alt = Foto del display del sensore PM2.5
 notice-dismiss = Ignora
 

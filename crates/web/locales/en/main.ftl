@@ -57,6 +57,8 @@ photo-card-title = Sensor photo
 photo-taken-logged = Taken { $taken } · logged { $logged }
 photo-use-phone-camera = Use phone camera
 photo-camera-hint = Point the camera at the display, then take the photo.
+photo-shutter = Take the photo
+photo-torch = Torch
 photo-alt = Photo of the PM2.5 sensor display
 notice-dismiss = Dismiss
 
