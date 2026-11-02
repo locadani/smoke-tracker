@@ -78,7 +78,7 @@ All new text in English, Italian and Turkish (the three locales).
 - **Watermark:** `dd.mm.yyyy HH:MM` in the person's time zone as the app already uses it, white on a dark box, top-left of
   the photo as it is viewed (EXIF orientation applied first). Time = when the photo was taken
   (our camera: the shutter moment; camera app: the file's `lastModified`, else now).
-- **Size limit:** default **300 KB**, set by one configuration value (env var, e.g.
+- **Size limit:** default **400 KB** (user, 2026-11-02: keeps JPEG quality 0.85 at 2400 px), set by one configuration value (env var, e.g.
   `PHOTO_MAX_BYTES`), changeable in the deploy config without a code change. The server injects the value into the
   log page (e.g. a data attribute), so phone and server always agree. The phone encodes
   JPEG, lowering quality and then resolution step by step until it fits. The server refuses
@@ -99,7 +99,7 @@ All new text in English, Italian and Turkish (the three locales).
     access.
   - Later: a pure-Rust dot-matrix reader replaces `CloudVisionReader` behind the same port.
 - A small endpoint (e.g. `POST /log/pm25/read`) takes the photo and returns the number or
-  nothing. It **stores nothing**; the photo is sent again with the form (300 KB, negligible).
+  nothing. It **stores nothing**; the photo is sent again with the form (up to 400 KB, negligible).
 - Free tier: 1,000 Vision requests/month; expected ~120.
 
 ## 7. Storage
