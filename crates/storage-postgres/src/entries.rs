@@ -135,6 +135,7 @@ fn assemble(
                 id: ReadingId(parts.id),
                 log_entry_id: entry_id,
                 value: Pm25::new(parts.value_ugm3).map_err(corrupt)?,
+                photo: None,
             })
         })
         .transpose()?;
@@ -528,11 +529,11 @@ impl EntryWrites for PostgresTx {
             .db()?;
             insert_links(self.conn(), report_id, values).await?;
         }
-        if let Some(value) = new.reading {
+        if let Some(reading) = new.reading {
             sqlx::query!(
                 "INSERT INTO pm25_readings (log_entry_id, value_ugm3) VALUES ($1, $2)",
                 id,
-                value.ugm3(),
+                reading.value.ugm3(),
             )
             .execute(self.conn())
             .await

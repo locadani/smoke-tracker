@@ -6,7 +6,7 @@ use smoke_domain::clock::Clock;
 use smoke_domain::logbook::{
     EventChoice, LogError, Logged, ReadingEntry, SmellEntry, log_reading, log_smell,
 };
-use smoke_domain::records::{Closure, Event, LogEntry, Note, ReportValues, User};
+use smoke_domain::records::{Closure, Event, LogEntry, NewReading, Note, ReportValues, User};
 use smoke_domain::repos::{
     AuditRepo, Commit, EntryRepo, EventRepo, EventWrites, ListRepo, ListWrites, Transactional,
     UserWrites, WriteTx,
@@ -105,7 +105,7 @@ where
     let mut tx = fx.store.begin(Some(who.id)).await.unwrap();
     let entry = ReadingEntry {
         observed_at: at,
-        value: Pm25::new(42.0).unwrap(),
+        reading: NewReading::without_photo(Pm25::new(42.0).unwrap()),
         note: Note::parse(note).unwrap(),
     };
     let reading = log_reading(&mut tx, &who.actor(), entry, fx.clock.now())
@@ -548,7 +548,7 @@ where
 {
     let p = people(fx).await;
     let mut entry = smell(start(), 4);
-    entry.pm25 = Some(Pm25::new(35.5).unwrap());
+    entry.pm25 = Some(NewReading::without_photo(Pm25::new(35.5).unwrap()));
     let logged = log(fx, &p.resident, entry, EventChoice::New { replacing: None })
         .await
         .unwrap();
@@ -744,7 +744,7 @@ where
     let mut tx = fx.store.begin(Some(p.viewer.id)).await.unwrap();
     let entry = ReadingEntry {
         observed_at: start(),
-        value: Pm25::new(1.0).unwrap(),
+        reading: NewReading::without_photo(Pm25::new(1.0).unwrap()),
         note: None,
     };
     let alone = log_reading(&mut tx, &p.viewer.actor(), entry, start()).await;

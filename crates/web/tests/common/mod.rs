@@ -16,7 +16,7 @@ use chrono::{DateTime, TimeDelta, Utc};
 use http_body_util::BodyExt;
 use smoke_domain::clock::{Clock, FakeClock, SystemClock};
 use smoke_domain::logbook::{EventChoice, ReadingEntry, SmellEntry, log_reading, log_smell};
-use smoke_domain::records::{NewUser, RoomLevel, User};
+use smoke_domain::records::{NewReading, NewUser, RoomLevel, User};
 use smoke_domain::records::{ReadingView, ReportValues, ReportView, reading_views, report_views};
 use smoke_domain::repos::{Commit, EntryRepo, ListRepo, Transactional, UserWrites};
 use smoke_domain::schedule::DailySchedule;
@@ -187,7 +187,7 @@ impl TestApp {
         let mut tx = self.store.begin(Some(user.id)).await.unwrap();
         let entry = ReadingEntry {
             observed_at: t(at),
-            value: Pm25::new(value).unwrap(),
+            reading: NewReading::without_photo(Pm25::new(value).unwrap()),
             note: None,
         };
         let reading = log_reading(&mut tx, &user.actor(), entry, self.clock.now())

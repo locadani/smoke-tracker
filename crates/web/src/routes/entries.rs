@@ -16,7 +16,9 @@ use smoke_domain::logbook::{
     EventChoice, LogError, ReadingEntry, SmellEntry, log_reading, log_smell,
 };
 use smoke_domain::permissions::{Action, can};
-use smoke_domain::records::{Event, Note, ReportValues, Room, RoomLevel, Symptom, User};
+use smoke_domain::records::{
+    Event, NewReading, Note, ReportValues, Room, RoomLevel, Symptom, User,
+};
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, Level, Pm25, Role, RoomId, SymptomId};
@@ -200,7 +202,7 @@ fn read(
         observed_at,
         values,
         note,
-        pm25,
+        pm25: pm25.map(NewReading::without_photo),
     }))
 }
 
@@ -280,7 +282,7 @@ pub(crate) async fn submit<S: Store + Clone + 'static>(
             let mut tx = state.store.begin(Some(user.id)).await?;
             let reading = ReadingEntry {
                 observed_at,
-                value,
+                reading: NewReading::without_photo(value),
                 note,
             };
             if let Err(error) = log_reading(&mut tx, &actor, reading, now).await {
@@ -591,7 +593,11 @@ mod tests {
             panic!("rooms with a level above 0: a smell report");
         };
         assert_eq!(smell.values.intensity().get(), 6);
-        assert_eq!(smell.pm25.map(Pm25::ugm3), Some(40.0), "PM2.5 alongside");
+        assert_eq!(
+            smell.pm25.map(|reading| reading.value.ugm3()),
+            Some(40.0),
+            "PM2.5 alongside"
+        );
 
         let Ok(Entry::Smell(check)) =
             read_form(&[("action", "log"), ("room", "1"), ("level-1", "0")])

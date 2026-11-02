@@ -9,8 +9,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use smoke_domain::audit::ChainedEntry;
 use smoke_domain::clock::FakeClock;
 use smoke_domain::records::{
-    Closure, Event, LogEntry, NewEntry, NewEvent, NewUser, Note, PasswordHash, ReportValues, Room,
-    RoomLevel, Symptom, User,
+    Closure, Event, LogEntry, NewEntry, NewEvent, NewReading, NewUser, Note, PasswordHash,
+    ReportValues, Room, RoomLevel, Symptom, User,
 };
 use smoke_domain::repos::{
     AuditRepo, Commit, EntryRepo, EntryWrites, EventWrites, ListRepo, ListWrites, Transactional,
@@ -207,7 +207,7 @@ where
         observed_at,
         Note::parse(note).expect("valid note"),
         report,
-        reading,
+        reading.map(NewReading::without_photo),
     )
     .expect("an entry with a child");
     let mut tx = fx.store.begin(Some(scene.user.id)).await.expect("begin");

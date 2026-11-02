@@ -5,7 +5,7 @@ use serde_json::json;
 use smoke_domain::DomainError;
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::clock::Clock;
-use smoke_domain::records::{Closure, NewEntry, NewEvent, Note};
+use smoke_domain::records::{Closure, NewEntry, NewEvent, NewReading, Note};
 use smoke_domain::repos::{Commit, Conflict, EntryWrites, EventWrites, Store, StoreError};
 use smoke_domain::types::{CloseReason, EventId, Pm25, RoomId, SymptomId};
 use smoke_domain::verify::verify_store;
@@ -443,7 +443,7 @@ pub async fn an_unknown_room_rolls_back_the_entry<S: Store>(fx: &Fixture<S>) {
         start(),
         None,
         Some(report_values(5, &[RoomId(999)], &[])),
-        Some(pm25(10.0)),
+        Some(NewReading::without_photo(pm25(10.0))),
     )
     .unwrap();
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
@@ -618,7 +618,7 @@ pub async fn a_reading_can_stand_alone_or_join_an_event<S: Store>(fx: &Fixture<S
             observed_at,
             None,
             None,
-            Some(pm25(value)),
+            Some(NewReading::without_photo(pm25(value))),
         )
         .unwrap()
     };
@@ -653,7 +653,7 @@ pub async fn correcting_and_deleting_a_reading_entry_are_audited<S: Store>(fx: &
         start(),
         None,
         None,
-        Some(pm25(12.5)),
+        Some(NewReading::without_photo(pm25(12.5))),
     )
     .unwrap();
     let entry = tx.create_entry(new).await.unwrap();
@@ -723,7 +723,7 @@ pub async fn a_reading_for_an_unknown_event_is_rejected<S: Store>(fx: &Fixture<S
         start(),
         None,
         None,
-        Some(pm25(10.0)),
+        Some(NewReading::without_photo(pm25(10.0))),
     )
     .unwrap();
     let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
@@ -790,7 +790,7 @@ pub async fn one_write_transaction_uses_one_instant<S: Store>(fx: &Fixture<S>) {
         start() - TimeDelta::days(1),
         None,
         Some(report_values(5, &[FIRST_ROOM], &[])),
-        Some(pm25(15.0)),
+        Some(NewReading::without_photo(pm25(15.0))),
     )
     .unwrap();
     let entry = tx.create_entry(new).await.unwrap();
