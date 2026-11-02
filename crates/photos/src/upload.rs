@@ -26,7 +26,8 @@ pub fn validate(bytes: Vec<u8>, max: usize) -> Result<ValidPhoto, PhotoError> {
     Ok(ValidPhoto { bytes, sha256 })
 }
 
-pub(crate) fn fingerprint(bytes: &[u8]) -> Sha256Hex {
+/// The SHA-256 fingerprint of a photo's bytes, as [`validate`] computes it.
+pub fn fingerprint(bytes: &[u8]) -> Sha256Hex {
     let digest = hex::encode(Sha256::digest(bytes));
     Sha256Hex::parse(&digest).expect("a hex-encoded SHA-256 is 64 lowercase hex characters")
 }

@@ -12,6 +12,8 @@ use smoke_web::config::{BaseUrl, WebConfig};
 use thiserror::Error;
 use tracing::warn;
 
+use crate::backend::BackendKind;
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ConfigError {
     #[error("{0} is not set (see .env.example)")]
@@ -62,6 +64,12 @@ impl PhotoLocation {
                 set("PHOTO_DIR").unwrap_or_else(|| Self::DEFAULT_DIR.to_owned()),
             )),
         }
+    }
+
+    /// Whether photos would land on a container disk that a restart wipes: the production
+    /// database without a bucket. Local development and tests use a folder on purpose.
+    pub fn is_ephemeral_for(&self, kind: BackendKind) -> bool {
+        kind == BackendKind::Postgres && !matches!(self, Self::Gcs { .. })
     }
 
     /// The configured store. Google calls authenticate through the metadata server only.
@@ -323,6 +331,15 @@ mod tests {
         assert_eq!(gcs.location, PhotoLocation::Gcs { bucket: "b".into() });
         let blank = PhotoConfig::from_lookup(lookup(&[("PHOTO_BUCKET", " ")])).unwrap();
         assert!(matches!(blank.location, PhotoLocation::Local(_)));
+    }
+
+    #[test]
+    fn only_the_production_database_without_a_bucket_loses_photos_on_restart() {
+        let local = PhotoLocation::Local(PathBuf::from("pics"));
+        let gcs = PhotoLocation::Gcs { bucket: "b".into() };
+        assert!(local.is_ephemeral_for(BackendKind::Postgres));
+        assert!(!local.is_ephemeral_for(BackendKind::Sqlite));
+        assert!(!gcs.is_ephemeral_for(BackendKind::Postgres));
     }
 
     #[test]

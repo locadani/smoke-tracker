@@ -42,6 +42,13 @@ pub async fn run(cli: Cli) -> anyhow::Result<ExitCode> {
             let config = ServeConfig::from_lookup(env)?;
             let backend = Backend::connect(&database_url, clock.clone()).await?;
             backend.prepare().await?;
+            if BackendKind::of(&database_url)
+                .is_ok_and(|kind| config::PhotoLocation::from_lookup(env).is_ephemeral_for(kind))
+            {
+                tracing::warn!(
+                    "PHOTO_BUCKET is not set: photos are written to the container disk and are lost on restart"
+                );
+            }
             with_store!(backend, |store| serve::run(store, clock, config).await)?;
         }
         Command::Migrate => {

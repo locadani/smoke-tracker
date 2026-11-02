@@ -199,18 +199,21 @@ async fn read_with_vision(
 ) -> Option<f64> {
     let outcome = tokio::time::timeout(deadline, annotate(auth, endpoint, jpeg))
         .await
-        .unwrap_or(Err("the whole read took too long"));
+        .unwrap_or_else(|_| Err("the whole read took too long".to_owned()));
     match outcome {
         Ok(body) => pick_pm25(&words_from_response(&body)),
         Err(reason) => {
-            tracing::warn!(reason, "could not read PM2.5 from the photo");
+            tracing::warn!(%reason, "could not read PM2.5 from the photo");
             None
         }
     }
 }
 
-async fn annotate(auth: &GoogleAuth, endpoint: &str, jpeg: &[u8]) -> Result<String, &'static str> {
-    let token = auth.token().await.map_err(|_| "no access token")?;
+async fn annotate(auth: &GoogleAuth, endpoint: &str, jpeg: &[u8]) -> Result<String, String> {
+    let token = auth
+        .token()
+        .await
+        .map_err(|_| "no access token".to_owned())?;
     let request = json!({"requests": [{
         "image": {"content": STANDARD.encode(jpeg)},
         "features": [{"type": "TEXT_DETECTION"}],
@@ -222,14 +225,15 @@ async fn annotate(auth: &GoogleAuth, endpoint: &str, jpeg: &[u8]) -> Result<Stri
         .json(&request)
         .send()
         .await
-        .map_err(|_| "vision request failed")?;
-    if !response.status().is_success() {
-        return Err("vision answered with an error status");
+        .map_err(|_| "vision request failed".to_owned())?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("vision answered with status {}", status.as_u16()));
     }
     response
         .text()
         .await
-        .map_err(|_| "vision response unreadable")
+        .map_err(|_| "vision response unreadable".to_owned())
 }
 
 #[cfg(test)]

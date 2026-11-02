@@ -5,12 +5,11 @@
 use std::collections::BTreeSet;
 use std::fmt::Write;
 
-use sha2::{Digest, Sha256};
 use smoke_domain::audit::AuditEntity;
 use smoke_domain::records::PhotoKey;
 use smoke_domain::repos::SnapshotRepo;
 use smoke_domain::verify::{AuditReport, SnapshotProblem, verify_store};
-use smoke_photos::{PhotoError, PhotoStore};
+use smoke_photos::{PhotoError, PhotoStore, fingerprint};
 
 use crate::backend::BackendKind;
 use crate::config::PhotoLocation;
@@ -78,7 +77,7 @@ impl PhotoCheck {
 /// production database without `PHOTO_BUCKET` is not checked: an empty local folder would make
 /// every photo look missing.
 pub fn photo_store(kind: BackendKind, location: &PhotoLocation) -> Result<PhotoStore, String> {
-    if kind == BackendKind::Postgres && !matches!(location, PhotoLocation::Gcs { .. }) {
+    if location.is_ephemeral_for(kind) {
         return Err("PHOTO_BUCKET is not set".to_owned());
     }
     location.build_store().map_err(|e| e.to_string())
@@ -116,8 +115,7 @@ pub async fn check_photos<S: SnapshotRepo>(
         match photos.get(&key).await {
             Ok(Some(file)) => {
                 let intact = photo["bytes"].as_u64() == Some(file.len() as u64)
-                    && photo["sha256"].as_str()
-                        == Some(hex::encode(Sha256::digest(&file)).as_str());
+                    && photo["sha256"].as_str() == Some(fingerprint(&file).as_str());
                 if !intact {
                     problems.push(PhotoProblem::ChangedOrMissing { entry_id });
                 }

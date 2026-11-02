@@ -9,7 +9,7 @@ mod upload;
 pub use google::GoogleAuth;
 pub use reader::{Pm25Reader, TextAnnotation, pick_pm25};
 pub use store::{GcsPhotoStore, LocalPhotoStore, PhotoStore, pending_name};
-pub use upload::{ValidPhoto, validate};
+pub use upload::{ValidPhoto, fingerprint, validate};
 
 /// Why a photo could not be accepted, stored or read back.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
