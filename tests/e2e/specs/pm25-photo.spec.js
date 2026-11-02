@@ -121,6 +121,43 @@ test.describe("photo on the log form", () => {
     expect(body.includes(Buffer.from([0xff, 0xd8, 0xff]))).toBe(true);
   });
 
+  test("a_log_tap_during_the_read_never_saves_a_number_the_person_has_not_seen", async ({
+    page,
+  }) => {
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    await page.route("**/log/pm25/read", async (route) => {
+      await gate;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: '{"value":12.5}',
+      });
+    });
+    let posts = 0;
+    await page.route("**/log", (route) => {
+      if (route.request().method() === "POST") {
+        posts += 1;
+      }
+      return route.fulfill({ status: 200, contentType: "text/html", body: "<p>ok</p>" });
+    });
+    const field = page.locator("input[name=pm25]");
+    await choose(page, await syntheticPhoto(page));
+    await expect(page.locator("[data-photo-preview-image]")).toHaveAttribute("src", /^blob:/);
+    await page.click("button[value=log]", { noWaitAfter: true });
+    release();
+    await expect(field).toHaveValue("12.5");
+    await expect(page.locator("[data-photo-read-ok]")).toBeVisible();
+    await expect(field).toBeFocused();
+    await page.waitForTimeout(300);
+    expect(posts).toBe(0);
+
+    await page.click("button[value=log]");
+    await expect.poll(() => posts).toBe(1);
+  });
+
   test("the_ladder_alone_returns_a_jpeg_within_the_limit", async ({ page }) => {
     const result = await page.evaluate(async (limit) => {
       const { shrinkToLimit } = await import("/static/js/pm25-photo.js");

@@ -48,7 +48,7 @@
     <span class="unit"><input type="number" name="pm25" min="0" max="1000" step="0.1" inputmode="decimal" value="{{ form.pm25 }}"> µg/m³</span>
   </label>
   <div class="photo" data-photo>
-    <button type="button" class="button" data-variant="secondary" data-pm25-photo data-max-bytes="{{ form.photo_max_bytes }}" data-tz="{{ form.tz }}" data-label-close="{{ tr.t("close") }}" data-label-shutter="{{ tr.t("photo-shutter") }}" data-label-torch="{{ tr.t("photo-torch") }}">{{ tr.t("photo-take") }}</button>
+    <button type="button" class="button" data-variant="secondary" data-pm25-photo hidden data-max-bytes="{{ form.photo_max_bytes }}" data-tz="{{ form.tz }}" data-label-close="{{ tr.t("close") }}" data-label-shutter="{{ tr.t("photo-shutter") }}" data-label-torch="{{ tr.t("photo-torch") }}">{{ tr.t("photo-take") }}</button>
     <input type="file" accept="image/*" capture="environment" name="photo" hidden>
     <button type="button" class="button" data-variant="secondary" data-photo-use-phone-camera hidden>{{ tr.t("photo-use-phone-camera") }}</button>
     <p class="muted" data-photo-camera-hint hidden>{{ tr.t("photo-camera-hint") }}</p>

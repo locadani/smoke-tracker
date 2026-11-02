@@ -99,6 +99,7 @@ function setup(root) {
   const retake = root.querySelector("[data-photo-retake]");
   const remove = root.querySelector("[data-photo-remove]");
   const timeZone = button.dataset.tz;
+  button.hidden = false;
   let working = Promise.resolve();
   let busy = false;
   let generation = 0;
@@ -278,7 +279,14 @@ function setup(root) {
     if (busy) {
       event.preventDefault();
       const submitter = event.submitter;
-      working.then(() => form.requestSubmit(submitter));
+      const wasEmpty = field.value === "";
+      working.then(() => {
+        if (wasEmpty && "fromPhoto" in field.dataset) {
+          field.focus();
+          return;
+        }
+        form.requestSubmit(submitter);
+      });
       return;
     }
     sending = true;
