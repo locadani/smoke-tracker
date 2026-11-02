@@ -2,38 +2,7 @@
 // above the live picture and stay on screen. Runs in WebKit (iPhone) and Chromium (Android) with a
 // fake camera; the notch, the torch and a real sensor are not reachable from here.
 import { expect, test } from "@playwright/test";
-
-/** Replaces the camera with a 4K canvas stream that reports a torch. */
-async function fakeCamera(page, width, height) {
-  await page.addInitScript(
-    ([w, h]) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const context = canvas.getContext("2d");
-      const draw = () => {
-        context.fillStyle = "rgb(0 200 0)";
-        context.fillRect(0, 0, w, h);
-        requestAnimationFrame(draw);
-      };
-      draw();
-      // A canvas stream is not a camera, so autoplay rules would stop it.
-      const play = HTMLMediaElement.prototype.play;
-      HTMLMediaElement.prototype.play = function () {
-        return play.call(this).catch(() => undefined);
-      };
-      Object.defineProperty(MediaDevices.prototype, "getUserMedia", {
-        configurable: true,
-        value: async () => {
-          const stream = canvas.captureStream(30);
-          stream.getVideoTracks()[0].getCapabilities = () => ({ torch: true });
-          return stream;
-        },
-      });
-    },
-    [width, height],
-  );
-}
+import { fakeCamera, openCamera, warmUpWebKit } from "../setup/fake-camera.js";
 
 /** The colour of the screen at a point, as [r, g, b]. */
 async function colourAt(page, x, y) {
@@ -50,27 +19,7 @@ async function colourAt(page, x, y) {
 
 const isGreen = ([r, g, b]) => g > 150 && r < 80 && b < 80;
 
-// WebKit on Linux never reports the frame size of the first camera stream a browser opens (later
-// ones are fine; real iPhones are not affected), so each WebKit browser opens a throwaway one first.
-test.beforeAll(async ({ browser, browserName }, info) => {
-  if (browserName !== "webkit") {
-    return;
-  }
-  const context = await browser.newContext({ baseURL: info.project.use.baseURL });
-  const page = await context.newPage();
-  await fakeCamera(page, 640, 480);
-  await page.goto("/login");
-  await page.evaluate(async () => {
-    const video = document.createElement("video");
-    video.muted = true;
-    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: true });
-    document.body.append(video);
-    // Not awaited: on that first stream play() never settles either.
-    video.play();
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-  });
-  await context.close();
-});
+test.beforeAll(warmUpWebKit);
 
 async function box(page, selector) {
   return page.locator(selector).boundingBox();
@@ -83,14 +32,7 @@ for (const [width, height] of [
   test(`camera_controls_show_above_a_${width}x${height}_picture`, async ({ page }) => {
     await fakeCamera(page, width, height);
     await page.goto("/login");
-    await page.evaluate(async () => {
-      const { capture } = await import("/static/js/pm25-camera.js");
-      capture({
-        timeZone: "Europe/Rome",
-        hint: "Point the camera at the display",
-        labels: { close: "Close", shutter: "Take photo", torch: "Torch" },
-      });
-    });
+    await openCamera(page);
     await expect(page.locator(".camera-shutter")).toBeVisible();
     await expect
       .poll(async () => (await page.locator(".camera-video").evaluate((v) => v.videoWidth)) > 0)

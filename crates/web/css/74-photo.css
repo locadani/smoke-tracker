@@ -60,6 +60,8 @@
     overflow: hidden;
     background: var(--camera-bg);
     color: var(--camera-fg);
+    /* Two-finger pinches zoom the camera, not the page. */
+    touch-action: none;
   }
 
   /* iOS Safari paints a playing video above later siblings unless they stack higher. */
@@ -68,9 +70,16 @@
     z-index: 1;
   }
 
-  .camera > .camera-video {
+  .camera > .camera-view {
     z-index: 0;
     grid-area: view;
+    min-inline-size: 0;
+    min-block-size: 0;
+    overflow: hidden;
+  }
+
+  .camera-video {
+    display: block;
     inline-size: 100%;
     block-size: 100%;
     min-inline-size: 0;
@@ -91,6 +100,15 @@
   .camera-clock {
     grid-area: view;
     place-self: start;
+    padding: var(--space-1) var(--space-2);
+    background: var(--camera-scrim);
+    font-size: var(--text-label);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .camera-zoom {
+    grid-area: view;
+    place-self: start end;
     padding: var(--space-1) var(--space-2);
     background: var(--camera-scrim);
     font-size: var(--text-label);

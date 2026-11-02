@@ -24,7 +24,7 @@ export default defineConfig({
     // Safari drops Secure cookies on http://localhost: WebKit runs only the signed-out camera check.
     ...["iPhone 15", "iPhone 15 landscape"].map((name) => ({
       name,
-      testMatch: "camera-layout.spec.js",
+      testMatch: /camera-(layout|zoom)\.spec\.js/,
       use: { ...devices[name], reducedMotion: "reduce" },
     })),
   ],
