@@ -118,7 +118,7 @@ CREATE TABLE pm25_photos (
     taken_at        BIGINT NOT NULL
 );
 ```
-(The reading id is the key: one photo per reading, no separate id. `uploaded_at` is not stored: the entry's `recorded_at` is the server time of the same request — see handoff note.)
+(The reading id is the key: one photo per reading, no separate id. No upload time is stored (user's decision): the entry's `recorded_at` is the server time.)
 
 - [ ] **Step 1: Failing contract tests** (run for both backends):
   - `an_entry_keeps_its_photo`: create with photo → `entry(id)` returns the same `Pm25Photo`.
@@ -201,8 +201,8 @@ Env: `PHOTO_MAX_BYTES` (default 307200, must be 10 KB–5 MB), `PHOTO_BUCKET` (s
 **Files:** Modify `templates/log.html`, `templates/entry.html`, `routes/{log,entry_page}.rs`, `css/74-photo.css` (+ stylesheet list), locales. Tests: `crates/web/tests/{log,entries}.rs`.
 
 - Log form: `enctype="multipart/form-data"`; in the PM2.5 card a button `data-pm25-photo` with `data-max-bytes="{{ max }}"` and `data-tz="{{ tz }}"`, a hidden `<input type="file" accept="image/*" capture="environment" name="photo" hidden>`, a preview area, and the hidden reference fields when present (a re-render shows a "Photo attached ✓" line with Remove; no thumbnail before saving).
-- Entry page: photo card when `reading.photo` exists — `<img src="/photos/{reading_id}">` in a link to itself (tap to enlarge = open full image), "Taken {taken_at} · uploaded {recorded_at}" in the user's zone; 📷 chip on the PM2.5 line.
-- Keys: `photo-take`, `photo-read-ok`, `photo-read-none`, `photo-retake`, `photo-remove`, `photo-attached`, `photo-card-title`, `photo-taken-uploaded`, `photo-use-phone-camera`, `photo-camera-hint`.
+- Entry page: photo card when `reading.photo` exists — `<img src="/photos/{reading_id}">` in a link to itself (tap to enlarge = open full image), "Taken {taken_at} · logged {recorded_at}" in the user's zone; 📷 chip on the PM2.5 line.
+- Keys: `photo-take`, `photo-read-ok`, `photo-read-none`, `photo-retake`, `photo-remove`, `photo-attached`, `photo-card-title`, `photo-taken-logged`, `photo-use-phone-camera`, `photo-camera-hint`.
 
 - [ ] **Step 1: Failing tests:** `the_log_form_offers_a_photo_with_the_limit` (button + `data-max-bytes="307200"`), `the_entry_page_shows_its_photo`, `an_entry_without_photo_has_no_photo_card`; both pages stay in `no_page_needs_inline_scripts_styles_or_eval`.
 - [ ] **Step 2–4:** implement; PASS.

@@ -69,7 +69,7 @@ showing the clock; real use won't.
    button is disabled while sending, so a double tap can't create two entries; no server-side
    dedupe *(builder's call)*. A new photo without a PM2.5 value is refused with a clear message.
 5. **Entry page:** a photo card (only when there is one): the photo (tap to enlarge),
-   "Taken 14:35 · uploaded 14:36". The PM2.5 line gets a 📷 chip.
+   "Taken 14:35 · logged 14:36" (taken = phone clock, logged = the entry's server `recorded_at`). The PM2.5 line gets a 📷 chip.
 
 All new text in English, Italian and Turkish (the three locales).
 
@@ -142,12 +142,12 @@ pm25_photos
   bytes            INTEGER NOT NULL
   sha256           TEXT NOT NULL   fingerprint of the exact stored bytes
   taken_at         BIGINT NOT NULL phone clock (same as the watermark), µs since epoch (#46)
-  uploaded_at      BIGINT NOT NULL server clock
 ```
 
+- No upload time is stored (user, 2026-11-02): the entry's `recorded_at` is the server time.
 - No PM2.5 number in this table: `pm25_readings.value_ugm3` stays the single source of truth.
 - The photo is saved in the **same transaction** as its log entry, and the photo's details
-  (`sha256`, `object_key`, `bytes`, `taken_at`, `uploaded_at`) are part of the **log entry's
+  (`sha256`, `object_key`, `bytes`, `taken_at`) are part of the **log entry's
   audit snapshot** (#147: one audit row per entry, the whole log as snapshot). The entry's hash
   therefore covers the photo's fingerprint: the photo is provably linked to that entry, and
   changing the file, the fingerprint or the link breaks verification.
