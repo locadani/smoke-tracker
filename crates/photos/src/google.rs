@@ -6,6 +6,7 @@ use tokio::sync::Mutex;
 
 use crate::PhotoError;
 
+// The metadata server is link-local and served only over plain HTTP; there is no HTTPS endpoint.
 const METADATA_TOKEN_URL: &str =
     "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
 const REFRESH_MARGIN_SECS: u64 = 60;
