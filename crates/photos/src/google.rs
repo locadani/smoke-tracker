@@ -40,6 +40,16 @@ impl GoogleAuth {
         })
     }
 
+    #[cfg(test)]
+    pub(crate) fn with_fixed_token(token: &str) -> Result<Self, PhotoError> {
+        let auth = Self::new()?;
+        *auth.cached.try_lock().expect("fresh auth is not locked") = Some(CachedToken {
+            token: token.to_owned(),
+            refresh_at: Instant::now() + Duration::from_secs(3600),
+        });
+        Ok(auth)
+    }
+
     pub(crate) fn client(&self) -> &reqwest::Client {
         &self.client
     }

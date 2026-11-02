@@ -2,10 +2,12 @@
 //! bucket in production.
 
 mod google;
+mod reader;
 mod store;
 mod upload;
 
 pub use google::GoogleAuth;
+pub use reader::{Pm25Reader, TextAnnotation, pick_pm25};
 pub use store::{GcsPhotoStore, LocalPhotoStore, PhotoStore, pending_name};
 pub use upload::{ValidPhoto, validate};
 

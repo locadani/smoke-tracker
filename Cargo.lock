@@ -2280,15 +2280,18 @@ dependencies = [
 name = "smoke-photos"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chrono",
  "hex",
  "reqwest",
  "serde",
+ "serde_json",
  "sha2 0.11.1",
  "smoke-domain",
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
 ]
 
 [[package]]
