@@ -207,6 +207,11 @@ fn rewrite_url(bucket: &str, src: &str, dst: &str, rewrite_token: Option<&str>) 
     url
 }
 
+/// The rewrite call has no body, and Google refuses a bodiless POST with 411 unless it says so.
+fn rewrite_request(client: &reqwest::Client, url: String) -> reqwest::RequestBuilder {
+    client.post(url).header(reqwest::header::CONTENT_LENGTH, 0)
+}
+
 fn download_url(bucket: &str, name: &str) -> String {
     format!("{GCS_API}/{}/o/{}?alt=media", encode(bucket), encode(name))
 }
@@ -297,7 +302,7 @@ impl GcsPhotoStore {
         let mut token: Option<String> = None;
         loop {
             let url = rewrite_url(&self.bucket, &src, key.as_str(), token.as_deref());
-            let response = self.send(self.auth.client().post(url)).await?;
+            let response = self.send(rewrite_request(self.auth.client(), url)).await?;
             match response.status() {
                 reqwest::StatusCode::PRECONDITION_FAILED => break,
                 reqwest::StatusCode::NOT_FOUND => return Err(PhotoError::Missing),
@@ -481,6 +486,38 @@ mod tests {
              /rewriteTo/b/bkt/o/photos%2F2026%2F11%2Fab.jpg?ifGenerationMatch=0"
         );
         assert!(rewrite_url("bkt", "a", "b", Some("t+k=")).ends_with("&rewriteToken=t%2Bk%3D"));
+    }
+
+    /// The request head a client sends, as received by a one-shot local server.
+    async fn head_sent_by(request: impl FnOnce(String) -> reqwest::RequestBuilder) -> String {
+        use std::io::{BufRead, BufReader, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut head = String::new();
+            while !head.ends_with("\r\n\r\n") {
+                if reader.read_line(&mut head).unwrap() == 0 {
+                    break;
+                }
+            }
+            let mut stream = stream;
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
+                .unwrap();
+            head
+        });
+        request(url).send().await.unwrap();
+        server.join().unwrap().to_ascii_lowercase()
+    }
+
+    #[tokio::test]
+    async fn gcs_promote_states_its_empty_body() {
+        let client = reqwest::Client::new();
+        let head = head_sent_by(|url| rewrite_request(&client, url)).await;
+        assert!(head.starts_with("post "), "{head}");
+        assert!(head.contains("\r\ncontent-length: 0\r\n"), "{head}");
     }
 
     #[test]
