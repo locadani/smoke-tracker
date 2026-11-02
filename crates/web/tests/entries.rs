@@ -312,3 +312,69 @@ async fn a_pm25_only_entry_page_shows_its_note() {
     );
     assert!(facts.iter().any(|f| f == "PM2.5 12 µg/m³"), "{facts:?}");
 }
+
+#[tokio::test]
+async fn the_entry_page_shows_its_photo() {
+    let app = TestApp::new().await;
+    app.at("2026-11-02T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    let photo = jpeg(2_000, 1);
+    app.send(post_multipart(
+        "/log",
+        &[
+            ("pm25", "19.0"),
+            ("photo_taken_at", "2026-11-02T19:58:30Z"),
+            ("action", "log"),
+        ],
+        Some(&photo),
+        Some(&cookie),
+    ))
+    .await;
+    let entry = app
+        .store
+        .entries_between(t("2026-11-01T00:00:00Z"), t("2026-12-01T00:00:00Z"))
+        .await
+        .unwrap()
+        .remove(0);
+    let reading = entry.reading.expect("a reading").id;
+
+    let html = text(
+        app.send(get_with(&format!("/entries/{}", entry.id), &cookie))
+            .await,
+    )
+    .await;
+    let page = Page::parse(&html);
+    let src = format!("/photos/{reading}");
+    assert_eq!(
+        page.attr("a.photo-card-link", "href").as_deref(),
+        Some(src.as_str()),
+        "{html}"
+    );
+    assert_eq!(
+        page.attr("a.photo-card-link img", "src").as_deref(),
+        Some(src.as_str()),
+        "{html}"
+    );
+    assert!(page.exists("a.photo-card-link img[alt]"), "{html}");
+    assert!(page.exists("[data-photo-chip]"), "{html}");
+    let caption = page.text(".photo-card figcaption");
+    assert!(caption.contains("Taken"), "{caption}");
+    assert!(caption.contains("logged"), "{caption}");
+}
+
+#[tokio::test]
+async fn an_entry_without_photo_has_no_photo_card() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let user = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+    app.log_pm25(&user, "2026-01-15T19:00:00Z", 12.0).await;
+    let id = entry_ids(&app).await[0];
+
+    let html = text(app.send(get_with(&format!("/entries/{id}"), &cookie)).await).await;
+    let page = Page::parse(&html);
+    assert!(!page.exists(".photo-card"), "{html}");
+    assert!(!page.exists("[data-photo-chip]"), "{html}");
+    assert!(!html.contains("/photos/"), "{html}");
+}

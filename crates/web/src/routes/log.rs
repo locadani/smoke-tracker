@@ -258,6 +258,9 @@ pub(crate) struct FormView {
     observed_at: String,
     note: String,
     photo_fields: Vec<(&'static str, String)>,
+    /// What the photo button tells the script: the size limit and the person's time zone.
+    photo_max_bytes: usize,
+    tz: String,
     /// An event is open, so the main button reads "Update: situation changed".
     update: bool,
     /// A translation key explaining what to fix.
@@ -381,6 +384,8 @@ pub(crate) async fn log_page<S: Store>(
             observed_at: draft.observed_at,
             note: draft.note,
             photo_fields: draft.photo_fields,
+            photo_max_bytes: state.config.photo_max_bytes,
+            tz: schedule.tz().name().to_owned(),
             update: shown.is_some(),
             error,
         })

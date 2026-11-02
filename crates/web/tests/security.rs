@@ -247,6 +247,26 @@ async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
         .find(|entry| entry.report.is_none())
         .expect("the PM2.5-only entry")
         .id;
+    app.send(post_multipart(
+        "/log",
+        &[
+            ("pm25", "14"),
+            ("photo_taken_at", "2026-01-15T19:58:30Z"),
+            ("action", "log"),
+        ],
+        Some(&jpeg(1_000, 1)),
+        Some(&cookie),
+    ))
+    .await;
+    let with_photo = app
+        .store
+        .entries_between(t("2026-01-01T00:00:00Z"), t("2026-02-01T00:00:00Z"))
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|entry| entry.reading.as_ref().is_some_and(|r| r.photo.is_some()))
+        .expect("the entry with a photo")
+        .id;
     for entry in [1, 2, reading_only.0] {
         let response = app
             .send(get_with(&format!("/entries/{entry}"), &cookie))
@@ -284,6 +304,11 @@ async fn no_page_needs_inline_scripts_styles_or_eval_and_every_icon_exists() {
         )
         .await,
         text(app.attempt("daniele", "not the password").await).await,
+        text(
+            app.send(get_with(&format!("/entries/{with_photo}"), &cookie))
+                .await,
+        )
+        .await,
     ];
     assert!(pages[1].contains("No event: just a check"), "{}", pages[1]);
     assert!(pages[4].contains("None: a no-smell check"), "{}", pages[4]);

@@ -66,6 +66,7 @@ const STYLESHEET: (&str, &[&str]) = stylesheet!(
     "71-people.css",
     "72-guide.css",
     "73-chart.css",
+    "74-photo.css",
     "90-utilities.css",
 );
 

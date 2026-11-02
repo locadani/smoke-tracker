@@ -47,6 +47,17 @@ log-error-form = Formda geçersiz bir şey var. Kontrol edip tekrar dene.
 photo-invalid = Fotoğraf kullanılamadı. Yeniden çek.
 photo-needs-pm25 = Fotoğraf için bir PM2.5 değeri gerekir. Sayıyı yaz veya fotoğrafı kaldır.
 photo-store-unavailable = Fotoğraf şu anda kaydedilemedi. Hiçbir şey kaydedilmedi, birazdan tekrar dene.
+photo-take = Ekranın fotoğrafı
+photo-read-ok = Sayı fotoğraftan okundu
+photo-read-none = Sayı okunamadı: elle yazın
+photo-retake = Yeniden çek
+photo-remove = Fotoğrafı kaldır
+photo-attached = Fotoğraf eklendi ✓
+photo-card-title = Sensör fotoğrafı
+photo-taken-logged = Çekildi { $taken } · kaydedildi { $logged }
+photo-use-phone-camera = Telefon kamerasını kullan
+photo-camera-hint = Kamerayı ekrana doğrultun, sonra fotoğrafı çekin.
+photo-alt = PM2.5 sensörü ekranının fotoğrafı
 notice-dismiss = Kapat
 
 prompt-same-smell = Aynı koku hâlâ sürüyor mu?

@@ -367,3 +367,43 @@ async fn how_to_rate_opens_a_dialog_with_a_link_to_the_full_guide() {
         Some("/login")
     );
 }
+
+#[tokio::test]
+async fn the_log_form_offers_a_photo_with_the_limit() {
+    let app = TestApp::new().await;
+    app.add_user("daniele", Role::Resident, Locale::En).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.attr("form[action='/log']", "enctype").as_deref(),
+        Some("multipart/form-data"),
+        "{html}"
+    );
+    assert_eq!(
+        page.attr("button[data-pm25-photo]", "data-max-bytes")
+            .as_deref(),
+        Some("307200"),
+        "{html}"
+    );
+    assert_eq!(
+        page.attr("button[data-pm25-photo]", "data-tz").as_deref(),
+        Some(schedule().tz().name()),
+        "{html}"
+    );
+    assert!(
+        page.exists("input[type=file][name=photo][accept='image/*'][capture=environment][hidden]"),
+        "{html}"
+    );
+    assert!(page.exists("[data-photo-preview][hidden]"), "{html}");
+    assert!(page.exists("[data-photo-remove][type=button]"), "{html}");
+    assert!(
+        !page.exists("[data-photo-attached]:not([hidden])"),
+        "nothing attached on a fresh form: {html}"
+    );
+    assert!(
+        !page.exists("input[name=photo_sha256]"),
+        "no reference on a fresh form: {html}"
+    );
+}

@@ -174,6 +174,10 @@ async fn a_photo_survives_a_refused_form() {
     let html = text(refused).await;
     assert!(html.contains("cannot be in the future"), "{html}");
     assert!(entries(&app).await.is_empty());
+    let page = common::page::Page::parse(&html);
+    assert!(page.exists("[data-photo-attached]:not([hidden])"), "{html}");
+    assert!(page.exists("[data-photo-remove][type=button]"), "{html}");
+    assert_eq!(page.count("input[name=photo_sha256]"), 1, "{html}");
 
     let mut again = references(&html);
     again.extend([

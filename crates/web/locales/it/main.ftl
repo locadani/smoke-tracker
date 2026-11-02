@@ -47,6 +47,17 @@ log-error-form = Qualcosa nel modulo non è valido. Controlla e riprova.
 photo-invalid = Non è stato possibile usare la foto. Scattala di nuovo.
 photo-needs-pm25 = Una foto richiede un valore di PM2.5. Scrivi il numero o rimuovi la foto.
 photo-store-unavailable = Al momento non è stato possibile salvare la foto. Non è stato registrato nulla, riprova tra poco.
+photo-take = Foto del display
+photo-read-ok = Numero letto dalla foto
+photo-read-none = Numero non leggibile: scrivilo a mano
+photo-retake = Rifai la foto
+photo-remove = Rimuovi la foto
+photo-attached = Foto allegata ✓
+photo-card-title = Foto del sensore
+photo-taken-logged = Scattata { $taken } · registrata { $logged }
+photo-use-phone-camera = Usa la fotocamera del telefono
+photo-camera-hint = Inquadra il display, poi scatta la foto.
+photo-alt = Foto del display del sensore PM2.5
 notice-dismiss = Ignora
 
 prompt-same-smell = È ancora lo stesso odore?
