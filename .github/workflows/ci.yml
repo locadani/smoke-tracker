@@ -73,7 +73,7 @@ jobs:
           cache: npm
           cache-dependency-path: tests/e2e/package-lock.json
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - name: seed through the app, then axe every page at phone size
         run: npx playwright test
         env:

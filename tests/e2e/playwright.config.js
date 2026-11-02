@@ -1,6 +1,6 @@
 // Starts the app on a fresh SQLite file and checks its pages at phone size, in the light and
 // the dark theme. SMOKE_TRACKER_BIN names the built binary (cargo build -p smoke-tracker).
-import { defineConfig } from "@playwright/test";
+import { defineConfig, devices } from "@playwright/test";
 import { BASE_URL, serverEnv, binary } from "./setup/app.js";
 
 export default defineConfig({
@@ -21,6 +21,12 @@ export default defineConfig({
   projects: [
     { name: "light", use: { colorScheme: "light" } },
     { name: "dark", use: { colorScheme: "dark" } },
+    // Safari drops Secure cookies on http://localhost: WebKit runs only the signed-out camera check.
+    ...["iPhone 15", "iPhone 15 landscape"].map((name) => ({
+      name,
+      testMatch: "camera-layout.spec.js",
+      use: { ...devices[name], reducedMotion: "reduce" },
+    })),
   ],
   webServer: {
     command: `"${binary}" serve`,
