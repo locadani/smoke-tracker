@@ -1,4 +1,5 @@
 use std::ops::RangeInclusive;
+use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
@@ -8,6 +9,7 @@ use serde_json::json;
 use crate::GoogleAuth;
 
 const VISION_URL: &str = "https://eu-vision.googleapis.com/v1/images:annotate";
+const READ_DEADLINE: Duration = Duration::from_secs(10);
 const MAX_PM25: f64 = 1000.0;
 
 /// Reads the PM2.5 number from a sensor photo. A reader never fails: no number is `None`.
@@ -21,7 +23,9 @@ impl Pm25Reader {
     pub async fn read(&self, jpeg: &[u8]) -> Option<f64> {
         match self {
             Self::None => None,
-            Self::CloudVision(auth) => read_with_vision(auth, VISION_URL, jpeg).await,
+            Self::CloudVision(auth) => {
+                read_with_vision(auth, VISION_URL, jpeg, READ_DEADLINE).await
+            }
         }
     }
 }
@@ -187,8 +191,16 @@ fn words_from_response(body: &str) -> Vec<TextAnnotation> {
         .unwrap_or_default()
 }
 
-async fn read_with_vision(auth: &GoogleAuth, endpoint: &str, jpeg: &[u8]) -> Option<f64> {
-    match annotate(auth, endpoint, jpeg).await {
+async fn read_with_vision(
+    auth: &GoogleAuth,
+    endpoint: &str,
+    jpeg: &[u8],
+    deadline: Duration,
+) -> Option<f64> {
+    let outcome = tokio::time::timeout(deadline, annotate(auth, endpoint, jpeg))
+        .await
+        .unwrap_or(Err("the whole read took too long"));
+    match outcome {
         Ok(body) => pick_pm25(&words_from_response(&body)),
         Err(reason) => {
             tracing::warn!(reason, "could not read PM2.5 from the photo");
@@ -272,9 +284,24 @@ mod tests {
     async fn a_reader_failure_is_just_no_number() {
         let auth = GoogleAuth::with_fixed_token("test-token").unwrap();
         let started = Instant::now();
-        let number = read_with_vision(&auth, "http://127.0.0.1:9/", b"jpeg").await;
+        let number = read_with_vision(&auth, "http://127.0.0.1:9/", b"jpeg", READ_DEADLINE).await;
         assert_eq!(number, None);
         assert!(started.elapsed() < Duration::from_secs(11));
+    }
+
+    #[tokio::test]
+    async fn a_silent_server_is_given_up_on_at_the_deadline() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}/", listener.local_addr().unwrap());
+        let _silent = tokio::spawn(async move {
+            let _held = listener.accept().await;
+            std::future::pending::<()>().await;
+        });
+        let auth = GoogleAuth::with_fixed_token("test-token").unwrap();
+        let started = Instant::now();
+        let number = read_with_vision(&auth, &endpoint, b"jpeg", Duration::from_millis(300)).await;
+        assert_eq!(number, None);
+        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     #[tokio::test]
