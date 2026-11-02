@@ -337,3 +337,47 @@ run "backup_account_grants_are_narrow" {
     error_message = "The backup account holds only the secret accessor and bucket object roles."
   }
 }
+
+run "photo_bucket_is_private_in_frankfurt_and_only_pending_expires" {
+  command = plan
+  assert {
+    condition     = google_storage_bucket.photos.name == "smoke-tracker-photos-test-project" && google_storage_bucket.photos.location == "EUROPE-WEST3"
+    error_message = "Photo bucket is named after app and project, in Frankfurt."
+  }
+  assert {
+    condition     = google_storage_bucket.photos.uniform_bucket_level_access == true && google_storage_bucket.photos.public_access_prevention == "enforced"
+    error_message = "Photos are private: uniform access, public access prevented."
+  }
+  assert {
+    condition     = google_storage_bucket.photos.force_destroy == false
+    error_message = "Terraform must never wipe stored photos."
+  }
+  assert {
+    condition     = length(google_storage_bucket.photos.lifecycle_rule) == 1
+    error_message = "Exactly one lifecycle rule: nothing but pending uploads is ever deleted."
+  }
+  assert {
+    condition     = anytrue([for a in google_storage_bucket.photos.lifecycle_rule[0].action : a.type == "Delete"]) && anytrue([for c in google_storage_bucket.photos.lifecycle_rule[0].condition : c.age == 1 && length(c.matches_prefix) == 1 && contains(c.matches_prefix, "pending/")])
+    error_message = "The rule deletes pending/ objects after one day."
+  }
+}
+
+run "runtime_account_creates_and_reads_photos_only" {
+  command = plan
+  assert {
+    condition     = google_storage_bucket_iam_member.runtime_creates_photos.bucket == google_storage_bucket.photos.name && google_storage_bucket_iam_member.runtime_creates_photos.role == "roles/storage.objectCreator" && google_storage_bucket_iam_member.runtime_creates_photos.member == google_service_account.runtime.member
+    error_message = "The runtime account may create photo objects."
+  }
+  assert {
+    condition     = google_storage_bucket_iam_member.runtime_reads_photos.bucket == google_storage_bucket.photos.name && google_storage_bucket_iam_member.runtime_reads_photos.role == "roles/storage.objectViewer" && google_storage_bucket_iam_member.runtime_reads_photos.member == google_service_account.runtime.member
+    error_message = "The runtime account may read photo objects."
+  }
+}
+
+run "photo_bucket_output" {
+  command = plan
+  assert {
+    condition     = output.photos_bucket == "smoke-tracker-photos-test-project"
+    error_message = "The photo bucket name is exposed for the service settings."
+  }
+}
