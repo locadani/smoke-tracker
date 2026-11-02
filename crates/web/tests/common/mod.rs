@@ -279,6 +279,52 @@ pub fn post_form(path: &str, body: &str, cookie: Option<&str>) -> Request<Body> 
     request
 }
 
+/// A `multipart/form-data` post as the Log page's script sends it: text `fields` and, when
+/// given, the file part `photo`.
+pub fn post_multipart(
+    path: &str,
+    fields: &[(&str, &str)],
+    photo: Option<&[u8]>,
+    cookie: Option<&str>,
+) -> Request<Body> {
+    const BOUNDARY: &str = "----smoke-test-boundary";
+    let mut body: Vec<u8> = Vec::new();
+    for (name, value) in fields {
+        body.extend(
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .bytes(),
+        );
+    }
+    if let Some(bytes) = photo {
+        body.extend(format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"photo\"; filename=\"pm25.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").bytes());
+        body.extend(bytes);
+        body.extend(b"\r\n");
+    }
+    body.extend(format!("--{BOUNDARY}--\r\n").bytes());
+    let mut builder = Request::post(path)
+        .header(
+            CONTENT_TYPE,
+            format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
+        .header("origin", BASE)
+        .header("sec-fetch-site", "same-origin");
+    if let Some(cookie) = cookie {
+        builder = builder.header(COOKIE, cookie);
+    }
+    let mut request = builder.body(Body::from(body)).unwrap();
+    from(&mut request, CLIENT);
+    request
+}
+
+/// Bytes that pass the upload check: the JPEG magic number, then `len` in all.
+pub fn jpeg(len: usize, fill: u8) -> Vec<u8> {
+    let mut bytes = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    bytes.resize(len, fill);
+    bytes
+}
+
 pub fn login_request(username: &str, password: &str) -> Request<Body> {
     let body = format!(
         "username={}&password={}",

@@ -32,6 +32,9 @@
 {% if let Some(form) = form %}
 {% if let Some(error) = form.error %}{% call c::notice(tr.t(error), true) %}{% endcall %}{% endif %}
 <form method="post" action="/log" class="stack">
+  {% for (name, value) in form.photo_fields %}
+  <input type="hidden" name="{{ name }}" value="{{ value }}">
+  {% endfor %}
   {% call c::collapsible(tr.t("log-time"), form.time_hint(tr), tr.t("action-change"), !form.observed_at.is_empty()) %}
   <input type="datetime-local" name="observed_at" value="{{ form.observed_at }}" aria-label="{{ tr.t("log-time") }}">
   {% endcall %}

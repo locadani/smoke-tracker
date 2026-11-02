@@ -21,7 +21,7 @@ use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::entries::level_field;
 use crate::routes::guide::{GuideRow, levels};
-use crate::routes::{can_open, notices};
+use crate::routes::{can_open, notices, photos};
 use crate::state::AppState;
 use crate::{labels, time};
 
@@ -35,6 +35,8 @@ pub(crate) struct Draft {
     pub(crate) pm25: String,
     pub(crate) observed_at: String,
     pub(crate) note: String,
+    /// The photo already uploaded, as the hidden fields that carry it through the form.
+    pub(crate) photo_fields: Vec<(&'static str, String)>,
 }
 
 impl Draft {
@@ -62,6 +64,7 @@ impl Draft {
             pm25: text("pm25"),
             observed_at: text("observed_at"),
             note: text("note"),
+            photo_fields: photos::carried_fields(form),
         }
     }
 }
@@ -254,6 +257,7 @@ pub(crate) struct FormView {
     pm25: String,
     observed_at: String,
     note: String,
+    photo_fields: Vec<(&'static str, String)>,
     /// An event is open, so the main button reads "Update: situation changed".
     update: bool,
     /// A translation key explaining what to fix.
@@ -376,6 +380,7 @@ pub(crate) async fn log_page<S: Store>(
             pm25: draft.pm25,
             observed_at: draft.observed_at,
             note: draft.note,
+            photo_fields: draft.photo_fields,
             update: shown.is_some(),
             error,
         })

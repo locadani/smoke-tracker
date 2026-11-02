@@ -38,16 +38,22 @@ pub use crate::sessions::DbSessions;
 pub use crate::state::AppState;
 
 /// Form posts are small; anything larger is refused before a handler runs.
-const BODY_LIMIT_BYTES: usize = 16 * 1024;
+pub(crate) const BODY_LIMIT_BYTES: usize = 16 * 1024;
 
 /// The whole application. Static assets and the health check skip sessions and the database.
 pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
     auth::password::prepare_dummy_hash();
+    let photo_body = DefaultBodyLimit::max(state.config.photo_max_bytes + BODY_LIMIT_BYTES);
     let signed_in = Router::new()
         .route("/", get(routes::log::show::<S>))
         .route("/guide/rating", get(routes::guide::rating::<S>))
         .route("/guide/logging", get(routes::guide::logging::<S>))
-        .route("/log", post(routes::entries::submit::<S>))
+        .route("/log", post(routes::entries::submit::<S>).layer(photo_body))
+        .route(
+            "/log/pm25/read",
+            post(routes::photos::read::<S>).layer(photo_body),
+        )
+        .route("/photos/{id}", get(routes::photos::show::<S>))
         .route("/notices/dismiss", post(routes::notices::dismiss::<S>))
         .route("/events", get(routes::events::list::<S>))
         .route("/events/{id}", get(routes::events::show::<S>))

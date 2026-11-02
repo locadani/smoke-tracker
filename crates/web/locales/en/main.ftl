@@ -44,6 +44,9 @@ log-error-time = Enter a valid date and time.
 log-error-time-skipped = That time does not exist: the clocks moved forward.
 log-error-note = The note can be at most 2000 characters.
 log-error-form = Something in the form is not valid. Check it and try again.
+photo-invalid = The photo could not be used. Take it again.
+photo-needs-pm25 = A photo needs a PM2.5 value. Type the number or remove the photo.
+photo-store-unavailable = The photo could not be saved right now. Nothing was logged, try again in a moment.
 notice-dismiss = Dismiss
 
 prompt-same-smell = Same smell still going?

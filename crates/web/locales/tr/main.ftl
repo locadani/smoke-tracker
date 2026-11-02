@@ -44,6 +44,9 @@ log-error-time = Geçerli bir tarih ve saat gir.
 log-error-time-skipped = Bu saat yok: saatler ileri alındı.
 log-error-note = Not en fazla 2000 karakter olabilir.
 log-error-form = Formda geçersiz bir şey var. Kontrol edip tekrar dene.
+photo-invalid = Fotoğraf kullanılamadı. Yeniden çek.
+photo-needs-pm25 = Fotoğraf için bir PM2.5 değeri gerekir. Sayıyı yaz veya fotoğrafı kaldır.
+photo-store-unavailable = Fotoğraf şu anda kaydedilemedi. Hiçbir şey kaydedilmedi, birazdan tekrar dene.
 notice-dismiss = Kapat
 
 prompt-same-smell = Aynı koku hâlâ sürüyor mu?

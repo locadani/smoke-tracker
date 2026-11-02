@@ -44,6 +44,9 @@ log-error-time = Inserisci una data e un'ora valide.
 log-error-time-skipped = Quell'ora non esiste: è scattata l'ora legale.
 log-error-note = La nota può avere al massimo 2000 caratteri.
 log-error-form = Qualcosa nel modulo non è valido. Controlla e riprova.
+photo-invalid = Non è stato possibile usare la foto. Scattala di nuovo.
+photo-needs-pm25 = Una foto richiede un valore di PM2.5. Scrivi il numero o rimuovi la foto.
+photo-store-unavailable = Al momento non è stato possibile salvare la foto. Non è stato registrato nulla, riprova tra poco.
 notice-dismiss = Ignora
 
 prompt-same-smell = È ancora lo stesso odore?

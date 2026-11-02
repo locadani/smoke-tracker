@@ -10,7 +10,7 @@ use common::*;
 use smoke_domain::repos::EntryRepo;
 use smoke_domain::types::{Locale, Role};
 
-const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; \
+const CSP: &str = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' blob:; \
     connect-src 'self'; font-src 'self'; manifest-src 'self'; worker-src 'self'; \
     object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 
@@ -24,6 +24,11 @@ async fn every_response_carries_the_security_headers() {
         assert_eq!(headers["x-content-type-options"], "nosniff", "{path}");
         assert_eq!(headers["referrer-policy"], "same-origin", "{path}");
         assert_eq!(headers["x-frame-options"], "DENY", "{path}");
+        assert_eq!(
+            headers["permissions-policy"],
+            "camera=(self), microphone=(), geolocation=(), payment=()",
+            "{path}"
+        );
         assert_eq!(
             headers["cross-origin-opener-policy"], "same-origin",
             "{path}"
