@@ -21,7 +21,7 @@ which event, the note) and owns an optional smell report and an optional PM2.5 r
 
 - **Goals:** a PM2.5 value alone can carry a note; a combined log is one record; moving or
   re-timing a log moves both halves; the audit chain still verifies, old entries included.
-- **Non-goals:** a correction or delete UI for readings (none exists today); showing notes in
+- **Non-goals:** a correction or delete UI for readings (delete UI: see the 2026-11-03 delete design); showing notes in
   the event timeline; changing graphs, filters or summaries.
 - **Anti-goals:** rewriting or re-hashing existing audit entries (decision #104); losing or
   duplicating a note; changing report URLs (`/reports/{id}` stays).
@@ -41,7 +41,8 @@ pm25_readings   id, log_entry_id → log_entries.id UNIQUE NOT NULL, value_ugm3
 - Report and reading **ids are kept**, so URLs and audit `entity_id`s stay valid.
 - **An entry has at least one child.** The schema cannot say this; the domain enforces it and a
   storage contract test checks it.
-- Delete is per entry (no delete UI exists; the storage methods become `delete_entry`).
+- Delete is per entry (delete UI: see the 2026-11-03 delete design; the storage methods become
+  `delete_entry`).
 
 **Data migration** (pattern of 0004, decision #109, with the 0003 refusal guard):
 every report becomes an entry. A reading becomes the second child of a report's entry when both

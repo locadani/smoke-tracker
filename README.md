@@ -85,6 +85,7 @@ Rate what you smell right now, not how annoyed you are. Between two numbers, pic
 | See data | all | own | own | all |
 | Correct / move entries | all | own | ❌ | ❌ |
 | Close / reopen events | ✅ | events they own | ❌ | ❌ |
+| Delete entries / events | own + guests' | own | ❌ | ❌ |
 | Invite / expire / reactivate / reset password | ✅ | ❌ | ❌ | ❌ |
 | Edit room & symptom lists | ✅ | ❌ | ❌ | ❌ |
 | See graphs | all data | own data | own data | all data |

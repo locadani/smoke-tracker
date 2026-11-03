@@ -1,6 +1,7 @@
 # Deleting entries and events — design
 
-Status: draft, 2026-11-03. Agreed with Daniele in chat; builder check done, awaiting approval.
+Status: approved 2026-11-03. Built on branch `feat/delete-entries-events`; see "Decided during
+build" at the end.
 
 ## Why
 
@@ -168,3 +169,20 @@ exists or the entry had none. An event → History.
   confirmation step is rendered (a `?confirm` query, a `<details>`, or a small confirm page).
 - How "event exists" is expressed in queries (join / `EXISTS` on live entries).
 - Translation key names.
+
+## Decided during build (2026-11-03, with Daniele)
+
+- **An event needs a live smell report.** When its last report is deleted or moved out, its
+  remaining PM2.5 readings become standalone readings (one audited `log_entry` update each),
+  like a reading logged with no event running; the event is then gone. Deleting a whole event
+  still deletes every entry, readings included.
+- **Owner rule:** when the earliest entry leaves and reports remain, the start follows the
+  earliest remaining entry (never past the end) and the owner the earliest remaining smell
+  report. A reading never makes someone the owner.
+- **Move to a new event** on an event's only entry keeps that event and re-centres it; the option
+  is hidden there.
+- **Guests** see blockers as "altri N", never names, and always the "gli altri" sentence.
+- **After deleting an entry:** its event page only if the event still exists and you can still
+  open it; otherwise History.
+- **Forged requests:** deleting an entry or event you cannot see answers "Page not found"; one
+  you can see but may not delete answers "Not allowed".
