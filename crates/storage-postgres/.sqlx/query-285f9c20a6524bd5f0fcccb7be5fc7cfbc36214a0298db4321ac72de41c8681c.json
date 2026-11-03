@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE (closed_at IS NULL OR closed_at >= $1) AND opened_at < $2 ORDER BY opened_at, id",
+  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE opened_at <= $1 AND (closed_at IS NULL OR closed_at >= $1) AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) ORDER BY opened_at DESC, id DESC LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -83,7 +83,6 @@
     ],
     "parameters": {
       "Left": [
-        "Int8",
         "Int8"
       ]
     },
@@ -97,5 +96,5 @@
       false
     ]
   },
-  "hash": "613fcc294132135226d79e2f235aa80f9995262a07336cd0cd752fef93ab5fa1"
+  "hash": "285f9c20a6524bd5f0fcccb7be5fc7cfbc36214a0298db4321ac72de41c8681c"
 }

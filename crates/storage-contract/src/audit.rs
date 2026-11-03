@@ -9,7 +9,8 @@ use smoke_domain::verify::{SnapshotProblem, verify_store};
 
 use crate::Fixture;
 use crate::fixture::{
-    add_entry, add_event, add_photo_reading, add_report, photo, report_values, scene, start,
+    SEED_ENTRY, add_entry, add_event, add_photo_reading, add_report, photo, report_values, scene,
+    start,
 };
 
 struct Populated {
@@ -129,8 +130,9 @@ pub async fn a_directly_inserted_record_is_detected<S: Store>(fx: &Fixture<S>) {
 pub async fn a_directly_deleted_record_is_detected<S: Store>(fx: &Fixture<S>) {
     let p = populate(fx).await;
     fx.raw(
-        "DELETE FROM pm25_readings; \
-         DELETE FROM log_entries WHERE id NOT IN (SELECT log_entry_id FROM smell_reports)",
+        "DELETE FROM pm25_readings WHERE log_entry_id <> 1; \
+         DELETE FROM log_entries WHERE id <> 1 \
+           AND id NOT IN (SELECT log_entry_id FROM smell_reports)",
     )
     .await
     .unwrap();
@@ -170,7 +172,7 @@ pub async fn a_direct_link_table_edit_is_detected<S: Store>(fx: &Fixture<S>) {
         .entries_for_event(stored.event_id.unwrap())
         .await
         .unwrap();
-    assert_eq!(in_event.len(), 2);
+    assert_eq!(in_event.iter().filter(|e| e.id != SEED_ENTRY).count(), 2);
     let rooms = fx.store.rooms().await.unwrap();
     let target = rooms.last().unwrap();
     assert_eq!(target.i18n_key.as_deref(), Some("room-stairwell"));
@@ -361,7 +363,7 @@ async fn assert_differs<S: Store>(fx: &Fixture<S>, entries: &[&LogEntry]) {
 
 pub async fn a_direct_observed_time_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     let (combined, report_only) = combined_and_report_only(fx).await;
-    fx.raw("UPDATE log_entries SET observed_at = observed_at + 1000000 WHERE id = (SELECT MIN(id) FROM log_entries)")
+    fx.raw("UPDATE log_entries SET observed_at = observed_at + 1000000 WHERE id = (SELECT MIN(id) FROM log_entries WHERE id <> 1)")
         .await
         .unwrap();
     assert!(combined.id.0 < report_only.id.0);
@@ -370,7 +372,7 @@ pub async fn a_direct_observed_time_edit_is_detected<S: Store>(fx: &Fixture<S>) 
 
 pub async fn a_direct_event_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     let (combined, _) = combined_and_report_only(fx).await;
-    fx.raw("UPDATE log_entries SET event_id = (SELECT MAX(id) FROM events) WHERE id = (SELECT MIN(id) FROM log_entries)")
+    fx.raw("UPDATE log_entries SET event_id = (SELECT MAX(id) FROM events) WHERE id = (SELECT MIN(id) FROM log_entries WHERE id <> 1)")
         .await
         .unwrap();
     assert_differs(fx, &[&combined]).await;
@@ -378,7 +380,7 @@ pub async fn a_direct_event_edit_is_detected<S: Store>(fx: &Fixture<S>) {
 
 pub async fn a_direct_reading_value_edit_is_detected<S: Store>(fx: &Fixture<S>) {
     let (combined, _) = combined_and_report_only(fx).await;
-    fx.raw("UPDATE pm25_readings SET value_ugm3 = value_ugm3 + 1")
+    fx.raw("UPDATE pm25_readings SET value_ugm3 = value_ugm3 + 1 WHERE log_entry_id <> 1")
         .await
         .unwrap();
     assert_differs(fx, &[&combined]).await;
@@ -388,7 +390,8 @@ pub async fn relinking_a_reading_to_another_entry_is_detected<S: Store>(fx: &Fix
     let (combined, report_only) = combined_and_report_only(fx).await;
     fx.raw(
         "UPDATE pm25_readings SET log_entry_id = \
-         (SELECT id FROM log_entries WHERE id NOT IN (SELECT log_entry_id FROM pm25_readings))",
+         (SELECT id FROM log_entries WHERE id NOT IN (SELECT log_entry_id FROM pm25_readings)) \
+         WHERE log_entry_id <> 1",
     )
     .await
     .unwrap();
@@ -444,7 +447,8 @@ pub async fn a_relinked_photo_is_detected<S: Store>(fx: &Fixture<S>) {
     let (photographed, plain) = photographed_and_plain(fx).await;
     fx.raw(
         "UPDATE pm25_photos SET pm25_reading_id = \
-         (SELECT id FROM pm25_readings WHERE id NOT IN (SELECT pm25_reading_id FROM pm25_photos))",
+         (SELECT id FROM pm25_readings WHERE id NOT IN (SELECT pm25_reading_id FROM pm25_photos) \
+            AND log_entry_id <> 1)",
     )
     .await
     .unwrap();

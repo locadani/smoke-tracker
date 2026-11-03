@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE opened_at <= $1 AND (closed_at IS NULL OR closed_at >= $1) ORDER BY opened_at DESC, id DESC LIMIT 1",
+  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE (closed_at IS NULL OR closed_at >= $1) AND opened_at < $2 AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) ORDER BY opened_at, id",
   "describe": {
     "columns": [
       {
@@ -82,7 +82,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 2
     },
     "nullable": [
       false,
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "47d78a65265127540b6e7dc18497766435fcb963f65af28e1afd3edb7c4c95ba"
+  "hash": "745923dcdf5a57823ded835aad747c9713e731a48cb79c64f788a98bf94d1c17"
 }

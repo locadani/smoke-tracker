@@ -61,6 +61,22 @@ async fn fetch(conn: &mut PgConnection, id: EventId) -> StoreResult<Option<Event
     .transpose()
 }
 
+/// The event, unless it has no live entry: such an event does not exist for readers.
+async fn fetch_live(conn: &mut PgConnection, id: EventId) -> StoreResult<Option<Event>> {
+    sqlx::query_as!(
+        EventRow,
+        "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
+         FROM events WHERE id = $1 \
+         AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL)",
+        id.0,
+    )
+    .fetch_optional(conn)
+    .await
+    .db()?
+    .map(EventRow::into_event)
+    .transpose()
+}
+
 async fn require(conn: &mut PgConnection, id: EventId) -> StoreResult<Event> {
     fetch(conn, id).await?.ok_or(StoreError::NotFound {
         entity: AuditEntity::Event,
@@ -72,7 +88,9 @@ async fn fetch_open(conn: &mut PgConnection) -> StoreResult<Option<Event>> {
     sqlx::query_as!(
         EventRow,
         "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
-         FROM events WHERE closed_at IS NULL"
+         FROM events WHERE closed_at IS NULL \
+         AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
+         ORDER BY opened_at DESC, id DESC LIMIT 1"
     )
     .fetch_optional(conn)
     .await
@@ -89,7 +107,7 @@ async fn audited(tx: &mut PostgresTx, action: AuditAction, before: Event) -> Sto
 
 impl EventRepo for PostgresStore {
     async fn event(&self, id: EventId) -> StoreResult<Option<Event>> {
-        fetch(&mut *self.read().await?, id).await
+        fetch_live(&mut *self.read().await?, id).await
     }
 
     async fn open_event(&self) -> StoreResult<Option<Event>> {
@@ -105,6 +123,7 @@ impl EventRepo for PostgresStore {
             EventRow,
             "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
              FROM events WHERE (closed_at IS NULL OR closed_at >= $1) AND opened_at < $2 \
+             AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
              ORDER BY opened_at, id",
             micros(from),
             micros(to),
@@ -122,6 +141,7 @@ impl EventRepo for PostgresStore {
             EventRow,
             "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
              FROM events WHERE close_reason = 'auto_0400' AND auto_close_notice_seen_at IS NULL \
+             AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
              ORDER BY opened_at, id"
         )
         .fetch_all(&mut *self.read().await?)
@@ -139,7 +159,7 @@ impl EventWrites for PostgresTx {
     }
 
     async fn event(&mut self, id: EventId) -> StoreResult<Option<Event>> {
-        fetch(self.conn(), id).await
+        fetch_live(self.conn(), id).await
     }
 
     async fn event_at(&mut self, at: DateTime<Utc>) -> StoreResult<Option<Event>> {
@@ -147,6 +167,7 @@ impl EventWrites for PostgresTx {
             EventRow,
             "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
              FROM events WHERE opened_at <= $1 AND (closed_at IS NULL OR closed_at >= $1) \
+             AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
              ORDER BY opened_at DESC, id DESC LIMIT 1",
             micros(at),
         )

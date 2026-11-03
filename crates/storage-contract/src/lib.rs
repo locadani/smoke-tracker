@@ -61,6 +61,8 @@ macro_rules! contract_tests {
             events::events_between_returns_overlapping_events,
             events::unseen_auto_closed_events_are_listed_until_seen,
             events::event_at_finds_the_event_whose_span_contains_the_time,
+            events::an_event_without_live_entries_is_not_an_event,
+            events::an_event_whose_entries_are_all_deleted_disappears,
             entries::a_report_keeps_its_rooms_and_symptoms,
             entries::entry_with_report_and_reading_round_trips,
             entries::an_entry_keeps_its_photo,
@@ -173,6 +175,7 @@ macro_rules! contract_tests {
             sweep::an_event_opened_after_the_boundary_stays_open,
             sweep::an_event_without_reports_closes_where_it_opened,
             sweep::on_dst_days_the_sweep_still_runs_at_four_local,
+            sweep::the_sweep_ignores_an_emptied_open_event,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

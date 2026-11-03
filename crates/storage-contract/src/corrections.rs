@@ -16,7 +16,7 @@ use smoke_domain::repos::{
 use smoke_domain::types::{CloseReason, EventId, Pm25, ReportId, RoomId};
 
 use crate::Fixture;
-use crate::fixture::{EntryExt, FIRST_ROOM, add_event, report_values, start};
+use crate::fixture::{EntryExt, FIRST_ROOM, add_live_event, report_values, start};
 use crate::logbook::{log, no_smell, people, rome, smell};
 
 async fn close<S>(
@@ -191,7 +191,7 @@ where
 {
     let p = people(fx).await;
     let opened = start() - TimeDelta::hours(3);
-    let past = add_event(
+    let past = add_live_event(
         fx,
         p.resident.id,
         opened,
@@ -201,7 +201,7 @@ where
         }),
     )
     .await;
-    let open = add_event(fx, p.resident.id, start(), None).await;
+    let open = add_live_event(fx, p.resident.id, start(), None).await;
 
     let blocked = reopen(fx, &p.resident, past.id).await;
     assert!(
@@ -352,7 +352,7 @@ where
 {
     let p = people(fx).await;
     let opened = start() - TimeDelta::hours(4);
-    let earlier = add_event(
+    let earlier = add_live_event(
         fx,
         p.resident.id,
         opened,
@@ -368,6 +368,14 @@ where
         &p.resident,
         smell(later_at, 4),
         EventChoice::New { replacing: None },
+    )
+    .await
+    .unwrap();
+    log(
+        fx,
+        &p.resident,
+        smell(later_at + TimeDelta::minutes(5), 4),
+        EventChoice::Join(later.entry.event_id.unwrap()),
     )
     .await
     .unwrap();
@@ -423,7 +431,7 @@ where
     .await
     .unwrap();
     let opened = start() - TimeDelta::days(2);
-    let other_day = add_event(
+    let other_day = add_live_event(
         fx,
         p.resident.id,
         opened,
@@ -534,7 +542,7 @@ where
         matches!(refused, Err(LogError::NoSmellCannotOpen)),
         "{refused:?}"
     );
-    let earlier = add_event(fx, p.resident.id, start() - TimeDelta::hours(1), None).await;
+    let earlier = add_live_event(fx, p.resident.id, start() - TimeDelta::hours(1), None).await;
     let moved = relocate(
         fx,
         &p.resident,
@@ -564,7 +572,7 @@ where
 {
     let p = people(fx).await;
     let combined = with_reading(fx, &p.resident, start()).await;
-    let target = add_event(
+    let target = add_live_event(
         fx,
         p.resident.id,
         start() - TimeDelta::hours(1),

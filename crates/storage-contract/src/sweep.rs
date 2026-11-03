@@ -6,8 +6,8 @@ use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::clock::Clock;
 use smoke_domain::records::{Event, NewEntry};
 use smoke_domain::repos::{
-    AuditRepo, Commit, EntryWrites, EventRepo, EventWrites, JobRepo, JobWrites, ListRepo,
-    ListWrites, Transactional, UserWrites,
+    AuditRepo, Commit, EntryRepo, EntryWrites, EventRepo, EventWrites, JobRepo, JobWrites,
+    ListRepo, ListWrites, SnapshotRepo, Transactional, UserWrites,
 };
 use smoke_domain::schedule::DailySchedule;
 use smoke_domain::starter::seed_starter_lists;
@@ -15,7 +15,7 @@ use smoke_domain::sweep::{AUTO_CLOSE_JOB, SweepOutcome, auto_close};
 use smoke_domain::types::{CloseReason, Role, UserId};
 
 use crate::Fixture;
-use crate::fixture::{FIRST_ROOM, add_event, add_user, last_entry, report_values};
+use crate::fixture::{FIRST_ROOM, add_event, add_live_event, add_user, last_entry, report_values};
 
 fn t(s: &str) -> DateTime<Utc> {
     s.parse().expect("valid instant")
@@ -153,7 +153,7 @@ where
 
 pub async fn an_event_opened_after_the_boundary_stays_open<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + JobWrites> + JobRepo + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites + JobWrites> + JobRepo + EventRepo,
 {
     let user = add_user(fx, "daniele", Role::Resident).await;
     let mut tx = fx.store.begin(None).await.unwrap();
@@ -161,7 +161,7 @@ where
         .await
         .unwrap();
     tx.commit().await.unwrap();
-    let early_morning = add_event(fx, user.id, t("2026-01-16T04:00:00Z"), None).await;
+    let early_morning = add_live_event(fx, user.id, t("2026-01-16T04:00:00Z"), None).await;
     assert_eq!(
         sweep_at(fx, t("2026-01-16T06:00:00Z")).await,
         SweepOutcome::Ran { closed: None }
@@ -178,11 +178,11 @@ where
 
 pub async fn an_event_without_reports_closes_where_it_opened<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites + JobWrites> + JobRepo + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites + JobWrites> + JobRepo + EventRepo,
 {
     let user = add_user(fx, "daniele", Role::Resident).await;
     let opened = t("2026-01-15T20:00:00Z");
-    let event = add_event(fx, user.id, opened, None).await;
+    let event = add_live_event(fx, user.id, opened, None).await;
     sweep_at(fx, t("2026-01-16T09:00:00Z")).await;
     let closed = fx.store.event(event.id).await.unwrap().unwrap().closed;
     assert_eq!(closed.map(|c| c.at), Some(opened));
@@ -215,4 +215,33 @@ where
             "{date}"
         );
     }
+}
+
+pub async fn the_sweep_ignores_an_emptied_open_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites + JobWrites + ListWrites>
+        + JobRepo
+        + ListRepo
+        + EntryRepo
+        + SnapshotRepo,
+{
+    let user = add_user(fx, "daniele", Role::Resident).await;
+    let event = evening_event(fx, user.id, "2026-01-16").await;
+    let mut tx = fx.store.begin(Some(user.id)).await.unwrap();
+    for entry in fx.store.entries_for_event(event.id).await.unwrap() {
+        tx.delete_entry(entry.id).await.unwrap();
+    }
+    tx.commit().await.unwrap();
+
+    assert_eq!(
+        sweep_at(fx, t("2026-01-16T03:00:00Z")).await,
+        SweepOutcome::Ran { closed: None }
+    );
+    let state = fx.store.audit_state().await.unwrap();
+    let row = state
+        .snapshots
+        .iter()
+        .find(|s| s.entity == AuditEntity::Event && s.entity_id == event.id.0)
+        .expect("the event row is kept");
+    assert!(row.value["closed"].is_null(), "the event stays open");
 }

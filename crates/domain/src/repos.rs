@@ -113,6 +113,8 @@ pub trait ListRepo: Send + Sync {
     fn symptoms(&self) -> impl Future<Output = StoreResult<Vec<Symptom>>> + Send;
 }
 
+/// Reads only see events that have at least one live (not deleted) entry; an event without one
+/// does not exist as far as readers can tell.
 pub trait EventRepo: Send + Sync {
     fn event(&self, id: EventId) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     fn open_event(&self) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
@@ -242,7 +244,9 @@ pub trait ListWrites: Send {
 }
 
 pub trait EventWrites: Send {
-    /// Reads inside the transaction, so a decision and the write that follows it see the same data.
+    /// Reads inside the transaction, so a decision and the write that follows it see the same
+    /// data. Like [`EventRepo`], they skip events without a live entry, so an event just created
+    /// is not found until its first entry is written.
     fn open_event(&mut self) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     fn event(&mut self, id: EventId) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     /// The most recently opened event whose span contains `at`; an open event has no end yet.
