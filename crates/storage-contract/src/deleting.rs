@@ -5,7 +5,7 @@ use smoke_domain::audit::{AuditAction, AuditEntity, verify_chain};
 use smoke_domain::clock::Clock;
 use smoke_domain::deleting::{delete_entry, delete_event};
 use smoke_domain::logbook::{EventChoice, LogError, MoveTarget, move_report};
-use smoke_domain::records::{Closure, Event, NewEntry, NewReading, User};
+use smoke_domain::records::{Closure, Event, LogEntry, NewEntry, NewReading, User};
 use smoke_domain::repos::{Commit, EntryWrites, Store};
 use smoke_domain::types::{CloseReason, EventId, LogEntryId, Pm25};
 use smoke_domain::verify::verify_store;
@@ -154,8 +154,8 @@ pub async fn the_start_never_passes_the_end<S: Store>(fx: &Fixture<S>) {
         Some(closed.id),
         t0() + TimeDelta::minutes(50),
         None,
+        Some(report_values(3, &[FIRST_ROOM], &[])),
         None,
-        Some(NewReading::without_photo(Pm25::new(10.0).unwrap())),
     )
     .unwrap();
     let mut tx = fx.store.begin(Some(p.resident.id)).await.unwrap();
@@ -421,4 +421,166 @@ pub async fn verify_audit_is_clean_after_deletions<S: Store>(fx: &Fixture<S>) {
     assert_eq!(verify_chain(&log), Ok(()));
     let report = verify_store(&fx.store).await.unwrap();
     assert!(report.is_ok(), "{report:?}");
+}
+
+/// Logs a PM2.5 reading by `who` at `at` into `event`, with no report.
+async fn add_reading<S: Store>(
+    fx: &Fixture<S>,
+    who: &User,
+    event: EventId,
+    at: DateTime<Utc>,
+) -> LogEntryId {
+    let entry = NewEntry::new(
+        who.id,
+        Some(event),
+        at,
+        None,
+        None,
+        Some(NewReading::without_photo(Pm25::new(12.0).unwrap())),
+    )
+    .unwrap();
+    let mut tx = fx.store.begin(Some(who.id)).await.unwrap();
+    let id = tx.create_entry(entry).await.unwrap().id;
+    tx.commit().await.unwrap();
+    id
+}
+
+async fn live_entry<S: Store>(fx: &Fixture<S>, id: LogEntryId) -> LogEntry {
+    fx.store.entry(id).await.unwrap().unwrap()
+}
+
+/// An event whose only smell report is the resident's, with one reading logged after it.
+async fn event_with_a_reading<S: Store>(
+    fx: &Fixture<S>,
+    p: &crate::logbook::People,
+) -> (EventId, LogEntryId, LogEntryId) {
+    let (event_id, report) = open_event_of(fx, &p.resident).await;
+    let reading = add_reading(fx, &p.resident, event_id, start() + TimeDelta::minutes(5)).await;
+    (event_id, report, reading)
+}
+
+fn log_entry_audit(rows: &[(AuditEntity, AuditAction)]) -> bool {
+    rows == [
+        (AuditEntity::LogEntry, AuditAction::Delete),
+        (AuditEntity::LogEntry, AuditAction::Update),
+    ]
+}
+
+pub async fn deleting_the_last_report_detaches_the_readings<S: Store>(fx: &Fixture<S>) {
+    let p = people(fx).await;
+    let (event_id, report, reading) = event_with_a_reading(fx, &p).await;
+    let before = audit_len(fx).await;
+
+    assert_eq!(delete(fx, &p.resident, report).await.unwrap(), None);
+
+    assert_eq!(event(fx, event_id).await, None);
+    let kept = live_entry(fx, reading).await;
+    assert_eq!((kept.event_id, kept.deleted_at), (None, None));
+    assert!(kept.reading.is_some());
+    let rows = audit_since(fx, before).await;
+    assert!(log_entry_audit(&rows), "{rows:?}");
+}
+
+pub async fn moving_the_last_report_to_another_event_detaches_the_readings<S: Store>(
+    fx: &Fixture<S>,
+) {
+    let p = people(fx).await;
+    let (event_id, report, reading) = event_with_a_reading(fx, &p).await;
+    let end = Closure {
+        at: start() + TimeDelta::minutes(10),
+        reason: CloseReason::Manual,
+    };
+    let other = add_live_event(fx, p.partner.id, t0(), Some(end)).await;
+    let before = audit_len(fx).await;
+    let report_id = live_entry(fx, report).await.report.unwrap().id;
+
+    let mut tx = fx.store.begin(Some(p.resident.id)).await.unwrap();
+    move_report(
+        &mut tx,
+        &p.resident.actor(),
+        report_id,
+        MoveTarget::Event(other.id),
+        &rome(),
+        fx.clock.now(),
+    )
+    .await
+    .unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(event(fx, event_id).await, None);
+    assert_eq!(live_entry(fx, reading).await.event_id, None);
+    assert_eq!(entry_ids(fx, other.id).await.len(), 2);
+    let rows = audit_since(fx, before).await;
+    assert_eq!(
+        rows,
+        [
+            (AuditEntity::LogEntry, AuditAction::Move),
+            (AuditEntity::LogEntry, AuditAction::Update)
+        ]
+    );
+}
+
+pub async fn moving_the_last_report_to_a_new_event_detaches_the_readings<S: Store>(
+    fx: &Fixture<S>,
+) {
+    let p = people(fx).await;
+    let (event_id, report, reading) = event_with_a_reading(fx, &p).await;
+
+    let new_id = relocate_to_new(fx, &p.resident, report).await;
+
+    assert_ne!(new_id, event_id);
+    assert_eq!(event(fx, event_id).await, None);
+    assert_eq!(live_entry(fx, reading).await.event_id, None);
+    assert_eq!(entry_ids(fx, new_id).await, [report]);
+    let log = fx.store.audit_log().await.unwrap();
+    assert_eq!(verify_chain(&log), Ok(()));
+}
+
+pub async fn an_earlier_reading_sets_the_start_and_the_next_report_the_owner<S: Store>(
+    fx: &Fixture<S>,
+) {
+    let p = people(fx).await;
+    let open = add_live_event(fx, p.resident.id, t0(), None).await;
+    let reading_at = t0() + TimeDelta::minutes(10);
+    let reading = add_reading(fx, &p.resident, open.id, reading_at).await;
+    let first_report = join(fx, &p.resident, open.id, t0() + TimeDelta::minutes(15)).await;
+    let next_at = t0() + TimeDelta::minutes(20);
+    join(fx, &p.partner, open.id, next_at).await;
+    let first = entry_ids(fx, open.id).await[0];
+    delete(fx, &p.resident, first).await.unwrap();
+
+    assert_eq!(
+        delete(fx, &p.resident, first_report).await.unwrap(),
+        Some(open.id)
+    );
+
+    let after = event(fx, open.id).await.unwrap();
+    assert_eq!(
+        (after.opened_at, after.owner_id),
+        (reading_at, p.partner.id)
+    );
+    assert_eq!(live_entry(fx, reading).await.event_id, Some(open.id));
+    let log = fx.store.audit_log().await.unwrap();
+    assert_eq!(verify_chain(&log), Ok(()));
+    let report = verify_store(&fx.store).await.unwrap();
+    assert!(report.is_ok(), "{report:?}");
+}
+
+pub async fn detaching_an_entry_is_audited_once<S: Store>(fx: &Fixture<S>) {
+    let p = people(fx).await;
+    let (event_id, _, reading) = event_with_a_reading(fx, &p).await;
+    let before = audit_len(fx).await;
+
+    let mut tx = fx.store.begin(Some(p.resident.id)).await.unwrap();
+    let detached = tx.detach_entry(reading).await.unwrap();
+    let again = tx.detach_entry(reading).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(detached.event_id, None);
+    assert_eq!(again, detached);
+    assert_eq!(
+        audit_since(fx, before).await,
+        [(AuditEntity::LogEntry, AuditAction::Update)]
+    );
+    assert_eq!(entry_ids(fx, event_id).await.len(), 1);
 }

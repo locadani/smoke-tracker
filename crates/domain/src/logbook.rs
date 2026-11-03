@@ -377,7 +377,7 @@ pub async fn move_report<T: EventWrites + EntryWrites>(
             if let Some(current) = entry.event_id {
                 let alone = tx.entries_for_event(current).await?.len() == 1;
                 if alone {
-                    follow_remaining_entries(tx, current).await?;
+                    follow_remaining_entries(tx, current, false).await?;
                     return Ok(entry);
                 }
             }
@@ -386,13 +386,10 @@ pub async fn move_report<T: EventWrites + EntryWrites>(
             open_new_event(tx, owner, at, schedule, now, another_open).await?
         }
     };
-    let leaving = match entry.event_id {
-        Some(old) if old != target && is_earliest_entry(tx, old, entry.id).await? => Some(old),
-        _ => None,
-    };
+    let leaving = entry.event_id.filter(|old| *old != target);
     let moved = tx.move_entry(entry.id, target).await?;
     if let Some(old) = leaving {
-        follow_remaining_entries(tx, old).await?;
+        follow_remaining_entries(tx, old, true).await?;
     }
     Ok(moved)
 }
@@ -407,24 +404,37 @@ pub(crate) async fn is_earliest_entry<T: EntryWrites>(
     Ok(entries.first().is_some_and(|first| first.id == entry))
 }
 
-/// Moves the event's start and owner to its first remaining live entry, never past its end.
-/// Does nothing if no live entry remains: the event is gone then.
+/// Brings an event back in line with its remaining live entries after one left it. Its start
+/// follows the earliest remaining entry (never past its end) and its owner the author of the
+/// earliest remaining smell report. When `report_left` and no smell report remains, the event
+/// cannot stand on readings alone: each remaining reading is detached and stands alone, and the
+/// event is gone with its last entry. Does nothing if no live entry remains.
 pub(crate) async fn follow_remaining_entries<T: EventWrites + EntryWrites>(
     tx: &mut T,
     event: EventId,
+    report_left: bool,
 ) -> StoreResult<()> {
     let entries = tx.entries_for_event(event).await?;
+    let owner = entries.iter().find(|entry| entry.report.is_some());
+    if owner.is_none() && report_left {
+        for entry in &entries {
+            tx.detach_entry(entry.id).await?;
+        }
+        return Ok(());
+    }
     let Some(first) = entries.first() else {
         return Ok(());
     };
-    let (first_at, owner) = (first.observed_at, first.user_id);
+    let owner = owner.unwrap_or(first).user_id;
     let Some(event_row) = tx.event(event).await? else {
         return Ok(());
     };
-    let opened_at = event_row
-        .closed
-        .map_or(first_at, |closure| first_at.min(closure.at));
-    tx.move_event_start(event, opened_at, owner).await?;
+    let opened_at = event_row.closed.map_or(first.observed_at, |closure| {
+        first.observed_at.min(closure.at)
+    });
+    if (opened_at, owner) != (event_row.opened_at, event_row.owner_id) {
+        tx.move_event_start(event, opened_at, owner).await?;
+    }
     Ok(())
 }
 

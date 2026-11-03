@@ -675,6 +675,18 @@ impl EntryWrites for SqliteTx {
         audited(self, AuditAction::Move, before).await
     }
 
+    async fn detach_entry(&mut self, id: LogEntryId) -> StoreResult<LogEntry> {
+        let before = require_live(self.conn(), id).await?;
+        if before.event_id.is_none() {
+            return Ok(before);
+        }
+        sqlx::query!("UPDATE log_entries SET event_id = NULL WHERE id = $1", id.0)
+            .execute(self.conn())
+            .await
+            .db()?;
+        audited(self, AuditAction::Update, before).await
+    }
+
     async fn delete_entry(&mut self, id: LogEntryId) -> StoreResult<LogEntry> {
         let before = require_live(self.conn(), id).await?;
         let now = micros(self.now());

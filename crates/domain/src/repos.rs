@@ -332,6 +332,12 @@ pub trait EntryWrites: Send {
         id: LogEntryId,
         to: EventId,
     ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
+    /// Takes the entry out of its event, so it stands alone (an entry already without an event is
+    /// returned unchanged and not audited).
+    fn detach_entry(
+        &mut self,
+        id: LogEntryId,
+    ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
     /// Soft delete: sets `deleted_at`, hiding both children.
     fn delete_entry(
         &mut self,

@@ -88,8 +88,9 @@ fn may_delete(actor: &Actor, entry: &EntryAuthor, now: DateTime<Utc>) -> bool {
 
 /// Deletes one live entry `actor` may delete. An entry the actor may not even see is
 /// [`LogError::NotFound`], so nobody learns it exists. Returns the entry's event if it still exists
-/// afterwards; when the entry was the event's earliest, the event's start and owner follow the
-/// next one.
+/// afterwards; the event's start and owner follow its remaining entries
+/// ([`follow_remaining_entries`]), and when the last smell report is gone the remaining readings
+/// are detached and the event with them.
 pub async fn delete_entry<T: EventWrites + EntryWrites + UserWrites>(
     tx: &mut T,
     actor: &Actor,
@@ -121,9 +122,10 @@ pub async fn delete_entry<T: EventWrites + EntryWrites + UserWrites>(
         return Ok(None);
     };
     let earliest = is_earliest_entry(tx, event, id).await?;
+    let had_report = entry.report.is_some();
     tx.delete_entry(id).await?;
-    if earliest {
-        follow_remaining_entries(tx, event).await?;
+    if earliest || had_report {
+        follow_remaining_entries(tx, event, had_report).await?;
     }
     Ok(tx.event(event).await?.map(|event| event.id))
 }
