@@ -5,8 +5,10 @@ use std::collections::BTreeMap;
 
 use chrono::{DateTime, Utc};
 
+use crate::logbook::{LogError, follow_remaining_entries, is_earliest_entry};
 use crate::permissions::{Action, Actor, can};
-use crate::types::{Role, UserId};
+use crate::repos::{EntryWrites, EventWrites, UserWrites};
+use crate::types::{EventId, LogEntryId, Role, UserId};
 
 /// Who logged one live entry of an event, and the role they hold today.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,7 +51,9 @@ pub fn event_deletion(actor: &Actor, entries: &[EntryAuthor], now: DateTime<Utc>
         return EventDeletion::Hidden;
     }
     if deletable == entries.len() {
-        return EventDeletion::Allowed { entries: deletable };
+        return EventDeletion::Allowed {
+            entries: entries.len(),
+        };
     }
 
     let mut per_author: BTreeMap<UserId, usize> = BTreeMap::new();
@@ -82,13 +86,79 @@ fn may_delete(actor: &Actor, entry: &EntryAuthor, now: DateTime<Utc>) -> bool {
     can(actor, action, now)
 }
 
+/// Deletes one live entry `actor` may delete. Returns the entry's event if it still exists
+/// afterwards; when the entry was the event's earliest, the event's start and owner follow the
+/// next one.
+pub async fn delete_entry<T: EventWrites + EntryWrites + UserWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: LogEntryId,
+    now: DateTime<Utc>,
+) -> Result<Option<EventId>, LogError> {
+    let entry = tx
+        .entry(id)
+        .await?
+        .filter(|entry| !entry.is_deleted())
+        .ok_or(LogError::NotFound)?;
+    let author = tx.user(entry.user_id).await?.ok_or(LogError::NotFound)?;
+    let allowed = can(
+        actor,
+        Action::DeleteEntry {
+            author: author.id,
+            author_role: author.role,
+        },
+        now,
+    );
+    if !allowed {
+        return Err(LogError::Forbidden);
+    }
+    let Some(event) = entry.event_id else {
+        tx.delete_entry(id).await?;
+        return Ok(None);
+    };
+    let earliest = is_earliest_entry(tx, event, id).await?;
+    tx.delete_entry(id).await?;
+    if earliest {
+        follow_remaining_entries(tx, event).await?;
+    }
+    Ok(tx.event(event).await?.map(|event| event.id))
+}
+
+/// Deletes every live entry of an event, all or none: refused with [`LogError::OthersLogged`]
+/// when `actor` may not delete some of them. Returns how many entries were deleted.
+pub async fn delete_event<T: EventWrites + EntryWrites + UserWrites>(
+    tx: &mut T,
+    actor: &Actor,
+    id: EventId,
+    now: DateTime<Utc>,
+) -> Result<usize, LogError> {
+    tx.event(id).await?.ok_or(LogError::NotFound)?;
+    let entries = tx.entries_for_event(id).await?;
+    let mut authors = Vec::with_capacity(entries.len());
+    for entry in &entries {
+        let author = tx.user(entry.user_id).await?.ok_or(LogError::NotFound)?;
+        authors.push(EntryAuthor {
+            author: author.id,
+            role: author.role,
+        });
+    }
+    match event_deletion(actor, &authors, now) {
+        EventDeletion::Hidden => Err(LogError::Forbidden),
+        EventDeletion::Blocked { .. } => Err(LogError::OthersLogged),
+        EventDeletion::Allowed { entries: count } => {
+            for entry in &entries {
+                tx.delete_entry(entry.id).await?;
+            }
+            Ok(count)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use chrono::{DateTime, TimeDelta, Utc};
+    use chrono::TimeDelta;
 
     use super::*;
-    use crate::permissions::Actor;
-    use crate::types::{Role, UserId};
 
     const ME: UserId = UserId(1);
     const DUYGU: UserId = UserId(2);
@@ -224,5 +294,19 @@ mod tests {
         };
         assert_eq!(recap, vec![count(DUYGU, 1), count(MARCO, 1)]);
         assert_eq!(blockers, vec![DUYGU]);
+    }
+
+    #[test]
+    fn equal_counts_are_ordered_by_id() {
+        let mut entries = by(MARCO, Role::Guest, 1);
+        entries.extend(by(DUYGU, Role::Resident, 1));
+        entries.extend(by(ME, Role::Resident, 1));
+        let guest = actor(Role::Guest, Some(now() + TimeDelta::days(1)));
+        let EventDeletion::Blocked { recap, blockers } = event_deletion(&guest, &entries, now())
+        else {
+            panic!("expected Blocked");
+        };
+        assert_eq!(recap, vec![count(ME, 1), count(DUYGU, 1), count(MARCO, 1)]);
+        assert_eq!(blockers, vec![DUYGU, MARCO]);
     }
 }

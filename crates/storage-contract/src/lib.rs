@@ -10,6 +10,7 @@
 
 pub mod audit;
 pub mod corrections;
+pub mod deleting;
 pub mod entries;
 pub mod events;
 pub mod fixture;
@@ -173,6 +174,21 @@ macro_rules! contract_tests {
             corrections::moving_a_report_moves_its_reading,
             corrections::correcting_a_report_time_retimes_its_reading,
             corrections::correcting_only_rooms_shows_only_room_changes_in_history,
+            deleting::deleting_the_only_entry_removes_the_event,
+            deleting::deleting_a_later_entry_leaves_the_event_alone,
+            deleting::deleting_the_earliest_entry_moves_the_start_and_owner,
+            deleting::the_start_never_passes_the_end,
+            deleting::a_check_with_no_event_is_deleted,
+            deleting::deleting_twice_is_not_found,
+            deleting::a_resident_deletes_a_guests_entry_but_not_another_residents,
+            deleting::a_guest_or_viewer_cannot_delete_others,
+            deleting::deleting_an_event_deletes_every_entry_in_one_transaction,
+            deleting::deleting_an_event_with_another_residents_entry_is_refused,
+            deleting::deleting_an_event_none_of_mine_is_forbidden,
+            deleting::deleting_an_emptied_event_is_not_found,
+            deleting::moving_the_earliest_entry_out_moves_the_start,
+            deleting::moving_the_only_entry_out_removes_the_event,
+            deleting::verify_audit_is_clean_after_deletions,
             sweep::the_first_sweep_runs_and_is_remembered,
             sweep::a_sweep_at_four_closes_the_event_at_its_last_report,
             sweep::a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four,

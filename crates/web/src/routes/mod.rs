@@ -45,7 +45,7 @@ pub(crate) fn can_open(
 /// the form, or an error page.
 pub(crate) fn refusal(error: LogError) -> Result<&'static str, AppError> {
     match error {
-        LogError::Forbidden => Err(AppError::NotAllowed),
+        LogError::Forbidden | LogError::OthersLogged => Err(AppError::NotAllowed),
         LogError::NotFound => Err(AppError::NotFound),
         LogError::Stale => Ok("refused-stale"),
         LogError::AnotherEventOpen => Ok("refused-another-open"),

@@ -17,7 +17,7 @@ use crate::records::{
 };
 use crate::repos::{EntryWrites, EventWrites, StoreError, StoreResult};
 use crate::schedule::DailySchedule;
-use crate::types::{CloseReason, EventId, ReportId, UserId};
+use crate::types::{CloseReason, EventId, LogEntryId, ReportId, UserId};
 
 #[derive(Debug, Error)]
 pub enum LogError {
@@ -42,6 +42,9 @@ pub enum LogError {
     /// A check stays a no-smell report: a smell is logged as a new report (spec §7.1).
     #[error("a check cannot be corrected to a smell")]
     CheckCannotSmell,
+    /// Deleting a whole event would delete entries the actor may not delete.
+    #[error("someone else's entries are in the event")]
+    OthersLogged,
     #[error(transparent)]
     Invalid(#[from] DomainError),
     #[error(transparent)]
@@ -373,7 +376,46 @@ pub async fn move_report<T: EventWrites + EntryWrites>(
             open_new_event(tx, owner, at, schedule, now, another_open).await?
         }
     };
-    Ok(tx.move_entry(entry.id, target).await?)
+    let leaving = match entry.event_id {
+        Some(old) if old != target && is_earliest_entry(tx, old, entry.id).await? => Some(old),
+        _ => None,
+    };
+    let moved = tx.move_entry(entry.id, target).await?;
+    if let Some(old) = leaving {
+        follow_remaining_entries(tx, old).await?;
+    }
+    Ok(moved)
+}
+
+/// Whether `entry` is the first live entry of `event`.
+pub(crate) async fn is_earliest_entry<T: EntryWrites>(
+    tx: &mut T,
+    event: EventId,
+    entry: LogEntryId,
+) -> StoreResult<bool> {
+    let entries = tx.entries_for_event(event).await?;
+    Ok(entries.first().is_some_and(|first| first.id == entry))
+}
+
+/// Moves the event's start and owner to its first remaining live entry, never past its end.
+/// Does nothing if no live entry remains: the event is gone then.
+pub(crate) async fn follow_remaining_entries<T: EventWrites + EntryWrites>(
+    tx: &mut T,
+    event: EventId,
+) -> StoreResult<()> {
+    let entries = tx.entries_for_event(event).await?;
+    let Some(first) = entries.first() else {
+        return Ok(());
+    };
+    let (first_at, owner) = (first.observed_at, first.user_id);
+    let Some(event_row) = tx.event(event).await? else {
+        return Ok(());
+    };
+    let opened_at = event_row
+        .closed
+        .map_or(first_at, |closure| first_at.min(closure.at));
+    tx.move_event_start(event, opened_at, owner).await?;
+    Ok(())
 }
 
 /// The event, if it exists and `actor` may close or reopen it.
