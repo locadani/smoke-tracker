@@ -5,6 +5,7 @@
 
 pub mod audit;
 pub mod clock;
+pub mod deleting;
 pub mod error;
 pub mod events;
 pub mod graphs;
