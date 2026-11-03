@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use chrono::{DateTime, Utc};
 
 use crate::logbook::{LogError, follow_remaining_entries, is_earliest_entry};
-use crate::permissions::{Action, Actor, can};
+use crate::permissions::{Action, Actor, can, can_see};
 use crate::repos::{EntryWrites, EventWrites, UserWrites};
 use crate::types::{EventId, LogEntryId, Role, UserId};
 
@@ -86,7 +86,8 @@ fn may_delete(actor: &Actor, entry: &EntryAuthor, now: DateTime<Utc>) -> bool {
     can(actor, action, now)
 }
 
-/// Deletes one live entry `actor` may delete. Returns the entry's event if it still exists
+/// Deletes one live entry `actor` may delete. An entry the actor may not even see is
+/// [`LogError::NotFound`], so nobody learns it exists. Returns the entry's event if it still exists
 /// afterwards; when the entry was the event's earliest, the event's start and owner follow the
 /// next one.
 pub async fn delete_entry<T: EventWrites + EntryWrites + UserWrites>(
@@ -100,6 +101,9 @@ pub async fn delete_entry<T: EventWrites + EntryWrites + UserWrites>(
         .await?
         .filter(|entry| !entry.is_deleted())
         .ok_or(LogError::NotFound)?;
+    if !can_see(actor, entry.user_id, now) {
+        return Err(LogError::NotFound);
+    }
     let author = tx.user(entry.user_id).await?.ok_or(LogError::NotFound)?;
     let allowed = can(
         actor,

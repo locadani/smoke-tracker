@@ -272,3 +272,22 @@ async fn deleting_twice_is_not_found() {
     let again = app.send(post_form(&path, "", Some(&cookie))).await;
     assert_eq!(again.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn a_guest_deleting_a_residents_entry_is_not_found() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    app.add_user("ospite", Role::Guest, Locale::It).await;
+    let mine = app.log(&me, "2026-01-15T18:00:00Z", 4, &[], NEW).await;
+    let cookie = app.sign_in("ospite").await;
+
+    let response = app
+        .send(post_form(
+            &format!("/entries/{}/delete", mine.report.entry_id),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}

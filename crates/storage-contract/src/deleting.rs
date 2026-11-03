@@ -229,18 +229,18 @@ pub async fn a_resident_deletes_a_guests_entry_but_not_another_residents<S: Stor
     );
 }
 
-pub async fn a_guest_or_viewer_cannot_delete_others<S: Store>(fx: &Fixture<S>) {
+pub async fn a_guest_cannot_see_others_entries_and_a_viewer_cannot_delete_them<S: Store>(
+    fx: &Fixture<S>,
+) {
     let p = people(fx).await;
     let (event_id, residents) = open_event_of(fx, &p.resident).await;
     let guests = join(fx, &p.guest, event_id, start()).await;
     let before = audit_len(fx).await;
 
-    for (who, entry) in [
-        (&p.guest, residents),
-        (&p.viewer, guests),
-        (&p.viewer, residents),
-    ] {
-        let refused = delete(fx, who, entry).await;
+    let hidden = delete(fx, &p.guest, residents).await;
+    assert!(matches!(hidden, Err(LogError::NotFound)), "{hidden:?}");
+    for entry in [guests, residents] {
+        let refused = delete(fx, &p.viewer, entry).await;
         assert!(matches!(refused, Err(LogError::Forbidden)), "{refused:?}");
     }
     assert_eq!(audit_len(fx).await, before);

@@ -181,7 +181,7 @@ macro_rules! contract_tests {
             deleting::a_check_with_no_event_is_deleted,
             deleting::deleting_twice_is_not_found,
             deleting::a_resident_deletes_a_guests_entry_but_not_another_residents,
-            deleting::a_guest_or_viewer_cannot_delete_others,
+            deleting::a_guest_cannot_see_others_entries_and_a_viewer_cannot_delete_them,
             deleting::deleting_an_event_deletes_every_entry_in_one_transaction,
             deleting::deleting_an_event_with_another_residents_entry_is_refused,
             deleting::deleting_an_event_none_of_mine_is_forbidden,
