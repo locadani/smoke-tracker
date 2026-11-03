@@ -386,3 +386,8 @@ symptom-sore-throat = Sore throat
 symptom-eye-irritation = Eye irritation
 symptom-nausea = Nausea
 symptom-difficulty-sleeping = Difficulty sleeping
+
+delete = Delete
+delete-cancel = Cancel
+delete-cannot-undo = This can't be undone.
+entry-delete-question = Delete this entry?

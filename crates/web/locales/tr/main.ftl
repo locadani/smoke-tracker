@@ -386,3 +386,8 @@ symptom-sore-throat = Boğaz ağrısı
 symptom-eye-irritation = Göz tahrişi
 symptom-nausea = Mide bulantısı
 symptom-difficulty-sleeping = Uyku güçlüğü
+
+delete = Sil
+delete-cancel = Vazgeç
+delete-cannot-undo = Bu geri alınamaz.
+entry-delete-question = Bu kayıt silinsin mi?

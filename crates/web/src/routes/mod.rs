@@ -1,6 +1,7 @@
 //! One module per feature.
 
 pub(crate) mod accept;
+pub(crate) mod deleting;
 pub(crate) mod entries;
 pub(crate) mod entry_page;
 pub(crate) mod events;

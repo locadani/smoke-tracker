@@ -386,3 +386,8 @@ symptom-sore-throat = Mal di gola
 symptom-eye-irritation = Irritazione agli occhi
 symptom-nausea = Nausea
 symptom-difficulty-sleeping = Difficoltà a dormire
+
+delete = Elimina
+delete-cancel = Annulla
+delete-cannot-undo = Non si può annullare.
+entry-delete-question = Eliminare questa registrazione?

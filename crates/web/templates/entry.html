@@ -36,9 +36,17 @@
 </figure>
 {% endcall %}
 {% endif %}
+{% if confirm_delete %}
+{% call c::confirm_delete(tr.t("entry-delete-question"), "/entries/{}/delete"|format(id), "/entries/{}"|format(id)) %}{% endcall %}
+{% endif %}
 {% if let Some(smell) = smell %}
+{% if editable || deletable %}
+<div class="cluster">
+{% if editable %}<a href="/reports/{{ smell.id }}/correct" class="button" data-variant="secondary">{{ tr.t("report-correct") }}</a>{% endif %}
+{% if deletable && !confirm_delete %}<a href="?delete" class="button" data-variant="danger">{{ tr.t("delete") }}</a>{% endif %}
+</div>
+{% endif %}
 {% if editable %}
-<a href="/reports/{{ smell.id }}/correct" class="button" data-variant="secondary">{{ tr.t("report-correct") }}</a>
 {% if !move_options.is_empty() %}
 {% call c::card(tr.t("report-move")) %}
 <form method="post" action="/reports/{{ smell.id }}/move" class="split">
@@ -60,6 +68,7 @@
 </ol>
 {% endcall %}
 {% else %}
+{% if deletable && !confirm_delete %}<a href="?delete" class="button" data-variant="danger">{{ tr.t("delete") }}</a>{% endif %}
 <p class="muted">{{ tr.t("entry-no-edit-for-reading") }}</p>
 {% endif %}
 {% endblock %}

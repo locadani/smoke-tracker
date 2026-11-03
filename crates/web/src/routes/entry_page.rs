@@ -11,10 +11,12 @@ use smoke_domain::history::{Change, entry_history, was_corrected};
 use smoke_domain::permissions::{Action, can, can_see};
 use smoke_domain::records::{LogEntry, Symptom, User, report_views};
 use smoke_domain::repos::Store;
+use smoke_domain::sweep::auto_close;
 use smoke_domain::types::{EventId, LogEntryId, ReportId, SymptomId, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
+use crate::forms::QueryPairs;
 use crate::header::{SignedIn, Tab};
 use crate::i18n::Tr;
 use crate::routes::can_open;
@@ -84,6 +86,7 @@ struct PhotoFacts {
 struct EntryPage {
     tr: Tr,
     signed_in: Option<SignedIn>,
+    id: i64,
     /// `None` for a no-smell check outside any event, and for a reading outside every event.
     event: Option<EventLink>,
     has_report: bool,
@@ -99,6 +102,10 @@ struct EntryPage {
     /// Shown to those who may correct and move the entry's report.
     editable: bool,
     move_options: Vec<MoveOption>,
+    /// Shown to those who may delete the entry.
+    deletable: bool,
+    /// The question "Delete this entry?" is open (`?delete`).
+    confirm_delete: bool,
     error: Option<&'static str>,
 }
 
@@ -125,8 +132,12 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
     CurrentUser(user): CurrentUser,
     tr: Tr,
     Path(id): Path<i64>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
-    let entry_page = entry_page(&state, &user, tr, LogEntryId(id), None).await?;
+    let now = state.clock.now();
+    auto_close(&state.store, &state.config.schedule, now).await?;
+    let mut entry_page = entry_page(&state, &user, tr, LogEntryId(id), None).await?;
+    entry_page.confirm_delete = entry_page.deletable && query.contains("delete");
     page(StatusCode::OK, &entry_page)
 }
 
@@ -295,6 +306,20 @@ async fn entry_page<S: Store>(
         }
     }
 
+    let deletable = {
+        let author = state.store.user(entry.user_id).await?;
+        author.is_some_and(|author| {
+            can(
+                &actor,
+                Action::DeleteEntry {
+                    author: author.id,
+                    author_role: author.role,
+                },
+                now,
+            )
+        })
+    };
+
     let none = || tr.t("report-none");
     let join = |names: Vec<String>| {
         if names.is_empty() {
@@ -318,6 +343,7 @@ async fn entry_page<S: Store>(
     Ok(EntryPage {
         tr,
         signed_in: SignedIn::of(user, now, Tab::Events),
+        id: entry.id.0,
         event: event.map(|(event, openable)| EventLink {
             id: event.id.0,
             date: time::date(tr.0, schedule.local_date(event.opened_at)),
@@ -350,6 +376,8 @@ async fn entry_page<S: Store>(
         history: lines,
         editable,
         move_options,
+        deletable,
+        confirm_delete: false,
         error,
     })
 }
