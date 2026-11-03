@@ -99,6 +99,16 @@ async fn fetch_open(conn: &mut PgConnection) -> StoreResult<Option<Event>> {
     .transpose()
 }
 
+/// Whether a live open event other than `except` exists. A live event has an undeleted entry.
+async fn another_live_open_event(
+    conn: &mut PgConnection,
+    except: Option<EventId>,
+) -> StoreResult<bool> {
+    Ok(fetch_open(conn)
+        .await?
+        .is_some_and(|open| Some(open.id) != except))
+}
+
 async fn audited(tx: &mut PostgresTx, action: AuditAction, before: Event) -> StoreResult<Event> {
     let after = require(tx.conn(), before.id).await?;
     tx.record(action, Some(&before), &after).await?;
@@ -192,6 +202,9 @@ impl EventWrites for PostgresTx {
     }
 
     async fn create_event(&mut self, new: NewEvent) -> StoreResult<Event> {
+        if new.closed.is_none() && another_live_open_event(self.conn(), None).await? {
+            return Err(Conflict::AnotherEventOpen.into());
+        }
         let now = micros(self.now());
         let id = sqlx::query_scalar!(
             "INSERT INTO events (owner_id, opened_at, closed_at, close_reason, recorded_at) \
@@ -231,6 +244,9 @@ impl EventWrites for PostgresTx {
         let before = require(self.conn(), id).await?;
         if before.is_open() {
             return Err(Conflict::EventNotClosed.into());
+        }
+        if another_live_open_event(self.conn(), Some(id)).await? {
+            return Err(Conflict::AnotherEventOpen.into());
         }
         sqlx::query!(
             "UPDATE events SET closed_at = NULL, close_reason = NULL WHERE id = $1",

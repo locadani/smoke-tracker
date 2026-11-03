@@ -55,6 +55,8 @@ macro_rules! contract_tests {
             events::closing_and_reopening_are_audited,
             events::closing_an_event_before_it_opened_breaks_a_data_rule,
             events::reopening_is_refused_while_another_event_is_open,
+            events::an_emptied_open_event_does_not_block_a_new_one,
+            events::reopening_ignores_an_emptied_open_event,
             events::the_end_of_a_closed_event_can_move,
             events::moving_an_event_end_is_audited_and_checked,
             events::the_auto_close_notice_is_marked_seen_once,

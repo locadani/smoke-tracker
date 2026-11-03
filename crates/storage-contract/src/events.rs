@@ -51,10 +51,10 @@ where
 
 pub async fn only_one_event_can_be_open<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites>,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites>,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
-    add_event(fx, owner.id, start(), None).await;
+    add_live_event(fx, owner.id, start(), None).await;
 
     let mut tx = fx.store.begin(None).await.unwrap();
     let error = tx
@@ -474,4 +474,65 @@ where
             .iter()
             .any(|s| s.entity == AuditEntity::Event && s.entity_id == event.id.0)
     );
+}
+
+pub async fn an_emptied_open_event_does_not_block_a_new_one<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + EntryRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let opened_at = start() - TimeDelta::minutes(30);
+    let emptied = add_live_event(fx, owner.id, opened_at, None).await;
+    let entry = fx
+        .store
+        .entries_for_event(emptied.id)
+        .await
+        .unwrap()
+        .pop()
+        .expect("the event has an entry");
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.delete_entry(entry.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(fx.store.open_event().await.unwrap(), None);
+    let mut tx = fx.store.begin(None).await.unwrap();
+    assert_eq!(tx.open_event().await.unwrap(), None);
+    assert_eq!(tx.event_at(opened_at).await.unwrap(), None);
+    drop(tx);
+
+    let new = add_live_event(fx, owner.id, start(), None).await;
+    assert_ne!(new.id, emptied.id);
+    assert_eq!(fx.store.open_event().await.unwrap(), Some(new));
+}
+
+pub async fn reopening_ignores_an_emptied_open_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + EntryRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let earlier = start() - TimeDelta::hours(3);
+    let closed = add_live_event(
+        fx,
+        owner.id,
+        earlier,
+        closure(earlier + TimeDelta::hours(1), CloseReason::Manual),
+    )
+    .await;
+    let emptied = add_live_event(fx, owner.id, start() - TimeDelta::minutes(30), None).await;
+    let entry = fx
+        .store
+        .entries_for_event(emptied.id)
+        .await
+        .unwrap()
+        .pop()
+        .expect("the event has an entry");
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.delete_entry(entry.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    let reopened = tx.reopen_event(closed.id).await.unwrap();
+    tx.commit().await.unwrap();
+    assert!(reopened.is_open());
+    assert_eq!(fx.store.open_event().await.unwrap(), Some(reopened));
 }

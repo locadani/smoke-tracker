@@ -30,8 +30,6 @@ fn into_store_error(error: sqlx::Error) -> StoreError {
 fn unique_conflict(message: &str) -> Conflict {
     if message.contains("users.username") {
         Conflict::UsernameTaken
-    } else if message.contains("events_one_open") {
-        Conflict::AnotherEventOpen
     } else if message.contains("audit_log.") {
         Conflict::ChainForked
     } else {
@@ -48,10 +46,6 @@ mod tests {
         assert_eq!(
             unique_conflict("UNIQUE constraint failed: users.username"),
             Conflict::UsernameTaken
-        );
-        assert_eq!(
-            unique_conflict("UNIQUE constraint failed: index 'events_one_open'"),
-            Conflict::AnotherEventOpen
         );
         assert_eq!(
             unique_conflict("UNIQUE constraint failed: audit_log.prev_hash"),

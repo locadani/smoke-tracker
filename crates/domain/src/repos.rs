@@ -259,13 +259,17 @@ pub trait EventWrites: Send {
         &mut self,
         event: EventId,
     ) -> impl Future<Output = StoreResult<Option<DateTime<Utc>>>> + Send;
-    /// Fails with [`Conflict::AnotherEventOpen`] when creating an open event while one is open.
+    /// Fails with [`Conflict::AnotherEventOpen`] when creating an open event while another live
+    /// event is open. The check runs inside the write transaction, which the store serialises
+    /// (SQLite: single writer; Postgres: the table lock taken by `begin`), so it is race-free.
     fn create_event(&mut self, new: NewEvent) -> impl Future<Output = StoreResult<Event>> + Send;
     fn close_event(
         &mut self,
         id: EventId,
         closure: Closure,
     ) -> impl Future<Output = StoreResult<Event>> + Send;
+    /// Fails with [`Conflict::AnotherEventOpen`] while another live event is open; checked
+    /// inside the serialised write transaction, so it is race-free.
     fn reopen_event(&mut self, id: EventId) -> impl Future<Output = StoreResult<Event>> + Send;
     /// Moves a closed event's end, keeping its close reason (e.g. a backdated report after it).
     fn move_event_end(

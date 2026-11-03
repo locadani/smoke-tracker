@@ -29,7 +29,6 @@ fn into_store_error(error: sqlx::Error) -> StoreError {
 fn unique_conflict(constraint: Option<&str>) -> Conflict {
     match constraint {
         Some("users_username_unique") => Conflict::UsernameTaken,
-        Some("events_one_open") => Conflict::AnotherEventOpen,
         Some("audit_log_pkey" | "audit_log_prev_hash_unique" | "audit_log_hash_unique") => {
             Conflict::ChainForked
         }
@@ -46,10 +45,6 @@ mod tests {
         assert_eq!(
             unique_conflict(Some("users_username_unique")),
             Conflict::UsernameTaken
-        );
-        assert_eq!(
-            unique_conflict(Some("events_one_open")),
-            Conflict::AnotherEventOpen
         );
         assert_eq!(
             unique_conflict(Some("audit_log_prev_hash_unique")),
