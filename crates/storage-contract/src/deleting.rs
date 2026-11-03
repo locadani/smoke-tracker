@@ -11,7 +11,7 @@ use smoke_domain::types::{CloseReason, EventId, LogEntryId, Pm25};
 use smoke_domain::verify::verify_store;
 
 use crate::Fixture;
-use crate::fixture::{add_live_event, start};
+use crate::fixture::{FIRST_ROOM, add_event, add_live_event, report_values, start};
 use crate::logbook::{log, no_smell, people, rome, smell};
 
 fn t0() -> DateTime<Utc> {
@@ -335,15 +335,75 @@ pub async fn moving_the_earliest_entry_out_moves_the_start<S: Store>(fx: &Fixtur
     assert_eq!(entry_ids(fx, new_id).await, [first]);
 }
 
-pub async fn moving_the_only_entry_out_removes_the_event<S: Store>(fx: &Fixture<S>) {
+pub async fn moving_the_only_entry_out_keeps_its_open_event<S: Store>(fx: &Fixture<S>) {
     let p = people(fx).await;
-    let (event_id, entry) = open_event_of(fx, &p.resident).await;
+    let (event_id, entry) = open_event_of(fx, &p.partner).await;
+    let window = (t0(), start() + TimeDelta::days(1));
+    let events_before = fx.store.events_between(window.0, window.1).await.unwrap();
 
-    let new_id = relocate_to_new(fx, &p.resident, entry).await;
+    let same = relocate_to_new(fx, &p.resident, entry).await;
 
-    assert_ne!(new_id, event_id);
-    assert_eq!(event(fx, event_id).await, None);
-    assert_eq!(entry_ids(fx, new_id).await, [entry]);
+    assert_eq!(same, event_id);
+    let kept = event(fx, event_id).await.unwrap();
+    assert_eq!((kept.opened_at, kept.owner_id), (start(), p.partner.id));
+    assert!(kept.is_open());
+    let events = fx.store.events_between(window.0, window.1).await.unwrap();
+    assert_eq!(events, events_before);
+}
+
+pub async fn moving_the_only_entry_out_re_centres_its_closed_event<S: Store>(fx: &Fixture<S>) {
+    let p = people(fx).await;
+    let end = Closure {
+        at: t0() + TimeDelta::minutes(20),
+        reason: CloseReason::Manual,
+    };
+    let closed = add_event(fx, p.resident.id, t0(), Some(end)).await;
+    let at = t0() + TimeDelta::minutes(10);
+    let new = NewEntry::new(
+        p.partner.id,
+        Some(closed.id),
+        at,
+        None,
+        Some(report_values(3, &[FIRST_ROOM], &[])),
+        None,
+    )
+    .unwrap();
+    let mut tx = fx.store.begin(Some(p.partner.id)).await.unwrap();
+    let only = tx.create_entry(new).await.unwrap().id;
+    tx.commit().await.unwrap();
+    let before = audit_len(fx).await;
+
+    let same = relocate_to_new(fx, &p.partner, only).await;
+
+    assert_eq!(same, closed.id);
+    let kept = event(fx, closed.id).await.unwrap();
+    assert_eq!(kept.closed, Some(end));
+    assert_eq!((kept.opened_at, kept.owner_id), (at, p.partner.id));
+    assert_eq!(
+        audit_since(fx, before).await,
+        [(AuditEntity::Event, AuditAction::Update)]
+    );
+}
+
+pub async fn moving_an_entry_while_another_event_is_open_creates_a_closed_event<S: Store>(
+    fx: &Fixture<S>,
+) {
+    let p = people(fx).await;
+    let (open_id, first) = open_event_of(fx, &p.resident).await;
+    join(fx, &p.partner, open_id, start()).await;
+
+    let new_id = relocate_to_new(fx, &p.resident, first).await;
+
+    assert_ne!(new_id, open_id);
+    let new = event(fx, new_id).await.unwrap();
+    assert_eq!(
+        new.closed,
+        Some(Closure {
+            at: start(),
+            reason: CloseReason::Backdated
+        })
+    );
+    assert!(event(fx, open_id).await.unwrap().is_open());
 }
 
 pub async fn verify_audit_is_clean_after_deletions<S: Store>(fx: &Fixture<S>) {

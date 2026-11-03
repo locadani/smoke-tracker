@@ -350,6 +350,9 @@ pub async fn correct_report<T: EventWrites + EntryWrites>(
 /// "Move to another event" (spec §7.7): into an event that was running when the report was
 /// observed (its end moves if needed), or into a new event owned by the report's author. A
 /// no-smell report never opens one (spec §7.1). The whole entry moves, its reading with it.
+/// When the report is the only live entry of its event, "new event" opens nothing: the event
+/// stays, open or closed as it was, and its start and owner follow the entry
+/// ([`follow_remaining_entries`]).
 pub async fn move_report<T: EventWrites + EntryWrites>(
     tx: &mut T,
     actor: &Actor,
@@ -371,6 +374,13 @@ pub async fn move_report<T: EventWrites + EntryWrites>(
         }
         MoveTarget::New if report.values.is_no_smell() => return Err(LogError::NoSmellCannotOpen),
         MoveTarget::New => {
+            if let Some(current) = entry.event_id {
+                let alone = tx.entries_for_event(current).await?.len() == 1;
+                if alone {
+                    follow_remaining_entries(tx, current).await?;
+                    return Ok(entry);
+                }
+            }
             let another_open = tx.open_event().await?.is_some();
             let (owner, at) = (entry.user_id, entry.observed_at);
             open_new_event(tx, owner, at, schedule, now, another_open).await?
