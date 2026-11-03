@@ -6,7 +6,8 @@ use axum::http::StatusCode;
 use common::page::Page;
 use common::*;
 use smoke_domain::logbook::EventChoice;
-use smoke_domain::types::{Locale, Role};
+use smoke_domain::records::User;
+use smoke_domain::types::{EventId, Locale, Role};
 
 const NEW: EventChoice = EventChoice::New { replacing: None };
 
@@ -290,4 +291,324 @@ async fn a_guest_deleting_a_residents_entry_is_not_found() {
         ))
         .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+/// Logs `count` more reports of `user` into `event`, a few minutes apart after `18:00`.
+async fn add_reports(app: &TestApp, user: &User, event: EventId, count: u32, first_minute: u32) {
+    for index in 0..count {
+        let at = format!("2026-01-15T18:{:02}:00Z", first_minute + index);
+        app.log(user, &at, 4, &[], EventChoice::Join(event)).await;
+    }
+}
+
+/// An event opened by `owner` at 18:00 holding that one report.
+async fn event_of(app: &TestApp, owner: &User) -> EventId {
+    app.log(owner, "2026-01-15T18:00:00Z", 4, &[], NEW)
+        .await
+        .report
+        .event_id
+        .unwrap()
+}
+
+async fn event_page(app: &TestApp, id: EventId, cookie: &str, query: &str) -> String {
+    text(
+        app.send(get_with(&format!("/events/{}{query}", id.0), cookie))
+            .await,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn only_my_entries_offers_delete_and_confirms_with_the_count() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let single = event_of(&app, &me).await;
+    let html = event_page(&app, single, &cookie, "?delete").await;
+    assert_eq!(
+        Page::parse(&html).text("#confirm-delete-question"),
+        "Eliminare questo evento e la sua registrazione?"
+    );
+    app.send(post_form(
+        &format!("/events/{}/delete", single.0),
+        "",
+        Some(&cookie),
+    ))
+    .await;
+
+    let many = event_of(&app, &me).await;
+    add_reports(&app, &me, many, 2, 10).await;
+    let plain = event_page(&app, many, &cookie, "").await;
+    let page = Page::parse(&plain);
+    assert_eq!(page.attrs("a[data-variant=danger]", "href"), ["?delete"]);
+    assert_eq!(page.texts("a[data-variant=danger]"), ["Elimina"]);
+    assert!(!plain.contains("Non si può annullare."), "{plain}");
+
+    let html = event_page(&app, many, &cookie, "?delete").await;
+    let page = Page::parse(&html);
+    assert_eq!(
+        page.text("#confirm-delete-question"),
+        "Eliminare questo evento e le sue 3 registrazioni?"
+    );
+    assert_eq!(
+        page.attrs("form[action$='/delete']", "action"),
+        [format!("/events/{}/delete", many.0)]
+    );
+    assert_eq!(
+        page.attrs("a[data-variant=secondary]", "href"),
+        [format!("/events/{}", many.0)]
+    );
+    assert!(!page.exists("a[data-variant=danger]"), "{html}");
+}
+
+#[tokio::test]
+async fn deleting_an_event_lands_on_history_and_the_event_is_gone() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    add_reports(&app, &me, id, 1, 10).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let response = app
+        .send(post_form(
+            &format!("/events/{}/delete", id.0),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(location(&response), Some("/events"));
+    let gone = app
+        .send(get_with(&format!("/events/{}", id.0), &cookie))
+        .await;
+    assert_eq!(gone.status(), StatusCode::NOT_FOUND);
+    let history = text(app.send(get_with("/events?month=2026-01", &cookie)).await).await;
+    assert!(!history.contains(&format!("/events/{}", id.0)), "{history}");
+}
+
+#[tokio::test]
+async fn another_resident_greys_the_button_with_recap() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let duygu = app.add_user("duygu", Role::Resident, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    add_reports(&app, &me, id, 2, 10).await;
+    add_reports(&app, &duygu, id, 1, 20).await;
+    let cookie = app.sign_in("daniele").await;
+
+    for query in ["", "?delete"] {
+        let html = event_page(&app, id, &cookie, query).await;
+        let page = Page::parse(&html);
+        assert_eq!(
+            page.attrs("button[data-variant=danger][disabled]", "disabled")
+                .len(),
+            1,
+            "{html}"
+        );
+        assert!(!page.exists("a[data-variant=danger]"), "{html}");
+        assert!(!page.exists("#confirm-delete-question"), "{html}");
+        assert_eq!(
+            page.texts(".delete-note"),
+            [
+                "4 registrazioni: tu 3 · duygu 1".to_owned(),
+                "Per eliminare l'evento, duygu deve prima eliminare le sue.".to_owned()
+            ]
+        );
+    }
+}
+
+#[tokio::test]
+async fn three_people_use_the_others_sentence() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let duygu = app.add_user("duygu", Role::Resident, Locale::It).await;
+    let marta = app.add_user("marta", Role::Resident, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    add_reports(&app, &duygu, id, 1, 10).await;
+    add_reports(&app, &marta, id, 1, 20).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let html = event_page(&app, id, &cookie, "").await;
+    assert_eq!(
+        Page::parse(&html).texts(".delete-note"),
+        [
+            "3 registrazioni: tu 1 · duygu 1 · marta 1".to_owned(),
+            "Per eliminare l'evento, gli altri devono prima eliminare le loro.".to_owned()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_guests_entries_never_block_a_resident() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let guest = app.add_user("ospite", Role::Guest, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    add_reports(&app, &guest, id, 1, 10).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let html = event_page(&app, id, &cookie, "?delete").await;
+    assert_eq!(
+        Page::parse(&html).text("#confirm-delete-question"),
+        "Eliminare questo evento e le sue 2 registrazioni?"
+    );
+    let response = app
+        .send(post_form(
+            &format!("/events/{}/delete", id.0),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(location(&response), Some("/events"));
+}
+
+#[tokio::test]
+async fn a_guest_sees_others_counted_not_named() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let duygu = app.add_user("duygu", Role::Resident, Locale::It).await;
+    let guest = app.add_user("ospite", Role::Guest, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    add_reports(&app, &me, id, 1, 10).await;
+    add_reports(&app, &duygu, id, 1, 20).await;
+    add_reports(&app, &guest, id, 1, 30).await;
+    let cookie = app.sign_in("ospite").await;
+
+    let html = event_page(&app, id, &cookie, "").await;
+    assert_eq!(
+        Page::parse(&html).texts(".delete-note"),
+        [
+            "4 registrazioni: tu 1 · altri 3".to_owned(),
+            "Per eliminare l'evento, gli altri devono prima eliminare le loro.".to_owned()
+        ]
+    );
+    for name in ["daniele", "duygu"] {
+        assert!(!html.contains(name), "{name}: {html}");
+    }
+}
+
+#[tokio::test]
+async fn a_resident_with_one_blocker_among_guests_is_named() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let duygu = app.add_user("duygu", Role::Resident, Locale::It).await;
+    let guest = app.add_user("ospite", Role::Guest, Locale::It).await;
+    let id = event_of(&app, &duygu).await;
+    add_reports(&app, &guest, id, 1, 10).await;
+    add_reports(&app, &me, id, 1, 20).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let html = event_page(&app, id, &cookie, "").await;
+    assert_eq!(
+        Page::parse(&html).texts(".delete-note"),
+        [
+            "3 registrazioni: tu 1 · duygu 1 · ospite 1".to_owned(),
+            "Per eliminare l'evento, duygu deve prima eliminare le sue.".to_owned()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn no_button_when_none_is_mine() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    app.add_user("daniele", Role::Resident, Locale::It).await;
+    let duygu = app.add_user("duygu", Role::Resident, Locale::It).await;
+    app.add_user("vedo", Role::Viewer, Locale::It).await;
+    let id = event_of(&app, &duygu).await;
+    let resident = app.sign_in("daniele").await;
+    let viewer = app.sign_in("vedo").await;
+
+    for (cookie, status) in [
+        (&resident, StatusCode::FORBIDDEN),
+        (&viewer, StatusCode::FORBIDDEN),
+    ] {
+        for query in ["", "?delete"] {
+            let html = event_page(&app, id, cookie, query).await;
+            let page = Page::parse(&html);
+            for css in [
+                "a[data-variant=danger]",
+                "button[data-variant=danger]",
+                "#confirm-delete-question",
+                ".delete-note",
+            ] {
+                assert!(!page.exists(css), "{css}: {html}");
+            }
+        }
+        let refused = app
+            .send(post_form(
+                &format!("/events/{}/delete", id.0),
+                "",
+                Some(cookie),
+            ))
+            .await;
+        assert_eq!(refused.status(), status);
+    }
+}
+
+#[tokio::test]
+async fn a_forged_post_when_blocked_redirects_to_the_event() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let duygu = app.add_user("duygu", Role::Resident, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    add_reports(&app, &duygu, id, 1, 10).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let response = app
+        .send(post_form(
+            &format!("/events/{}/delete", id.0),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(
+        location(&response),
+        Some(format!("/events/{}", id.0).as_str())
+    );
+    assert_eq!(app.reports_for_event(id).await.len(), 2);
+}
+
+#[tokio::test]
+async fn deleting_an_emptied_event_is_not_found() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    let cookie = app.sign_in("daniele").await;
+    let path = format!("/events/{}/delete", id.0);
+
+    app.send(post_form(&path, "", Some(&cookie))).await;
+    let again = app.send(post_form(&path, "", Some(&cookie))).await;
+    assert_eq!(again.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_guest_posting_a_delete_for_an_event_they_cannot_open_is_not_found() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::It).await;
+    app.add_user("ospite", Role::Guest, Locale::It).await;
+    let id = event_of(&app, &me).await;
+    let cookie = app.sign_in("ospite").await;
+
+    let response = app
+        .send(post_form(
+            &format!("/events/{}/delete", id.0),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(app.reports_for_event(id).await.len(), 1);
 }

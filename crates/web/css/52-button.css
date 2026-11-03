@@ -43,6 +43,11 @@
     font-size: var(--text-label);
   }
 
+  .button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
   /* Buttons that share a row: the main one takes three parts in five (look-and-feel spec §5). */
   .actions {
     display: grid;

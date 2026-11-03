@@ -391,3 +391,12 @@ delete = Elimina
 delete-cancel = Annulla
 delete-cannot-undo = Non si può annullare.
 entry-delete-question = Eliminare questa registrazione?
+event-delete-question = { $count ->
+    [one] Eliminare questo evento e la sua registrazione?
+   *[other] Eliminare questo evento e le sue { $count } registrazioni?
+}
+event-delete-recap = { $count } registrazioni: { $people }
+event-delete-you = tu { $count }
+event-delete-others = altri { $count }
+event-delete-blocked-one = Per eliminare l'evento, { $name } deve prima eliminare le sue.
+event-delete-blocked-many = Per eliminare l'evento, gli altri devono prima eliminare le loro.

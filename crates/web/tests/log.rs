@@ -407,3 +407,46 @@ async fn the_log_form_offers_a_photo_with_the_limit() {
         "no reference on a fresh form: {html}"
     );
 }
+
+#[tokio::test]
+async fn an_emptied_open_event_asks_nothing_and_a_new_smell_opens_a_fresh_event() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let first = app
+        .log(
+            &me,
+            "2026-01-15T18:05:00Z",
+            4,
+            &[],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+    let cookie = app.sign_in("daniele").await;
+    let deleted = app
+        .send(post_form(
+            &format!("/entries/{}/delete", first.report.entry_id),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(deleted.status(), StatusCode::SEE_OTHER);
+
+    app.at("2026-01-16T05:00:00Z");
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(!Page::parse(&html).exists(".banner"), "{html}");
+    assert!(!html.contains("Update: situation changed"), "{html}");
+
+    let fresh = app
+        .log(
+            &me,
+            "2026-01-16T04:50:00Z",
+            3,
+            &[],
+            EventChoice::New { replacing: None },
+        )
+        .await;
+    assert_ne!(fresh.report.event_id, first.report.event_id);
+    let html = text(app.send(get_with("/", &cookie)).await).await;
+    assert!(Page::parse(&html).exists(".banner"), "{html}");
+}

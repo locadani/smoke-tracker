@@ -9,6 +9,7 @@ const PAGES = [
   ["log", "/"],
   ["events", "/events"],
   ["event", "/events/1"],
+  ["event-delete", "/events/1?delete"],
   ["report", "/reports/1"],
   ["graphs", "/graphs"],
   ["settings", "/settings"],

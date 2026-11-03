@@ -59,6 +59,10 @@ pub fn router<S: Store + Clone + 'static>(state: AppState<S>) -> Router {
         .route("/events/{id}", get(routes::events::show::<S>))
         .route("/events/{id}/close", post(routes::events::close::<S>))
         .route("/events/{id}/reopen", post(routes::events::reopen::<S>))
+        .route(
+            "/events/{id}/delete",
+            post(routes::deleting::delete_event::<S>),
+        )
         .route("/graphs", get(routes::graphs::show::<S>))
         .route("/entries/{id}", get(routes::entry_page::show::<S>))
         .route(

@@ -9,6 +9,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Redirect, Response};
 use chrono::{DateTime, Datelike, Months, NaiveDate, TimeDelta, Utc};
+use smoke_domain::deleting::{AuthorCount, EntryAuthor, EventDeletion, event_deletion};
 use smoke_domain::events::{FUTURE_TOLERANCE, large_gap_indices};
 use smoke_domain::logbook::{close_event, reopen_event};
 use smoke_domain::permissions::{Action, Actor, can, can_see};
@@ -17,7 +18,7 @@ use smoke_domain::records::{
 };
 use smoke_domain::repos::{Commit, Store};
 use smoke_domain::sweep::auto_close;
-use smoke_domain::types::{EventId, UserId};
+use smoke_domain::types::{EventId, Role, UserId};
 
 use crate::auth::CurrentUser;
 use crate::error::{AppError, page};
@@ -227,7 +228,87 @@ struct DetailPage {
     /// The close form's default end: now, as a `datetime-local` value.
     close_at: Option<String>,
     can_reopen: bool,
+    deletion: DeletionView,
     error: Option<&'static str>,
+}
+
+/// What the page offers for deleting the event.
+enum DeletionView {
+    /// None of the entries is the viewer's to delete: no control.
+    Hidden,
+    /// The viewer may delete them all; `confirm` shows the question (`?delete`).
+    Allowed { question: String, confirm: bool },
+    /// Some entries are other people's: a greyed button with who logged what and why.
+    Blocked { recap: String, reason: String },
+}
+
+/// Who logged how many entries, the viewer first. People who see everyone's data get names;
+/// everyone else sees the other authors collapsed into one count, so no name leaks.
+fn recap(tr: Tr, actor: &Actor, lines: &[AuthorCount], names: &HashMap<UserId, String>) -> String {
+    let total: usize = lines.iter().map(|line| line.entries).sum();
+    let mut parts = Vec::new();
+    let mut others = 0;
+    for line in lines {
+        let count = line.entries.to_string();
+        if line.author == actor.id {
+            parts.push(tr.t1("event-delete-you", "count", &count));
+        } else if let Some(name) = names.get(&line.author) {
+            parts.push(format!("{name} {count}"));
+        } else {
+            others += line.entries;
+        }
+    }
+    if others > 0 {
+        parts.push(tr.t1("event-delete-others", "count", &others.to_string()));
+    }
+    tr.t2(
+        "event-delete-recap",
+        ("count", &total.to_string()),
+        ("people", &parts.join(" · ")),
+    )
+}
+
+fn deletion_view(
+    tr: Tr,
+    actor: &Actor,
+    entries: &[LogEntry],
+    roles: &HashMap<UserId, Role>,
+    names: &HashMap<UserId, String>,
+    confirm: bool,
+    now: DateTime<Utc>,
+) -> DeletionView {
+    let authors: Vec<EntryAuthor> = entries
+        .iter()
+        .filter_map(|entry| {
+            roles.get(&entry.user_id).map(|&role| EntryAuthor {
+                author: entry.user_id,
+                role,
+            })
+        })
+        .collect();
+    match event_deletion(actor, &authors, now) {
+        EventDeletion::Hidden => DeletionView::Hidden,
+        EventDeletion::Allowed { entries } => DeletionView::Allowed {
+            question: tr.n("event-delete-question", &entries),
+            confirm,
+        },
+        EventDeletion::Blocked {
+            recap: lines,
+            blockers,
+        } => {
+            let one = match blockers.as_slice() {
+                [only] => names.get(only),
+                _ => None,
+            };
+            DeletionView::Blocked {
+                recap: recap(tr, actor, &lines, names),
+                reason: match one {
+                    Some(name) => tr.t1("event-delete-blocked-one", "name", name),
+                    None => tr.t("event-delete-blocked-many"),
+                },
+            }
+        }
+    }
 }
 
 pub(crate) async fn show<S: Store + Clone + 'static>(
@@ -235,8 +316,17 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
     CurrentUser(user): CurrentUser,
     tr: Tr,
     Path(id): Path<i64>,
+    QueryPairs(query): QueryPairs,
 ) -> Result<Response, AppError> {
-    let detail = detail(&state, &user, tr, EventId(id), None).await?;
+    let detail = detail(
+        &state,
+        &user,
+        tr,
+        EventId(id),
+        query.contains("delete"),
+        None,
+    )
+    .await?;
     page(StatusCode::OK, &detail)
 }
 
@@ -262,6 +352,7 @@ async fn detail<S: Store>(
     user: &User,
     tr: Tr,
     id: EventId,
+    confirm_delete: bool,
     error: Option<&'static str>,
 ) -> Result<DetailPage, AppError> {
     let now = state.clock.now();
@@ -269,12 +360,11 @@ async fn detail<S: Store>(
     let actor = user.actor();
     let (event, entries) = openable(state, &actor, id, now).await?;
     let sees_all = can(&actor, Action::ViewAll, now);
+    let users = state.store.users().await?;
+    let roles: HashMap<UserId, Role> = users.iter().map(|u| (u.id, u.role)).collect();
     let names: HashMap<UserId, String> = if sees_all {
-        state
-            .store
-            .users()
-            .await?
-            .into_iter()
+        users
+            .iter()
             .map(|u| (u.id, u.username.to_string()))
             .collect()
     } else {
@@ -369,6 +459,7 @@ async fn detail<S: Store>(
         entries: timeline.into_iter().map(|(_, entry)| entry).collect(),
         close_at: (manages && event.is_open()).then(|| time::input_value(now, tz)),
         can_reopen: manages && !event.is_open() && !other_open,
+        deletion: deletion_view(tr, &actor, &entries, &roles, &names, confirm_delete, now),
         error,
     })
 }
@@ -405,7 +496,7 @@ pub(crate) async fn close<S: Store + Clone + 'static>(
         Ok(()) if form.get("return_to") == Some("log") => Ok(Redirect::to("/").into_response()),
         Ok(()) => Ok(Redirect::to(&format!("/events/{}", id.0)).into_response()),
         Err(key) => {
-            let detail = detail(&state, &user, tr, id, Some(key)).await?;
+            let detail = detail(&state, &user, tr, id, false, Some(key)).await?;
             page(StatusCode::UNPROCESSABLE_ENTITY, &detail)
         }
     }
@@ -430,7 +521,7 @@ pub(crate) async fn reopen<S: Store + Clone + 'static>(
         Err(error) => {
             drop(tx);
             let key = refusal(error)?;
-            let detail = detail(&state, &user, tr, id, Some(key)).await?;
+            let detail = detail(&state, &user, tr, id, false, Some(key)).await?;
             page(StatusCode::UNPROCESSABLE_ENTITY, &detail)
         }
     }

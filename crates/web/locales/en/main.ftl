@@ -391,3 +391,12 @@ delete = Delete
 delete-cancel = Cancel
 delete-cannot-undo = This can't be undone.
 entry-delete-question = Delete this entry?
+event-delete-question = { $count ->
+    [one] Delete this event and its entry?
+   *[other] Delete this event and its { $count } entries?
+}
+event-delete-recap = { $count } entries: { $people }
+event-delete-you = you { $count }
+event-delete-others = others { $count }
+event-delete-blocked-one = To delete the event, { $name } must first delete theirs.
+event-delete-blocked-many = To delete the event, the others must first delete theirs.
