@@ -136,11 +136,13 @@ async fn shutdown_signal() {
 mod tests {
     use chrono::{DateTime, TimeDelta, Utc};
     use smoke_domain::clock::FakeClock;
-    use smoke_domain::records::{Invite, NewEvent, NewInvite, NewUser, User};
+    use smoke_domain::records::{Invite, NewEntry, NewEvent, NewInvite, NewReading, NewUser, User};
     use smoke_domain::repos::{
-        Commit, EventRepo, EventWrites, InviteWrites, Transactional, UserWrites,
+        Commit, EntryWrites, EventRepo, EventWrites, InviteWrites, Transactional, UserWrites,
     };
-    use smoke_domain::types::{CloseReason, InvitePurpose, Locale, Role, TokenHash, Username};
+    use smoke_domain::types::{
+        CloseReason, InvitePurpose, Locale, Pm25, Role, TokenHash, Username,
+    };
     use smoke_storage_sqlite::SqliteStore;
 
     use super::*;
@@ -182,6 +184,10 @@ mod tests {
             })
             .await
             .unwrap();
+        let reading = NewReading::without_photo(Pm25::new(10.0).unwrap());
+        let entry =
+            NewEntry::new(owner.id, Some(event.id), evening, None, None, Some(reading)).unwrap();
+        tx.create_entry(entry).await.unwrap();
         tx.commit().await.unwrap();
         clock.advance(TimeDelta::hours(12));
 

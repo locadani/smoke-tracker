@@ -4,12 +4,13 @@ use chrono::TimeDelta;
 use smoke_domain::audit::{AuditAction, AuditEntity};
 use smoke_domain::records::{Closure, Event, NewEvent};
 use smoke_domain::repos::{
-    AuditRepo, Commit, Conflict, EventRepo, EventWrites, StoreError, Transactional, UserWrites,
+    AuditRepo, Commit, Conflict, EntryRepo, EntryWrites, EventRepo, EventWrites, SnapshotRepo,
+    StoreError, Transactional, UserWrites,
 };
 use smoke_domain::types::{CloseReason, EventId, Role};
 
 use crate::Fixture;
-use crate::fixture::{add_event, add_user, last_entry, start};
+use crate::fixture::{add_event, add_live_event, add_user, start};
 
 fn closure(at: chrono::DateTime<chrono::Utc>, reason: CloseReason) -> Option<Closure> {
     Some(Closure { at, reason })
@@ -17,11 +18,12 @@ fn closure(at: chrono::DateTime<chrono::Utc>, reason: CloseReason) -> Option<Clo
 
 pub async fn a_new_event_can_be_the_open_event<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo + AuditRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + AuditRepo,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
     let opened_at = start() - TimeDelta::minutes(5);
-    let event = add_event(fx, owner.id, opened_at, None).await;
+    let event = add_live_event(fx, owner.id, opened_at, None).await;
+    let event_id = event.id;
     assert!(event.is_open());
     assert_eq!(
         (event.owner_id, event.opened_at, event.recorded_at),
@@ -35,7 +37,12 @@ where
     assert_eq!(tx.event(event.id).await.unwrap(), Some(event));
     drop(tx);
 
-    let entry = last_entry(fx).await.record;
+    let history = fx
+        .store
+        .audit_history(AuditEntity::Event, event_id.0)
+        .await
+        .unwrap();
+    let entry = &history[0].record;
     assert_eq!(
         (entry.entity, entry.action, entry.actor_id),
         (AuditEntity::Event, AuditAction::Create, Some(owner.id))
@@ -44,10 +51,10 @@ where
 
 pub async fn only_one_event_can_be_open<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites>,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites>,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
-    add_event(fx, owner.id, start(), None).await;
+    add_live_event(fx, owner.id, start(), None).await;
 
     let mut tx = fx.store.begin(None).await.unwrap();
     let error = tx
@@ -77,10 +84,10 @@ where
 
 pub async fn closing_and_reopening_are_audited<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo + AuditRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + AuditRepo,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
-    let event = add_event(fx, owner.id, start() - TimeDelta::hours(1), None).await;
+    let event = add_live_event(fx, owner.id, start() - TimeDelta::hours(1), None).await;
     let manual = Closure {
         at: start(),
         reason: CloseReason::Manual,
@@ -143,18 +150,18 @@ where
 
 pub async fn reopening_is_refused_while_another_event_is_open<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
     let earlier = start() - TimeDelta::hours(3);
-    let first = add_event(
+    let first = add_live_event(
         fx,
         owner.id,
         earlier,
         closure(earlier + TimeDelta::hours(1), CloseReason::Manual),
     )
     .await;
-    add_event(fx, owner.id, start() - TimeDelta::minutes(30), None).await;
+    add_live_event(fx, owner.id, start() - TimeDelta::minutes(30), None).await;
 
     let mut tx = fx.store.begin(None).await.unwrap();
     let error = tx.reopen_event(first.id).await.unwrap_err();
@@ -269,6 +276,63 @@ where
     assert_eq!(fx.store.audit_log().await.unwrap().len(), 3);
 }
 
+pub async fn moving_an_event_start_changes_owner_and_is_audited<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + AuditRepo,
+{
+    let first = add_user(fx, "daniele", Role::Resident).await;
+    let second = add_user(fx, "guest", Role::Resident).await;
+    let opened = start() - TimeDelta::hours(3);
+    let closed_at = start() - TimeDelta::hours(1);
+    let event = add_live_event(
+        fx,
+        first.id,
+        opened,
+        closure(closed_at, CloseReason::Backdated),
+    )
+    .await;
+    let earlier = opened - TimeDelta::minutes(30);
+
+    let mut tx = fx.store.begin(Some(first.id)).await.unwrap();
+    let moved = tx
+        .move_event_start(event.id, earlier, second.id)
+        .await
+        .unwrap();
+    assert_eq!((moved.opened_at, moved.owner_id), (earlier, second.id));
+    assert_eq!(moved.closed, event.closed);
+    let again = tx
+        .move_event_start(event.id, earlier, second.id)
+        .await
+        .unwrap();
+    assert_eq!(again, moved);
+    tx.commit().await.unwrap();
+
+    let history = fx
+        .store
+        .audit_history(AuditEntity::Event, event.id.0)
+        .await
+        .unwrap();
+    let actions: Vec<_> = history.iter().map(|e| e.record.action).collect();
+    assert_eq!(actions, [AuditAction::Create, AuditAction::Update]);
+    let update = &history[1].record;
+    assert_eq!(update.before.as_ref().unwrap()["owner_id"], first.id.0);
+    assert_eq!(update.after.as_ref().unwrap()["owner_id"], second.id.0);
+    assert_ne!(
+        update.before.as_ref().unwrap()["opened_at"],
+        update.after.as_ref().unwrap()["opened_at"]
+    );
+
+    let mut tx = fx.store.begin(Some(first.id)).await.unwrap();
+    let error = tx
+        .move_event_start(event.id, closed_at + TimeDelta::seconds(1), first.id)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::RuleViolated)),
+        "{error:?}"
+    );
+}
+
 pub async fn the_auto_close_notice_is_marked_seen_once<S>(fx: &Fixture<S>)
 where
     S: Transactional<Tx: UserWrites + EventWrites> + AuditRepo,
@@ -301,14 +365,14 @@ where
 
 pub async fn events_between_returns_overlapping_events<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
     let morning = start() - TimeDelta::hours(12);
     let at = |hours: i64| morning + TimeDelta::hours(hours);
-    let first = add_event(fx, owner.id, at(0), closure(at(1), CloseReason::Manual)).await;
-    let second = add_event(fx, owner.id, at(2), closure(at(3), CloseReason::Manual)).await;
-    let open = add_event(fx, owner.id, at(8), None).await;
+    let first = add_live_event(fx, owner.id, at(0), closure(at(1), CloseReason::Manual)).await;
+    let second = add_live_event(fx, owner.id, at(2), closure(at(3), CloseReason::Manual)).await;
+    let open = add_live_event(fx, owner.id, at(8), None).await;
 
     let between = |from, to| async move {
         fx.store
@@ -332,15 +396,15 @@ where
 
 pub async fn unseen_auto_closed_events_are_listed_until_seen<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
     let at = |hours: i64| start() - TimeDelta::hours(48) + TimeDelta::hours(hours);
     let auto = |hours: i64| closure(at(hours), CloseReason::Auto0400);
-    let later = add_event(fx, owner.id, at(24), auto(25)).await;
-    let earlier = add_event(fx, owner.id, at(0), auto(1)).await;
-    add_event(fx, owner.id, at(4), closure(at(5), CloseReason::Manual)).await;
-    add_event(fx, owner.id, at(30), None).await;
+    let later = add_live_event(fx, owner.id, at(24), auto(25)).await;
+    let earlier = add_live_event(fx, owner.id, at(0), auto(1)).await;
+    add_live_event(fx, owner.id, at(4), closure(at(5), CloseReason::Manual)).await;
+    add_live_event(fx, owner.id, at(30), None).await;
 
     let unseen = |events: Vec<Event>| events.into_iter().map(|e| e.id).collect::<Vec<_>>();
     assert_eq!(
@@ -358,13 +422,14 @@ where
 
 pub async fn event_at_finds_the_event_whose_span_contains_the_time<S>(fx: &Fixture<S>)
 where
-    S: Transactional<Tx: UserWrites + EventWrites>,
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites>,
 {
     let owner = add_user(fx, "daniele", Role::Resident).await;
     let at = |hours: i64| start() - TimeDelta::hours(12) + TimeDelta::hours(hours);
-    let first = add_event(fx, owner.id, at(0), closure(at(2), CloseReason::Manual)).await;
-    let overlapping = add_event(fx, owner.id, at(1), closure(at(3), CloseReason::Manual)).await;
-    let open = add_event(fx, owner.id, at(6), None).await;
+    let first = add_live_event(fx, owner.id, at(0), closure(at(2), CloseReason::Manual)).await;
+    let overlapping =
+        add_live_event(fx, owner.id, at(1), closure(at(3), CloseReason::Manual)).await;
+    let open = add_live_event(fx, owner.id, at(6), None).await;
 
     let mut tx = fx.store.begin(None).await.unwrap();
     let mut found = async |t| tx.event_at(t).await.unwrap().map(|e| e.id);
@@ -383,4 +448,148 @@ where
     assert_eq!(found(at(0) - TimeDelta::seconds(1)).await, None);
     assert_eq!(found(at(6)).await, Some(open.id));
     assert_eq!(found(start() + TimeDelta::days(1)).await, Some(open.id));
+}
+
+pub async fn an_event_without_live_entries_is_not_an_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites> + EventRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let at = |hours: i64| start() - TimeDelta::hours(12) + TimeDelta::hours(hours);
+    let bare = add_event(fx, owner.id, at(0), None).await;
+
+    assert_eq!(fx.store.event(bare.id).await.unwrap(), None);
+    assert_eq!(fx.store.open_event().await.unwrap(), None);
+    assert!(
+        fx.store
+            .events_between(at(-1), at(1))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    let mut tx = fx.store.begin(None).await.unwrap();
+    assert_eq!(tx.event(bare.id).await.unwrap(), None);
+    assert_eq!(tx.open_event().await.unwrap(), None);
+    assert_eq!(tx.event_at(at(0)).await.unwrap(), None);
+}
+
+pub async fn an_event_whose_entries_are_all_deleted_disappears<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites>
+        + EventRepo
+        + EntryRepo
+        + SnapshotRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let at = |hours: i64| start() - TimeDelta::hours(12) + TimeDelta::hours(hours);
+    let event = add_live_event(fx, owner.id, at(0), closure(at(1), CloseReason::Auto0400)).await;
+
+    let ids = |events: Vec<Event>| events.into_iter().map(|e| e.id).collect::<Vec<_>>();
+    assert_eq!(fx.store.event(event.id).await.unwrap(), Some(event.clone()));
+    assert_eq!(
+        ids(fx.store.events_between(at(0), at(2)).await.unwrap()),
+        [event.id]
+    );
+    assert_eq!(
+        ids(fx.store.unseen_auto_closed().await.unwrap()),
+        [event.id]
+    );
+    let mut tx = fx.store.begin(None).await.unwrap();
+    assert_eq!(tx.event(event.id).await.unwrap(), Some(event.clone()));
+    assert_eq!(tx.event_at(at(0)).await.unwrap(), Some(event.clone()));
+    drop(tx);
+
+    let entry = fx
+        .store
+        .entries_for_event(event.id)
+        .await
+        .unwrap()
+        .pop()
+        .expect("the event has an entry");
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.delete_entry(entry.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(fx.store.event(event.id).await.unwrap(), None);
+    assert!(
+        fx.store
+            .events_between(at(0), at(2))
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert!(fx.store.unseen_auto_closed().await.unwrap().is_empty());
+    let mut tx = fx.store.begin(None).await.unwrap();
+    assert_eq!(tx.event(event.id).await.unwrap(), None);
+    assert_eq!(tx.event_at(at(0)).await.unwrap(), None);
+    drop(tx);
+
+    let state = fx.store.audit_state().await.unwrap();
+    assert!(
+        state
+            .snapshots
+            .iter()
+            .any(|s| s.entity == AuditEntity::Event && s.entity_id == event.id.0)
+    );
+}
+
+pub async fn an_emptied_open_event_does_not_block_a_new_one<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + EntryRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let opened_at = start() - TimeDelta::minutes(30);
+    let emptied = add_live_event(fx, owner.id, opened_at, None).await;
+    let entry = fx
+        .store
+        .entries_for_event(emptied.id)
+        .await
+        .unwrap()
+        .pop()
+        .expect("the event has an entry");
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.delete_entry(entry.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    assert_eq!(fx.store.open_event().await.unwrap(), None);
+    let mut tx = fx.store.begin(None).await.unwrap();
+    assert_eq!(tx.open_event().await.unwrap(), None);
+    assert_eq!(tx.event_at(opened_at).await.unwrap(), None);
+    drop(tx);
+
+    let new = add_live_event(fx, owner.id, start(), None).await;
+    assert_ne!(new.id, emptied.id);
+    assert_eq!(fx.store.open_event().await.unwrap(), Some(new));
+}
+
+pub async fn reopening_ignores_an_emptied_open_event<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + EntryRepo,
+{
+    let owner = add_user(fx, "daniele", Role::Resident).await;
+    let earlier = start() - TimeDelta::hours(3);
+    let closed = add_live_event(
+        fx,
+        owner.id,
+        earlier,
+        closure(earlier + TimeDelta::hours(1), CloseReason::Manual),
+    )
+    .await;
+    let emptied = add_live_event(fx, owner.id, start() - TimeDelta::minutes(30), None).await;
+    let entry = fx
+        .store
+        .entries_for_event(emptied.id)
+        .await
+        .unwrap()
+        .pop()
+        .expect("the event has an entry");
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    tx.delete_entry(entry.id).await.unwrap();
+    tx.commit().await.unwrap();
+
+    let mut tx = fx.store.begin(Some(owner.id)).await.unwrap();
+    let reopened = tx.reopen_event(closed.id).await.unwrap();
+    tx.commit().await.unwrap();
+    assert!(reopened.is_open());
+    assert_eq!(fx.store.open_event().await.unwrap(), Some(reopened));
 }

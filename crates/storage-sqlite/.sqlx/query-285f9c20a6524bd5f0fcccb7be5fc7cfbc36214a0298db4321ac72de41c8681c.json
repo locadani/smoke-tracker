@@ -1,12 +1,12 @@
 {
-  "db_name": "PostgreSQL",
-  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE close_reason = 'auto_0400' AND auto_close_notice_seen_at IS NULL ORDER BY opened_at, id",
+  "db_name": "SQLite",
+  "query": "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at FROM events WHERE opened_at <= $1 AND (closed_at IS NULL OR closed_at >= $1) AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) ORDER BY opened_at DESC, id DESC LIMIT 1",
   "describe": {
     "columns": [
       {
-        "ordinal": 0,
         "name": "id",
-        "type_info": "Int8",
+        "ordinal": 0,
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "events",
@@ -15,9 +15,9 @@
         }
       },
       {
-        "ordinal": 1,
         "name": "owner_id",
-        "type_info": "Int8",
+        "ordinal": 1,
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "events",
@@ -26,9 +26,9 @@
         }
       },
       {
-        "ordinal": 2,
         "name": "opened_at",
-        "type_info": "Int8",
+        "ordinal": 2,
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "events",
@@ -37,9 +37,9 @@
         }
       },
       {
-        "ordinal": 3,
         "name": "closed_at",
-        "type_info": "Int8",
+        "ordinal": 3,
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "events",
@@ -48,8 +48,8 @@
         }
       },
       {
-        "ordinal": 4,
         "name": "close_reason",
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -59,9 +59,9 @@
         }
       },
       {
-        "ordinal": 5,
         "name": "auto_close_notice_seen_at",
-        "type_info": "Int8",
+        "ordinal": 5,
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "events",
@@ -70,9 +70,9 @@
         }
       },
       {
-        "ordinal": 6,
         "name": "recorded_at",
-        "type_info": "Int8",
+        "ordinal": 6,
+        "type_info": "Integer",
         "origin": {
           "Table": {
             "table": "events",
@@ -82,7 +82,7 @@
       }
     ],
     "parameters": {
-      "Left": []
+      "Right": 1
     },
     "nullable": [
       false,
@@ -94,5 +94,5 @@
       false
     ]
   },
-  "hash": "84d4cc7b2520cd2c6026dedd0d92f52ddf6d2291deea61abb59ed8e70f2d511b"
+  "hash": "285f9c20a6524bd5f0fcccb7be5fc7cfbc36214a0298db4321ac72de41c8681c"
 }

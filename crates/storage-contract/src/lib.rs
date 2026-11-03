@@ -10,6 +10,7 @@
 
 pub mod audit;
 pub mod corrections;
+pub mod deleting;
 pub mod entries;
 pub mod events;
 pub mod fixture;
@@ -55,12 +56,17 @@ macro_rules! contract_tests {
             events::closing_and_reopening_are_audited,
             events::closing_an_event_before_it_opened_breaks_a_data_rule,
             events::reopening_is_refused_while_another_event_is_open,
+            events::an_emptied_open_event_does_not_block_a_new_one,
+            events::reopening_ignores_an_emptied_open_event,
             events::the_end_of_a_closed_event_can_move,
             events::moving_an_event_end_is_audited_and_checked,
+            events::moving_an_event_start_changes_owner_and_is_audited,
             events::the_auto_close_notice_is_marked_seen_once,
             events::events_between_returns_overlapping_events,
             events::unseen_auto_closed_events_are_listed_until_seen,
             events::event_at_finds_the_event_whose_span_contains_the_time,
+            events::an_event_without_live_entries_is_not_an_event,
+            events::an_event_whose_entries_are_all_deleted_disappears,
             entries::a_report_keeps_its_rooms_and_symptoms,
             entries::entry_with_report_and_reading_round_trips,
             entries::an_entry_keeps_its_photo,
@@ -70,6 +76,7 @@ macro_rules! contract_tests {
             entries::correcting_a_reading_entry_changes_its_time_and_note,
             entries::moving_an_entry_moves_both_children,
             entries::deleting_an_entry_is_soft,
+            entries::entries_for_event_in_a_transaction_sees_its_own_writes,
             entries::delete_entry_hides_both_children,
             entries::latest_report_time_ignores_deleted_reports_and_readings,
             entries::an_unknown_room_rolls_back_the_entry,
@@ -167,12 +174,35 @@ macro_rules! contract_tests {
             corrections::moving_a_report_moves_its_reading,
             corrections::correcting_a_report_time_retimes_its_reading,
             corrections::correcting_only_rooms_shows_only_room_changes_in_history,
+            deleting::deleting_the_only_entry_removes_the_event,
+            deleting::deleting_a_later_entry_leaves_the_event_alone,
+            deleting::deleting_the_earliest_entry_moves_the_start_and_owner,
+            deleting::the_start_never_passes_the_end,
+            deleting::a_check_with_no_event_is_deleted,
+            deleting::deleting_twice_is_not_found,
+            deleting::a_resident_deletes_a_guests_entry_but_not_another_residents,
+            deleting::a_guest_cannot_see_others_entries_and_a_viewer_cannot_delete_them,
+            deleting::deleting_an_event_deletes_every_entry_in_one_transaction,
+            deleting::deleting_an_event_with_another_residents_entry_is_refused,
+            deleting::deleting_an_event_none_of_mine_is_forbidden,
+            deleting::deleting_an_emptied_event_is_not_found,
+            deleting::moving_the_earliest_entry_out_moves_the_start,
+            deleting::moving_the_only_entry_out_keeps_its_open_event,
+            deleting::moving_the_only_entry_out_re_centres_its_closed_event,
+            deleting::moving_an_entry_while_another_event_is_open_creates_a_closed_event,
+            deleting::verify_audit_is_clean_after_deletions,
+            deleting::deleting_the_last_report_detaches_the_readings,
+            deleting::moving_the_last_report_to_another_event_detaches_the_readings,
+            deleting::moving_the_last_report_to_a_new_event_detaches_the_readings,
+            deleting::an_earlier_reading_sets_the_start_and_the_next_report_the_owner,
+            deleting::detaching_an_entry_is_audited_once,
             sweep::the_first_sweep_runs_and_is_remembered,
             sweep::a_sweep_at_four_closes_the_event_at_its_last_report,
             sweep::a_catch_up_at_eight_closes_exactly_like_a_sweep_at_four,
             sweep::an_event_opened_after_the_boundary_stays_open,
             sweep::an_event_without_reports_closes_where_it_opened,
             sweep::on_dst_days_the_sweep_still_runs_at_four_local,
+            sweep::the_sweep_ignores_an_emptied_open_event,
         );
     };
     (@each $fixture:path; $($module:ident::$test:ident),+ $(,)?) => {

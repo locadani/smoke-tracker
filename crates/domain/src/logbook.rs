@@ -17,7 +17,7 @@ use crate::records::{
 };
 use crate::repos::{EntryWrites, EventWrites, StoreError, StoreResult};
 use crate::schedule::DailySchedule;
-use crate::types::{CloseReason, EventId, ReportId, UserId};
+use crate::types::{CloseReason, EventId, LogEntryId, ReportId, UserId};
 
 #[derive(Debug, Error)]
 pub enum LogError {
@@ -42,6 +42,9 @@ pub enum LogError {
     /// A check stays a no-smell report: a smell is logged as a new report (spec §7.1).
     #[error("a check cannot be corrected to a smell")]
     CheckCannotSmell,
+    /// Deleting a whole event would delete entries the actor may not delete.
+    #[error("someone else's entries are in the event")]
+    OthersLogged,
     #[error(transparent)]
     Invalid(#[from] DomainError),
     #[error(transparent)]
@@ -347,6 +350,9 @@ pub async fn correct_report<T: EventWrites + EntryWrites>(
 /// "Move to another event" (spec §7.7): into an event that was running when the report was
 /// observed (its end moves if needed), or into a new event owned by the report's author. A
 /// no-smell report never opens one (spec §7.1). The whole entry moves, its reading with it.
+/// When the report is the only live entry of its event, "new event" opens nothing: the event
+/// stays, open or closed as it was, and its start and owner follow the entry
+/// ([`follow_remaining_entries`]).
 pub async fn move_report<T: EventWrites + EntryWrites>(
     tx: &mut T,
     actor: &Actor,
@@ -368,12 +374,68 @@ pub async fn move_report<T: EventWrites + EntryWrites>(
         }
         MoveTarget::New if report.values.is_no_smell() => return Err(LogError::NoSmellCannotOpen),
         MoveTarget::New => {
+            if let Some(current) = entry.event_id {
+                let alone = tx.entries_for_event(current).await?.len() == 1;
+                if alone {
+                    follow_remaining_entries(tx, current, false).await?;
+                    return Ok(entry);
+                }
+            }
             let another_open = tx.open_event().await?.is_some();
             let (owner, at) = (entry.user_id, entry.observed_at);
             open_new_event(tx, owner, at, schedule, now, another_open).await?
         }
     };
-    Ok(tx.move_entry(entry.id, target).await?)
+    let leaving = entry.event_id.filter(|old| *old != target);
+    let moved = tx.move_entry(entry.id, target).await?;
+    if let Some(old) = leaving {
+        follow_remaining_entries(tx, old, true).await?;
+    }
+    Ok(moved)
+}
+
+/// Whether `entry` is the first live entry of `event`.
+pub(crate) async fn is_earliest_entry<T: EntryWrites>(
+    tx: &mut T,
+    event: EventId,
+    entry: LogEntryId,
+) -> StoreResult<bool> {
+    let entries = tx.entries_for_event(event).await?;
+    Ok(entries.first().is_some_and(|first| first.id == entry))
+}
+
+/// Brings an event back in line with its remaining live entries after one left it. Its start
+/// follows the earliest remaining entry (never past its end) and its owner the author of the
+/// earliest remaining smell report. When `report_left` and no smell report remains, the event
+/// cannot stand on readings alone: each remaining reading is detached and stands alone, and the
+/// event is gone with its last entry. Does nothing if no live entry remains.
+pub(crate) async fn follow_remaining_entries<T: EventWrites + EntryWrites>(
+    tx: &mut T,
+    event: EventId,
+    report_left: bool,
+) -> StoreResult<()> {
+    let entries = tx.entries_for_event(event).await?;
+    let owner = entries.iter().find(|entry| entry.report.is_some());
+    if owner.is_none() && report_left {
+        for entry in &entries {
+            tx.detach_entry(entry.id).await?;
+        }
+        return Ok(());
+    }
+    let Some(first) = entries.first() else {
+        return Ok(());
+    };
+    let owner = owner.unwrap_or(first).user_id;
+    let Some(event_row) = tx.event(event).await? else {
+        return Ok(());
+    };
+    let opened_at = event_row.closed.map_or(first.observed_at, |closure| {
+        first.observed_at.min(closure.at)
+    });
+    if (opened_at, owner) != (event_row.opened_at, event_row.owner_id) {
+        tx.move_event_start(event, opened_at, owner).await?;
+    }
+    Ok(())
 }
 
 /// The event, if it exists and `actor` may close or reopen it.

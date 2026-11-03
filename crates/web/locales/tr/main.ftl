@@ -386,3 +386,17 @@ symptom-sore-throat = Boğaz ağrısı
 symptom-eye-irritation = Göz tahrişi
 symptom-nausea = Mide bulantısı
 symptom-difficulty-sleeping = Uyku güçlüğü
+
+delete = Sil
+delete-cancel = Vazgeç
+delete-cannot-undo = Bu geri alınamaz.
+entry-delete-question = Bu kayıt silinsin mi?
+event-delete-question = { $count ->
+    [one] Bu olay ve kaydı silinsin mi?
+   *[other] Bu olay ve { $count } kaydı silinsin mi?
+}
+event-delete-recap = { $count } kayıt: { $people }
+event-delete-you = sen { $count }
+event-delete-others = diğerleri { $count }
+event-delete-blocked-one = Olayı silmek için önce { $name } kendi kayıtlarını silmeli.
+event-delete-blocked-many = Olayı silmek için önce diğerleri kendi kayıtlarını silmeli.

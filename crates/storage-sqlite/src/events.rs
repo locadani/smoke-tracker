@@ -61,6 +61,22 @@ async fn fetch(conn: &mut SqliteConnection, id: EventId) -> StoreResult<Option<E
     .transpose()
 }
 
+/// The event, unless it has no live entry: such an event does not exist for readers.
+async fn fetch_live(conn: &mut SqliteConnection, id: EventId) -> StoreResult<Option<Event>> {
+    sqlx::query_as!(
+        EventRow,
+        "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
+         FROM events WHERE id = $1 \
+         AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL)",
+        id.0,
+    )
+    .fetch_optional(conn)
+    .await
+    .db()?
+    .map(EventRow::into_event)
+    .transpose()
+}
+
 async fn require(conn: &mut SqliteConnection, id: EventId) -> StoreResult<Event> {
     fetch(conn, id).await?.ok_or(StoreError::NotFound {
         entity: AuditEntity::Event,
@@ -72,13 +88,25 @@ async fn fetch_open(conn: &mut SqliteConnection) -> StoreResult<Option<Event>> {
     sqlx::query_as!(
         EventRow,
         "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
-         FROM events WHERE closed_at IS NULL"
+         FROM events WHERE closed_at IS NULL \
+         AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
+         ORDER BY opened_at DESC, id DESC LIMIT 1"
     )
     .fetch_optional(conn)
     .await
     .db()?
     .map(EventRow::into_event)
     .transpose()
+}
+
+/// Whether a live open event other than `except` exists. A live event has an undeleted entry.
+async fn another_live_open_event(
+    conn: &mut SqliteConnection,
+    except: Option<EventId>,
+) -> StoreResult<bool> {
+    Ok(fetch_open(conn)
+        .await?
+        .is_some_and(|open| Some(open.id) != except))
 }
 
 async fn audited(tx: &mut SqliteTx, action: AuditAction, before: Event) -> StoreResult<Event> {
@@ -89,7 +117,7 @@ async fn audited(tx: &mut SqliteTx, action: AuditAction, before: Event) -> Store
 
 impl EventRepo for SqliteStore {
     async fn event(&self, id: EventId) -> StoreResult<Option<Event>> {
-        fetch(&mut *self.read().await?, id).await
+        fetch_live(&mut *self.read().await?, id).await
     }
 
     async fn open_event(&self) -> StoreResult<Option<Event>> {
@@ -105,6 +133,7 @@ impl EventRepo for SqliteStore {
             EventRow,
             "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
              FROM events WHERE (closed_at IS NULL OR closed_at >= $1) AND opened_at < $2 \
+             AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
              ORDER BY opened_at, id",
             micros(from),
             micros(to),
@@ -122,6 +151,7 @@ impl EventRepo for SqliteStore {
             EventRow,
             "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
              FROM events WHERE close_reason = 'auto_0400' AND auto_close_notice_seen_at IS NULL \
+             AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
              ORDER BY opened_at, id"
         )
         .fetch_all(&mut *self.read().await?)
@@ -139,7 +169,7 @@ impl EventWrites for SqliteTx {
     }
 
     async fn event(&mut self, id: EventId) -> StoreResult<Option<Event>> {
-        fetch(self.conn(), id).await
+        fetch_live(self.conn(), id).await
     }
 
     async fn event_at(&mut self, at: DateTime<Utc>) -> StoreResult<Option<Event>> {
@@ -147,6 +177,7 @@ impl EventWrites for SqliteTx {
             EventRow,
             "SELECT id, owner_id, opened_at, closed_at, close_reason, auto_close_notice_seen_at, recorded_at \
              FROM events WHERE opened_at <= $1 AND (closed_at IS NULL OR closed_at >= $1) \
+             AND EXISTS (SELECT 1 FROM log_entries le WHERE le.event_id = events.id AND le.deleted_at IS NULL) \
              ORDER BY opened_at DESC, id DESC LIMIT 1",
             micros(at),
         )
@@ -171,6 +202,9 @@ impl EventWrites for SqliteTx {
     }
 
     async fn create_event(&mut self, new: NewEvent) -> StoreResult<Event> {
+        if new.closed.is_none() && another_live_open_event(self.conn(), None).await? {
+            return Err(Conflict::AnotherEventOpen.into());
+        }
         let now = micros(self.now());
         let id = sqlx::query_scalar!(
             "INSERT INTO events (owner_id, opened_at, closed_at, close_reason, recorded_at) \
@@ -211,6 +245,9 @@ impl EventWrites for SqliteTx {
         if before.is_open() {
             return Err(Conflict::EventNotClosed.into());
         }
+        if another_live_open_event(self.conn(), Some(id)).await? {
+            return Err(Conflict::AnotherEventOpen.into());
+        }
         sqlx::query!(
             "UPDATE events SET closed_at = NULL, close_reason = NULL WHERE id = $1",
             id.0,
@@ -233,6 +270,25 @@ impl EventWrites for SqliteTx {
         sqlx::query!(
             "UPDATE events SET closed_at = $1 WHERE id = $2",
             micros(closed_at),
+            id.0,
+        )
+        .execute(self.conn())
+        .await
+        .db()?;
+        audited(self, AuditAction::Update, before).await
+    }
+
+    async fn move_event_start(
+        &mut self,
+        id: EventId,
+        opened_at: DateTime<Utc>,
+        owner_id: UserId,
+    ) -> StoreResult<Event> {
+        let before = require(self.conn(), id).await?;
+        sqlx::query!(
+            "UPDATE events SET opened_at = $1, owner_id = $2 WHERE id = $3",
+            micros(opened_at),
+            owner_id.0,
             id.0,
         )
         .execute(self.conn())

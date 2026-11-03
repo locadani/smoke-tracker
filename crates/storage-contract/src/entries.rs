@@ -13,7 +13,7 @@ use smoke_domain::verify::verify_store;
 use crate::Fixture;
 use crate::fixture::{
     EntryExt, FIRST_ROOM, add_entry, add_event, add_photo_reading, add_report,
-    assert_no_childless_entries, last_entry, photo, report_values, scene, start,
+    assert_no_childless_entries, entries_added, last_entry, photo, report_values, scene, start,
 };
 
 fn pm25(value: f64) -> Pm25 {
@@ -45,10 +45,7 @@ pub async fn a_report_keeps_its_rooms_and_symptoms<S: Store>(fx: &Fixture<S>) {
     );
     assert_eq!(entry.reading, None);
     assert_eq!(fx.store.entry(entry.id).await.unwrap(), Some(entry.clone()));
-    assert_eq!(
-        fx.store.entries_for_event(scene.event.id).await.unwrap(),
-        [entry]
-    );
+    assert_eq!(entries_added(fx, &scene).await, [entry]);
 }
 
 pub async fn entry_with_report_and_reading_round_trips<S: Store>(fx: &Fixture<S>) {
@@ -79,10 +76,7 @@ pub async fn entry_with_report_and_reading_round_trips<S: Store>(fx: &Fixture<S>
         fx.store.entry_of_reading(reading.id).await.unwrap(),
         Some(entry.clone())
     );
-    assert_eq!(
-        fx.store.entries_for_event(scene.event.id).await.unwrap(),
-        [entry]
-    );
+    assert_eq!(entries_added(fx, &scene).await, [entry]);
     assert_no_childless_entries(fx).await;
 }
 
@@ -113,13 +107,7 @@ pub async fn an_entry_cannot_be_created_without_a_child<S: Store>(fx: &Fixture<S
     );
     drop(tx);
 
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
     assert_no_childless_entries(fx).await;
 }
@@ -290,13 +278,7 @@ pub async fn moving_an_entry_moves_both_children<S: Store>(fx: &Fixture<S>) {
     assert_eq!(again, moved);
     tx.commit().await.unwrap();
 
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     let listed = fx.store.entries_for_event(other.id).await.unwrap();
     assert_eq!(listed, std::slice::from_ref(&moved));
     assert_eq!(moved.report_view().unwrap().event_id, Some(other.id));
@@ -344,14 +326,47 @@ pub async fn deleting_an_entry_is_soft<S: Store>(fx: &Fixture<S>) {
     tx.commit().await.unwrap();
 
     assert_eq!(fx.store.entry(entry.id).await.unwrap(), Some(deleted));
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     assert_eq!(last_entry(fx).await.record.action, AuditAction::Delete);
+}
+
+pub async fn entries_for_event_in_a_transaction_sees_its_own_writes<S: Store>(fx: &Fixture<S>) {
+    let scene = scene(fx).await;
+    let kept = add_report(fx, &scene, start(), report_values(5, &[FIRST_ROOM], &[])).await;
+    let gone = add_entry(
+        fx,
+        &scene,
+        start() + TimeDelta::minutes(1),
+        None,
+        None,
+        Some(pm25(8.0)),
+    )
+    .await;
+
+    let mut tx = fx.store.begin(Some(scene.user.id)).await.unwrap();
+    tx.delete_entry(gone.id).await.unwrap();
+    let added = tx
+        .create_entry(
+            NewEntry::new(
+                scene.user.id,
+                Some(scene.event.id),
+                start() - TimeDelta::minutes(2),
+                None,
+                None,
+                Some(NewReading::without_photo(pm25(12.0))),
+            )
+            .unwrap(),
+        )
+        .await
+        .unwrap();
+    let listed = tx.entries_for_event(scene.event.id).await.unwrap();
+    let times: Vec<_> = listed.iter().map(|e| e.observed_at).collect();
+    assert!(times.is_sorted(), "{times:?}");
+    let ids: Vec<_> = listed.iter().map(|e| e.id).collect();
+    assert!(ids.contains(&added.id) && ids.contains(&kept.id), "{ids:?}");
+    assert!(!ids.contains(&gone.id), "{ids:?}");
+    let listed_kept = listed.iter().find(|e| e.id == kept.id).unwrap();
+    assert_eq!(listed_kept.report, kept.report);
 }
 
 pub async fn delete_entry_hides_both_children<S: Store>(fx: &Fixture<S>) {
@@ -380,15 +395,15 @@ pub async fn delete_entry_hides_both_children<S: Store>(fx: &Fixture<S>) {
     tx.delete_entry(entry.id).await.unwrap();
     tx.commit().await.unwrap();
 
-    let window = (start() - TimeDelta::hours(1), start() + TimeDelta::hours(1));
+    let window = (
+        start() - TimeDelta::minutes(30),
+        start() + TimeDelta::hours(1),
+    );
     assert_eq!(
         fx.store.entries_between(window.0, window.1).await.unwrap(),
         std::slice::from_ref(&kept)
     );
-    assert_eq!(
-        fx.store.entries_for_event(scene.event.id).await.unwrap(),
-        [kept]
-    );
+    assert_eq!(entries_added(fx, &scene).await, [kept]);
     let stored = fx.store.entry(entry.id).await.unwrap().unwrap();
     assert!(stored.is_deleted());
     assert_eq!(
@@ -454,13 +469,7 @@ pub async fn an_unknown_room_rolls_back_the_entry<S: Store>(fx: &Fixture<S>) {
     );
     drop(tx);
 
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
     assert_no_childless_entries(fx).await;
 }
@@ -562,13 +571,7 @@ pub async fn an_unknown_symptom_rolls_back_the_entry<S: Store>(fx: &Fixture<S>) 
     );
     drop(tx);
 
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
     assert_no_childless_entries(fx).await;
 }
@@ -637,10 +640,7 @@ pub async fn a_reading_can_stand_alone_or_join_an_event<S: Store>(fx: &Fixture<S
     assert_eq!(alone.report, None);
     assert_eq!(linked.recorded_at, start());
     assert_eq!(fx.store.entry(alone.id).await.unwrap(), Some(alone.clone()));
-    assert_eq!(
-        fx.store.entries_for_event(scene.event.id).await.unwrap(),
-        [linked]
-    );
+    assert_eq!(entries_added(fx, &scene).await, [linked]);
     assert_no_childless_entries(fx).await;
 }
 
@@ -687,13 +687,7 @@ pub async fn correcting_and_deleting_a_reading_entry_are_audited<S: Store>(fx: &
     }
     tx.commit().await.unwrap();
 
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     assert_eq!(fx.store.entry(entry.id).await.unwrap(), Some(deleted));
     let actions: Vec<_> = fx
         .store
@@ -734,13 +728,7 @@ pub async fn a_reading_for_an_unknown_event_is_rejected<S: Store>(fx: &Fixture<S
     );
     drop(tx);
 
-    assert!(
-        fx.store
-            .entries_for_event(scene.event.id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
+    assert!(entries_added(fx, &scene).await.is_empty());
     assert_eq!(fx.store.audit_log().await.unwrap().len(), entries_before);
     assert_no_childless_entries(fx).await;
 }
@@ -830,12 +818,15 @@ pub async fn an_entry_keeps_its_photo<S: Store>(fx: &Fixture<S>) {
         Some(entry.clone())
     );
     assert_eq!(
-        fx.store.entries_for_event(scene.event.id).await.unwrap(),
+        entries_added(fx, &scene).await,
         std::slice::from_ref(&entry)
     );
     let day = fx
         .store
-        .entries_between(start() - TimeDelta::days(1), start() + TimeDelta::days(1))
+        .entries_between(
+            start() - TimeDelta::minutes(30),
+            start() + TimeDelta::days(1),
+        )
         .await
         .unwrap();
     assert_eq!(day, std::slice::from_ref(&entry));

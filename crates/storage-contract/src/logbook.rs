@@ -16,7 +16,7 @@ use smoke_domain::starter::seed_starter_lists;
 use smoke_domain::types::{CloseReason, EventId, Pm25, Role, RoomId};
 
 use crate::Fixture;
-use crate::fixture::{FIRST_ROOM, add_event, add_user, report_values, start};
+use crate::fixture::{FIRST_ROOM, add_live_event, add_user, report_values, start};
 
 /// Everyone who might log, and the seeded lists.
 pub(crate) struct People {
@@ -407,7 +407,7 @@ where
         at: opened + TimeDelta::hours(1),
         reason: CloseReason::Manual,
     };
-    let past = add_event(fx, p.resident.id, opened, Some(closed)).await;
+    let past = add_live_event(fx, p.resident.id, opened, Some(closed)).await;
 
     let inside = log(
         fx,
@@ -438,7 +438,7 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let open = add_event(fx, p.resident.id, start() - TimeDelta::hours(1), None).await;
+    let open = add_live_event(fx, p.resident.id, start() - TimeDelta::hours(1), None).await;
     let before = log(
         fx,
         &p.resident,
@@ -449,7 +449,7 @@ where
     assert!(matches!(before, Err(LogError::OutsideEvent)), "{before:?}");
 
     let yesterday = start() - TimeDelta::days(1);
-    let old = add_event(
+    let old = add_live_event(
         fx,
         p.resident.id,
         yesterday,
@@ -482,7 +482,7 @@ where
         at: opened + TimeDelta::hours(1),
         reason: CloseReason::Auto0400,
     };
-    let guests = add_event(fx, p.guest.id, opened, Some(auto)).await;
+    let guests = add_live_event(fx, p.guest.id, opened, Some(auto)).await;
 
     let logged = log(
         fx,
@@ -495,7 +495,7 @@ where
     assert_eq!(logged.entry.event_id, Some(guests.id));
     assert!(event(fx, guests.id).await.is_open());
 
-    let manual = add_event(
+    let manual = add_live_event(
         fx,
         p.resident.id,
         opened - TimeDelta::hours(1),
@@ -521,7 +521,7 @@ where
 {
     let p = people(fx).await;
     let opened = start() - TimeDelta::hours(20);
-    let residents = add_event(
+    let residents = add_live_event(
         fx,
         p.resident.id,
         opened,
@@ -609,7 +609,7 @@ where
     let opened = start() - TimeDelta::hours(5);
     let last_report = opened + TimeDelta::hours(1);
     let ended = last_report + TimeDelta::minutes(10);
-    let past = add_event(
+    let past = add_live_event(
         fx,
         p.resident.id,
         opened,
@@ -619,7 +619,7 @@ where
         }),
     )
     .await;
-    let open = add_event(fx, p.resident.id, start() - TimeDelta::minutes(30), None).await;
+    let open = add_live_event(fx, p.resident.id, start() - TimeDelta::minutes(30), None).await;
     let mut report = smell(last_report, 4);
     report.note = None;
     log(fx, &p.resident, report, EventChoice::Join(past.id))
@@ -644,7 +644,7 @@ where
 {
     let p = people(fx).await;
     let opened = start() - TimeDelta::hours(5);
-    let past = add_event(
+    let past = add_live_event(
         fx,
         p.resident.id,
         opened,
@@ -654,7 +654,7 @@ where
         }),
     )
     .await;
-    let open = add_event(fx, p.resident.id, start() - TimeDelta::minutes(30), None).await;
+    let open = add_live_event(fx, p.resident.id, start() - TimeDelta::minutes(30), None).await;
 
     let inside = reading(fx, &p.guest, opened + TimeDelta::minutes(10)).await;
     assert_eq!(inside.event_id, Some(past.id));
@@ -841,7 +841,7 @@ where
     S: Transactional<Tx: WriteTx> + ListRepo + EventRepo,
 {
     let p = people(fx).await;
-    let past = add_event(fx, p.resident.id, start() - TimeDelta::hours(3), None).await;
+    let past = add_live_event(fx, p.resident.id, start() - TimeDelta::hours(3), None).await;
     let earlier = start() - TimeDelta::hours(2);
     let joined = log(
         fx,
@@ -881,7 +881,7 @@ pub async fn a_no_smell_report_answered_continue_now_is_a_check_and_reopens_noth
         at: opened + TimeDelta::hours(1),
         reason: CloseReason::Auto0400,
     };
-    let closed = add_event(fx, p.resident.id, opened, Some(auto)).await;
+    let closed = add_live_event(fx, p.resident.id, opened, Some(auto)).await;
 
     let logged = log(
         fx,
@@ -910,7 +910,7 @@ where
         at: opened + TimeDelta::hours(1),
         reason: CloseReason::Auto0400,
     };
-    let closed = add_event(fx, p.resident.id, opened, Some(auto)).await;
+    let closed = add_live_event(fx, p.resident.id, opened, Some(auto)).await;
 
     let refused = log(
         fx,
@@ -933,7 +933,7 @@ where
         at: opened + TimeDelta::hours(1),
         reason: CloseReason::Manual,
     };
-    let past = add_event(fx, p.resident.id, opened, Some(closed)).await;
+    let past = add_live_event(fx, p.resident.id, opened, Some(closed)).await;
 
     let inside = log(
         fx,

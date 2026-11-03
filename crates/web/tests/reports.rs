@@ -635,6 +635,14 @@ async fn a_report_whose_id_differs_from_its_entry_id_is_the_one_that_changes() {
         "the reading follows the correction"
     );
 
+    app.log(
+        &me,
+        "2026-01-15T19:50:00Z",
+        3,
+        &[bedroom],
+        EventChoice::Join(report.event_id.unwrap()),
+    )
+    .await;
     let response = app
         .send(post_form(
             &format!("{path}/move"),

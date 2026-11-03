@@ -123,3 +123,17 @@
   {{ caller() }}
 </fieldset>
 {% endmacro %}
+
+{# The step before a delete: the question, "This can't be undone", a danger button that posts to
+   `action` and a Cancel link to `cancel_href`. Reached with a plain link, so it needs no
+   JavaScript. #}
+{% macro confirm_delete(question, action, cancel_href) %}
+<section class="card stack" role="group" aria-labelledby="confirm-delete-question">
+  <h2 id="confirm-delete-question">{{ question }}</h2>
+  <p class="muted">{{ tr.t("delete-cannot-undo") }}</p>
+  <form method="post" action="{{ action }}" class="cluster">
+    <button type="submit" class="button" data-variant="danger">{{ tr.t("delete") }}</button>
+    <a href="{{ cancel_href }}" class="button" data-variant="secondary">{{ tr.t("delete-cancel") }}</a>
+  </form>
+</section>
+{% endmacro %}

@@ -56,18 +56,27 @@ pub enum Action {
     ManageUsers,
     /// Edit the room and symptom lists.
     EditLists,
+    /// Delete a live entry logged by `author`, who holds `author_role`.
+    DeleteEntry { author: UserId, author_role: Role },
 }
 
 pub fn can(actor: &Actor, action: Action, now: DateTime<Utc>) -> bool {
     let active = !actor.is_expired(now);
     match actor.role {
-        Role::Resident => true,
+        Role::Resident => match action {
+            Action::DeleteEntry {
+                author,
+                author_role,
+            } => author == actor.id || author_role == Role::Guest,
+            _ => true,
+        },
         Role::Guest => match action {
             Action::ViewOwn => true,
             Action::LogEntry => active,
             Action::EditEntry { owner } | Action::ManageEvent { owner } => {
                 active && owner == actor.id
             }
+            Action::DeleteEntry { author, .. } => active && author == actor.id,
             Action::ViewAll | Action::ManageUsers | Action::EditLists => false,
         },
         Role::Viewer => active && matches!(action, Action::ViewAll | Action::ViewOwn),
@@ -89,7 +98,7 @@ mod tests {
     const ME: UserId = UserId(1);
     const OTHER: UserId = UserId(2);
 
-    const ACTIONS: [Action; 9] = [
+    const ACTIONS: [Action; 13] = [
         Action::LogEntry,
         Action::ViewAll,
         Action::ViewOwn,
@@ -99,6 +108,22 @@ mod tests {
         Action::ManageEvent { owner: OTHER },
         Action::ManageUsers,
         Action::EditLists,
+        Action::DeleteEntry {
+            author: ME,
+            author_role: Role::Resident,
+        },
+        Action::DeleteEntry {
+            author: ME,
+            author_role: Role::Guest,
+        },
+        Action::DeleteEntry {
+            author: OTHER,
+            author_role: Role::Resident,
+        },
+        Action::DeleteEntry {
+            author: OTHER,
+            author_role: Role::Guest,
+        },
     ];
 
     fn now() -> DateTime<Utc> {
@@ -123,7 +148,8 @@ mod tests {
 
     /// The spec §4 permissions table, cell by cell. Columns follow `ACTIONS`:
     /// log, view all, view own, edit own, edit other, manage own event, manage other event,
-    /// manage users, edit lists.
+    /// manage users, edit lists, delete own (as resident, as guest), delete another resident's,
+    /// delete another guest's.
     #[test]
     fn permission_matrix_matches_the_spec() {
         const T: bool = true;
@@ -132,32 +158,32 @@ mod tests {
             (
                 "resident",
                 actor(Role::Resident, None),
-                [T, T, T, T, T, T, T, T, T],
+                [T, T, T, T, T, T, T, T, T, T, T, F, T],
             ),
             (
                 "active guest",
                 actor(Role::Guest, active()),
-                [T, F, T, T, F, T, F, F, F],
+                [T, F, T, T, F, T, F, F, F, T, T, F, F],
             ),
             (
                 "expired guest",
                 actor(Role::Guest, expired()),
-                [F, F, T, F, F, F, F, F, F],
+                [F, F, T, F, F, F, F, F, F, F, F, F, F],
             ),
             (
                 "active viewer",
                 actor(Role::Viewer, active()),
-                [F, T, T, F, F, F, F, F, F],
+                [F, T, T, F, F, F, F, F, F, F, F, F, F],
             ),
             (
                 "viewer without expiry",
                 actor(Role::Viewer, None),
-                [F, T, T, F, F, F, F, F, F],
+                [F, T, T, F, F, F, F, F, F, F, F, F, F],
             ),
             (
                 "expired viewer",
                 actor(Role::Viewer, expired()),
-                [F, F, F, F, F, F, F, F, F],
+                [F, F, F, F, F, F, F, F, F, F, F, F, F],
             ),
         ];
         for (label, actor, expected) in rows {

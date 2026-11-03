@@ -137,6 +137,43 @@ where
     event
 }
 
+/// [`add_event`] plus one PM2.5-only entry by `owner` at `opened_at`, written in the same
+/// transaction: an event that exists. The entry has no report, so the event's last report time
+/// is unaffected.
+pub async fn add_live_event<S>(
+    fx: &Fixture<S>,
+    owner: UserId,
+    opened_at: DateTime<Utc>,
+    closed: Option<Closure>,
+) -> Event
+where
+    S: Transactional<Tx: EventWrites + EntryWrites>,
+{
+    let mut tx = fx.store.begin(Some(owner)).await.expect("begin");
+    let event = tx
+        .create_event(NewEvent {
+            owner_id: owner,
+            opened_at,
+            closed,
+        })
+        .await
+        .expect("create event");
+    let entry = NewEntry::new(
+        owner,
+        Some(event.id),
+        opened_at,
+        None,
+        None,
+        Some(NewReading::without_photo(
+            Pm25::new(10.0).expect("valid PM2.5"),
+        )),
+    )
+    .expect("an entry with a child");
+    tx.create_entry(entry).await.expect("create entry");
+    tx.commit().await.expect("commit");
+    event
+}
+
 /// Seeded lists, a resident, and an event they opened an hour before [`start`].
 pub struct Scene {
     pub user: User,
@@ -147,17 +184,31 @@ pub struct Scene {
 
 pub async fn scene<S>(fx: &Fixture<S>) -> Scene
 where
-    S: Transactional<Tx: UserWrites + ListWrites + EventWrites> + ListRepo,
+    S: Transactional<Tx: UserWrites + ListWrites + EventWrites + EntryWrites> + ListRepo,
 {
     seed_starter_lists(&fx.store).await.expect("seed");
     let user = add_user(fx, "daniele", Role::Resident).await;
-    let event = add_event(fx, user.id, start() - TimeDelta::hours(1), None).await;
+    let event = add_live_event(fx, user.id, start() - TimeDelta::hours(1), None).await;
     Scene {
         user,
         event,
         rooms: fx.store.rooms().await.expect("rooms"),
         symptoms: fx.store.symptoms().await.expect("symptoms"),
     }
+}
+
+/// The entry [`scene`] writes so its event exists; it is the first entry in the database.
+pub const SEED_ENTRY: LogEntryId = LogEntryId(1);
+
+/// The live entries a test added to the scene's event, without the [`SEED_ENTRY`].
+pub async fn entries_added<S: EntryRepo>(fx: &Fixture<S>, scene: &Scene) -> Vec<LogEntry> {
+    let mut entries = fx
+        .store
+        .entries_for_event(scene.event.id)
+        .await
+        .expect("entries for the event");
+    entries.retain(|entry| entry.id != SEED_ENTRY);
+    entries
 }
 
 /// The first starter room. Suites that log seed the starter lists first.

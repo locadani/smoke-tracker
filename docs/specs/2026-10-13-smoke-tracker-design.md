@@ -235,7 +235,9 @@ among its reports.
 
 ## 7. Event lifecycle rules
 
-**Invariant:** at most **one open event** at a time (one apartment, one smoke source).
+**Invariant:** at most **one open event** at a time (one apartment, one smoke source). An event
+exists only while it has a live smell report; "open event" means an open event that exists. The
+store enforces the rule inside the write transaction (decision #149).
 
 ### 7.1 Logging "now" with no open event
 A new event is created, owned by the logger.
@@ -307,6 +309,11 @@ only as a dismissable banner.
   **Move to a new event** for the report after the gap (same rules as Move).
 - Every log has its own page at `/entries/{id}` (time, author, PM2.5, rooms, symptoms, note);
   `/reports/{id}` redirects there.
+
+### 7.8 Deleting
+A log entry, or a whole event, can be deleted from its page; nothing is hard-deleted and every
+deletion is audited. Rules, screens and edge cases:
+`docs/specs/2026-11-03-delete-entries-events-design.md` (decisions #149–#151).
 
 ---
 

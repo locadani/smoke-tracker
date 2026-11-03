@@ -113,6 +113,8 @@ pub trait ListRepo: Send + Sync {
     fn symptoms(&self) -> impl Future<Output = StoreResult<Vec<Symptom>>> + Send;
 }
 
+/// Reads only see events that have at least one live (not deleted) entry; an event without one
+/// does not exist as far as readers can tell.
 pub trait EventRepo: Send + Sync {
     fn event(&self, id: EventId) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     fn open_event(&self) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
@@ -242,7 +244,9 @@ pub trait ListWrites: Send {
 }
 
 pub trait EventWrites: Send {
-    /// Reads inside the transaction, so a decision and the write that follows it see the same data.
+    /// Reads inside the transaction, so a decision and the write that follows it see the same
+    /// data. Like [`EventRepo`], they skip events without a live entry, so an event just created
+    /// is not found until its first entry is written.
     fn open_event(&mut self) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     fn event(&mut self, id: EventId) -> impl Future<Output = StoreResult<Option<Event>>> + Send;
     /// The most recently opened event whose span contains `at`; an open event has no end yet.
@@ -255,19 +259,32 @@ pub trait EventWrites: Send {
         &mut self,
         event: EventId,
     ) -> impl Future<Output = StoreResult<Option<DateTime<Utc>>>> + Send;
-    /// Fails with [`Conflict::AnotherEventOpen`] when creating an open event while one is open.
+    /// Fails with [`Conflict::AnotherEventOpen`] when creating an open event while another live
+    /// event is open. The check runs inside the write transaction, which the store serialises
+    /// (SQLite: single writer; Postgres: the table lock taken by `begin`), so it is race-free.
     fn create_event(&mut self, new: NewEvent) -> impl Future<Output = StoreResult<Event>> + Send;
     fn close_event(
         &mut self,
         id: EventId,
         closure: Closure,
     ) -> impl Future<Output = StoreResult<Event>> + Send;
+    /// Fails with [`Conflict::AnotherEventOpen`] while another live event is open; checked
+    /// inside the serialised write transaction, so it is race-free.
     fn reopen_event(&mut self, id: EventId) -> impl Future<Output = StoreResult<Event>> + Send;
     /// Moves a closed event's end, keeping its close reason (e.g. a backdated report after it).
     fn move_event_end(
         &mut self,
         id: EventId,
         closed_at: DateTime<Utc>,
+    ) -> impl Future<Output = StoreResult<Event>> + Send;
+    /// Moves the event's start and gives it to `owner_id`: the event follows its earliest
+    /// entry. Records nothing when neither changes. An `opened_at` after the event's end is a
+    /// [`Conflict::RuleViolated`].
+    fn move_event_start(
+        &mut self,
+        id: EventId,
+        opened_at: DateTime<Utc>,
+        owner_id: UserId,
     ) -> impl Future<Output = StoreResult<Event>> + Send;
     /// Records that the auto-close notice was shown; later calls keep the first time.
     fn mark_auto_close_notice_seen(
@@ -288,6 +305,12 @@ pub trait EntryWrites: Send {
         &mut self,
         id: ReportId,
     ) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    /// The event's entries that are not deleted, ordered by observed time, as this transaction
+    /// sees them.
+    fn entries_for_event(
+        &mut self,
+        event: EventId,
+    ) -> impl Future<Output = StoreResult<Vec<LogEntry>>> + Send;
     /// `recorded_at` is the transaction's instant. Fails with [`DomainError::EntryWithoutChildren`]
     /// if `new` has neither a report nor a reading.
     fn create_entry(&mut self, new: NewEntry)
@@ -308,6 +331,12 @@ pub trait EntryWrites: Send {
         &mut self,
         id: LogEntryId,
         to: EventId,
+    ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
+    /// Takes the entry out of its event, so it stands alone (an entry already without an event is
+    /// returned unchanged and not audited).
+    fn detach_entry(
+        &mut self,
+        id: LogEntryId,
     ) -> impl Future<Output = StoreResult<LogEntry>> + Send;
     /// Soft delete: sets `deleted_at`, hiding both children.
     fn delete_entry(
