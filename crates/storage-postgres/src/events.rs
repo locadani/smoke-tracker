@@ -278,6 +278,25 @@ impl EventWrites for PostgresTx {
         audited(self, AuditAction::Update, before).await
     }
 
+    async fn move_event_start(
+        &mut self,
+        id: EventId,
+        opened_at: DateTime<Utc>,
+        owner_id: UserId,
+    ) -> StoreResult<Event> {
+        let before = require(self.conn(), id).await?;
+        sqlx::query!(
+            "UPDATE events SET opened_at = $1, owner_id = $2 WHERE id = $3",
+            micros(opened_at),
+            owner_id.0,
+            id.0,
+        )
+        .execute(self.conn())
+        .await
+        .db()?;
+        audited(self, AuditAction::Update, before).await
+    }
+
     async fn mark_auto_close_notice_seen(&mut self, id: EventId) -> StoreResult<Event> {
         let before = require(self.conn(), id).await?;
         if before.auto_close_notice_seen_at.is_some() {

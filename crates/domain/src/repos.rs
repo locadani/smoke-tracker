@@ -277,6 +277,15 @@ pub trait EventWrites: Send {
         id: EventId,
         closed_at: DateTime<Utc>,
     ) -> impl Future<Output = StoreResult<Event>> + Send;
+    /// Moves the event's start and gives it to `owner_id`: the event follows its earliest
+    /// entry. Records nothing when neither changes. An `opened_at` after the event's end is a
+    /// [`Conflict::RuleViolated`].
+    fn move_event_start(
+        &mut self,
+        id: EventId,
+        opened_at: DateTime<Utc>,
+        owner_id: UserId,
+    ) -> impl Future<Output = StoreResult<Event>> + Send;
     /// Records that the auto-close notice was shown; later calls keep the first time.
     fn mark_auto_close_notice_seen(
         &mut self,
@@ -296,6 +305,12 @@ pub trait EntryWrites: Send {
         &mut self,
         id: ReportId,
     ) -> impl Future<Output = StoreResult<Option<LogEntry>>> + Send;
+    /// The event's entries that are not deleted, ordered by observed time, as this transaction
+    /// sees them.
+    fn entries_for_event(
+        &mut self,
+        event: EventId,
+    ) -> impl Future<Output = StoreResult<Vec<LogEntry>>> + Send;
     /// `recorded_at` is the transaction's instant. Fails with [`DomainError::EntryWithoutChildren`]
     /// if `new` has neither a report nor a reading.
     fn create_entry(&mut self, new: NewEntry)

@@ -276,6 +276,63 @@ where
     assert_eq!(fx.store.audit_log().await.unwrap().len(), 3);
 }
 
+pub async fn moving_an_event_start_changes_owner_and_is_audited<S>(fx: &Fixture<S>)
+where
+    S: Transactional<Tx: UserWrites + EventWrites + EntryWrites> + EventRepo + AuditRepo,
+{
+    let first = add_user(fx, "daniele", Role::Resident).await;
+    let second = add_user(fx, "guest", Role::Resident).await;
+    let opened = start() - TimeDelta::hours(3);
+    let closed_at = start() - TimeDelta::hours(1);
+    let event = add_live_event(
+        fx,
+        first.id,
+        opened,
+        closure(closed_at, CloseReason::Backdated),
+    )
+    .await;
+    let earlier = opened - TimeDelta::minutes(30);
+
+    let mut tx = fx.store.begin(Some(first.id)).await.unwrap();
+    let moved = tx
+        .move_event_start(event.id, earlier, second.id)
+        .await
+        .unwrap();
+    assert_eq!((moved.opened_at, moved.owner_id), (earlier, second.id));
+    assert_eq!(moved.closed, event.closed);
+    let again = tx
+        .move_event_start(event.id, earlier, second.id)
+        .await
+        .unwrap();
+    assert_eq!(again, moved);
+    tx.commit().await.unwrap();
+
+    let history = fx
+        .store
+        .audit_history(AuditEntity::Event, event.id.0)
+        .await
+        .unwrap();
+    let actions: Vec<_> = history.iter().map(|e| e.record.action).collect();
+    assert_eq!(actions, [AuditAction::Create, AuditAction::Update]);
+    let update = &history[1].record;
+    assert_eq!(update.before.as_ref().unwrap()["owner_id"], first.id.0);
+    assert_eq!(update.after.as_ref().unwrap()["owner_id"], second.id.0);
+    assert_ne!(
+        update.before.as_ref().unwrap()["opened_at"],
+        update.after.as_ref().unwrap()["opened_at"]
+    );
+
+    let mut tx = fx.store.begin(Some(first.id)).await.unwrap();
+    let error = tx
+        .move_event_start(event.id, closed_at + TimeDelta::seconds(1), first.id)
+        .await
+        .unwrap_err();
+    assert!(
+        matches!(error, StoreError::Conflict(Conflict::RuleViolated)),
+        "{error:?}"
+    );
+}
+
 pub async fn the_auto_close_notice_is_marked_seen_once<S>(fx: &Fixture<S>)
 where
     S: Transactional<Tx: UserWrites + EventWrites> + AuditRepo,

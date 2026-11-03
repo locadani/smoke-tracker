@@ -242,6 +242,87 @@ async fn load_all(conn: &mut SqliteConnection, rows: Vec<EntryRow>) -> StoreResu
     Ok(entries)
 }
 
+/// The event's entries that are not deleted, ordered by observed time, with their children.
+async fn live_entries_for_event(
+    conn: &mut SqliteConnection,
+    event: EventId,
+) -> StoreResult<Vec<LogEntry>> {
+    let rows = sqlx::query_as!(
+        EntryRow,
+        "SELECT id, user_id, event_id, observed_at, recorded_at, note, deleted_at \
+         FROM log_entries WHERE event_id = $1 AND deleted_at IS NULL \
+         ORDER BY observed_at, id",
+        event.0,
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .db()?;
+    let reports = sqlx::query!(
+        "SELECT r.id, r.log_entry_id FROM smell_reports r \
+         JOIN log_entries e ON e.id = r.log_entry_id \
+         WHERE e.deleted_at IS NULL AND e.event_id = $1",
+        event.0,
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .db()?;
+    let rooms = sqlx::query!(
+        "SELECT l.smell_report_id, l.room_id, l.level FROM smell_report_rooms l \
+         JOIN smell_reports r ON r.id = l.smell_report_id \
+         JOIN log_entries e ON e.id = r.log_entry_id \
+         WHERE e.deleted_at IS NULL AND e.event_id = $1 \
+         ORDER BY l.smell_report_id, l.room_id",
+        event.0,
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .db()?;
+    let symptoms = sqlx::query!(
+        "SELECT l.smell_report_id, l.symptom_id FROM smell_report_symptoms l \
+         JOIN smell_reports r ON r.id = l.smell_report_id \
+         JOIN log_entries e ON e.id = r.log_entry_id \
+         WHERE e.deleted_at IS NULL AND e.event_id = $1 \
+         ORDER BY l.smell_report_id, l.symptom_id",
+        event.0,
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .db()?;
+    let readings = sqlx::query!(
+        "SELECT p.id, p.log_entry_id, p.value_ugm3, \
+                ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", \
+                ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" \
+         FROM pm25_readings p \
+         LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id \
+         JOIN log_entries e ON e.id = p.log_entry_id \
+         WHERE e.deleted_at IS NULL AND e.event_id = $1",
+        event.0,
+    )
+    .fetch_all(&mut *conn)
+    .await
+    .db()?;
+    assemble_all(
+        rows,
+        reports.into_iter().map(|r| (r.id, r.log_entry_id)),
+        rooms
+            .into_iter()
+            .map(|l| (l.smell_report_id, (l.room_id, l.level))),
+        symptoms
+            .into_iter()
+            .map(|l| (l.smell_report_id, l.symptom_id)),
+        readings.into_iter().map(|r| {
+            (
+                r.log_entry_id,
+                ReadingParts {
+                    id: r.id,
+                    value_ugm3: r.value_ugm3,
+                    photo: PhotoParts::of(r.object_key, r.bytes, r.sha256, r.taken_at),
+                },
+            )
+        }),
+    )
+}
+
 async fn fetch(conn: &mut SqliteConnection, id: LogEntryId) -> StoreResult<Option<LogEntry>> {
     let row = sqlx::query_as!(
         EntryRow,
@@ -385,81 +466,7 @@ impl EntryRepo for SqliteStore {
 
     /// Five queries whatever the number of entries, like [`Self::entries_between`].
     async fn entries_for_event(&self, event: EventId) -> StoreResult<Vec<LogEntry>> {
-        let mut conn = self.read().await?;
-        let rows = sqlx::query_as!(
-            EntryRow,
-            "SELECT id, user_id, event_id, observed_at, recorded_at, note, deleted_at \
-             FROM log_entries WHERE event_id = $1 AND deleted_at IS NULL \
-             ORDER BY observed_at, id",
-            event.0,
-        )
-        .fetch_all(&mut *conn)
-        .await
-        .db()?;
-        let reports = sqlx::query!(
-            "SELECT r.id, r.log_entry_id FROM smell_reports r \
-             JOIN log_entries e ON e.id = r.log_entry_id \
-             WHERE e.deleted_at IS NULL AND e.event_id = $1",
-            event.0,
-        )
-        .fetch_all(&mut *conn)
-        .await
-        .db()?;
-        let rooms = sqlx::query!(
-            "SELECT l.smell_report_id, l.room_id, l.level FROM smell_report_rooms l \
-             JOIN smell_reports r ON r.id = l.smell_report_id \
-             JOIN log_entries e ON e.id = r.log_entry_id \
-             WHERE e.deleted_at IS NULL AND e.event_id = $1 \
-             ORDER BY l.smell_report_id, l.room_id",
-            event.0,
-        )
-        .fetch_all(&mut *conn)
-        .await
-        .db()?;
-        let symptoms = sqlx::query!(
-            "SELECT l.smell_report_id, l.symptom_id FROM smell_report_symptoms l \
-             JOIN smell_reports r ON r.id = l.smell_report_id \
-             JOIN log_entries e ON e.id = r.log_entry_id \
-             WHERE e.deleted_at IS NULL AND e.event_id = $1 \
-             ORDER BY l.smell_report_id, l.symptom_id",
-            event.0,
-        )
-        .fetch_all(&mut *conn)
-        .await
-        .db()?;
-        let readings = sqlx::query!(
-            "SELECT p.id, p.log_entry_id, p.value_ugm3, \
-                    ph.object_key AS \"object_key?\", ph.bytes AS \"bytes?\", \
-                    ph.sha256 AS \"sha256?\", ph.taken_at AS \"taken_at?\" \
-             FROM pm25_readings p \
-             LEFT JOIN pm25_photos ph ON ph.pm25_reading_id = p.id \
-             JOIN log_entries e ON e.id = p.log_entry_id \
-             WHERE e.deleted_at IS NULL AND e.event_id = $1",
-            event.0,
-        )
-        .fetch_all(&mut *conn)
-        .await
-        .db()?;
-        assemble_all(
-            rows,
-            reports.into_iter().map(|r| (r.id, r.log_entry_id)),
-            rooms
-                .into_iter()
-                .map(|l| (l.smell_report_id, (l.room_id, l.level))),
-            symptoms
-                .into_iter()
-                .map(|l| (l.smell_report_id, l.symptom_id)),
-            readings.into_iter().map(|r| {
-                (
-                    r.log_entry_id,
-                    ReadingParts {
-                        id: r.id,
-                        value_ugm3: r.value_ugm3,
-                        photo: PhotoParts::of(r.object_key, r.bytes, r.sha256, r.taken_at),
-                    },
-                )
-            }),
-        )
+        live_entries_for_event(&mut *self.read().await?, event).await
     }
 
     /// Five queries whatever the number of entries: the rows, then all their reports, room
@@ -554,6 +561,10 @@ impl EntryRepo for SqliteStore {
 }
 
 impl EntryWrites for SqliteTx {
+    async fn entries_for_event(&mut self, event: EventId) -> StoreResult<Vec<LogEntry>> {
+        live_entries_for_event(self.conn(), event).await
+    }
+
     async fn entry(&mut self, id: LogEntryId) -> StoreResult<Option<LogEntry>> {
         fetch(self.conn(), id).await
     }
