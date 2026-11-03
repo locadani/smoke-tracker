@@ -14,6 +14,7 @@ use smoke_domain::types::{EventId, LogEntryId};
 
 use crate::auth::CurrentUser;
 use crate::error::AppError;
+use crate::routes::events::openable;
 use crate::routes::{can_open, refusal};
 use crate::state::AppState;
 
@@ -32,7 +33,7 @@ pub(crate) async fn delete_entry<S: Store + Clone + 'static>(
         Ok(event) => event,
         Err(error) => {
             drop(tx);
-            return Err(refusal(error).err().unwrap_or(AppError::NotAllowed));
+            return Err(refused(error));
         }
     };
     tx.commit().await?;
@@ -59,11 +60,7 @@ pub(crate) async fn delete_event<S: Store + Clone + 'static>(
     auto_close(&state.store, &state.config.schedule, now).await?;
     let actor = user.actor();
     let id = EventId(id);
-    let event = state.store.event(id).await?.ok_or(AppError::NotFound)?;
-    let entries = state.store.entries_for_event(id).await?;
-    if !can_open(&actor, &event, &report_views(&entries), now) {
-        return Err(AppError::NotFound);
-    }
+    openable(&state, &actor, id, now).await?;
     let mut tx = state.store.begin(Some(user.id)).await?;
     match delete_event_use_case(&mut tx, &actor, id, now).await {
         Ok(_) => {
@@ -76,7 +73,16 @@ pub(crate) async fn delete_event<S: Store + Clone + 'static>(
         }
         Err(error) => {
             drop(tx);
-            Err(refusal(error).err().unwrap_or(AppError::NotAllowed))
+            Err(refused(error))
         }
+    }
+}
+
+/// A refusal that has no message on these pages: the soft ones are not expected here, so they
+/// are an internal error rather than a made-up 403.
+fn refused(error: LogError) -> AppError {
+    match refusal(error) {
+        Err(error) => error,
+        Ok(key) => AppError::internal(format!("unexpected refusal {key} while deleting")),
     }
 }

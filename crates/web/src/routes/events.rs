@@ -242,6 +242,16 @@ enum DeletionView {
     Blocked { recap: String, reason: String },
 }
 
+impl DeletionView {
+    /// Whether the buttons row has a delete control (the question form has its own buttons).
+    fn shows_button(&self) -> bool {
+        matches!(
+            self,
+            Self::Blocked { .. } | Self::Allowed { confirm: false, .. }
+        )
+    }
+}
+
 /// Who logged how many entries, the viewer first. People who see everyone's data get names;
 /// everyone else sees the other authors collapsed into one count, so no name leaks.
 fn recap(tr: Tr, actor: &Actor, lines: &[AuthorCount], names: &HashMap<UserId, String>) -> String {
@@ -332,7 +342,7 @@ pub(crate) async fn show<S: Store + Clone + 'static>(
 
 /// The event and all its entries, or `NotFound` when it does not exist or `actor` may not open
 /// it: answering the same either way hides that the record exists.
-async fn openable<S: Store>(
+pub(crate) async fn openable<S: Store>(
     state: &AppState<S>,
     actor: &Actor,
     id: EventId,

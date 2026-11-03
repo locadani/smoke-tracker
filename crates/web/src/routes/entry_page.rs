@@ -298,7 +298,11 @@ async fn entry_page<S: Store>(
                 label,
             });
         }
-        if !report.values.is_no_smell() {
+        let alone_in_event = match entry.event_id {
+            Some(event) => state.store.entries_for_event(event).await?.len() == 1,
+            None => false,
+        };
+        if !report.values.is_no_smell() && !alone_in_event {
             move_options.push(MoveOption {
                 value: "new".to_owned(),
                 label: tr.t("prompt-new-event"),

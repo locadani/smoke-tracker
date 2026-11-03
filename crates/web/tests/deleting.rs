@@ -412,6 +412,12 @@ async fn another_resident_greys_the_button_with_recap() {
         assert!(!page.exists("a[data-variant=danger]"), "{html}");
         assert!(!page.exists("#confirm-delete-question"), "{html}");
         assert_eq!(
+            page.attrs("button[data-variant=danger][disabled]", "aria-describedby"),
+            ["delete-recap delete-reason".to_owned()]
+        );
+        assert!(page.exists("p#delete-recap.delete-note"), "{html}");
+        assert!(page.exists("p#delete-reason.delete-note"), "{html}");
+        assert_eq!(
             page.texts(".delete-note"),
             [
                 "4 registrazioni: tu 3 · duygu 1".to_owned(),
@@ -539,6 +545,7 @@ async fn no_button_when_none_is_mine() {
                 "button[data-variant=danger]",
                 "#confirm-delete-question",
                 ".delete-note",
+                ".cluster",
             ] {
                 assert!(!page.exists(css), "{css}: {html}");
             }
@@ -611,4 +618,78 @@ async fn a_guest_posting_a_delete_for_an_event_they_cannot_open_is_not_found() {
         .await;
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
     assert_eq!(app.reports_for_event(id).await.len(), 1);
+}
+
+#[tokio::test]
+async fn moving_to_a_new_event_is_offered_only_where_it_changes_something() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let alone = app.log(&me, "2026-01-15T10:00:00Z", 4, &[], NEW).await;
+    let first = app
+        .log(
+            &me,
+            "2026-01-15T18:00:00Z",
+            4,
+            &[],
+            EventChoice::New {
+                replacing: alone.report.event_id,
+            },
+        )
+        .await;
+    let second = app
+        .log(
+            &me,
+            "2026-01-15T18:30:00Z",
+            3,
+            &[],
+            EventChoice::Join(first.report.event_id.unwrap()),
+        )
+        .await;
+    let cookie = app.sign_in("daniele").await;
+
+    for (entry, offered) in [
+        (alone.report.entry_id, false),
+        (first.report.entry_id, true),
+        (second.report.entry_id, true),
+    ] {
+        let html = text(
+            app.send(get_with(&format!("/entries/{entry}"), &cookie))
+                .await,
+        )
+        .await;
+        assert_eq!(html.contains(r#"value="new""#), offered, "{entry}: {html}");
+    }
+}
+
+#[tokio::test]
+async fn deleting_the_last_report_leaves_the_reading_on_its_own() {
+    let app = TestApp::new().await;
+    app.at("2026-01-15T20:00:00Z");
+    let me = app.add_user("daniele", Role::Resident, Locale::En).await;
+    let report = app.log(&me, "2026-01-15T18:00:00Z", 4, &[], NEW).await;
+    let reading = app.log_pm25(&me, "2026-01-15T18:10:00Z", 12.0).await;
+    let cookie = app.sign_in("daniele").await;
+
+    let response = app
+        .send(post_form(
+            &format!("/entries/{}/delete", report.report.entry_id),
+            "",
+            Some(&cookie),
+        ))
+        .await;
+    assert_eq!(location(&response), Some("/events"));
+    let event = app
+        .send(get_with(
+            &format!("/events/{}", report.report.event_id.unwrap()),
+            &cookie,
+        ))
+        .await;
+    assert_eq!(event.status(), StatusCode::NOT_FOUND);
+    let alone = app
+        .send(get_with(&format!("/entries/{}", reading.entry_id), &cookie))
+        .await;
+    assert_eq!(alone.status(), StatusCode::OK);
+    let history = text(app.send(get_with("/events", &cookie)).await).await;
+    assert!(history.contains("12"), "{history}");
 }
