@@ -35,7 +35,7 @@ fluent-syntax.workspace = true
 http-body-util.workspace = true
 scraper.workspace = true
 smoke-storage-sqlite.workspace = true
-sqlx = { workspace = true, features = ["sqlite-bundled"] }
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 tempfile.workspace = true
 tower.workspace = true
 
