@@ -33,7 +33,7 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 chrono.workspace = true
-sqlx = { workspace = true, features = ["sqlite-bundled"] }
+sqlx = { workspace = true, features = ["sqlite-unbundled"] }
 tempfile.workspace = true
 
 [lints]
