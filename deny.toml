@@ -6,7 +6,11 @@ yanked = "deny"
 # Temporary: sqlite-unbundled builds link the system SQLite, which the advisory
 # states is not affected. cargo-deny is version-only and cannot see the feature,
 # so ignore it until sqlx permits libsqlite3-sys >= 0.39.0.
-ignore = ["RUSTSEC-2026-0459"]
+ignore = [
+    "RUSTSEC-2026-0459",   # real CVE – mitigated via sqlite-unbundled
+    "RUSTSEC-2026-0543",   # chrono – unmaintained, no fix available
+    "RUSTSEC-2026-0555",   # chrono-tz – unmaintained, no fix available
+]
 
 [licenses]
 confidence-threshold = 0.8
